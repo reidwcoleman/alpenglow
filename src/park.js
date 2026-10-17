@@ -286,8 +286,19 @@ export class Park {
     sign(centerX(zTop) + 26, zTop, 4.2, 2.1, signTexture(['RAILS', 'BOXES · DOWN · KINK']));
     sign(centerX(zTop) - 58, zTop, 4.2, 2.1, signTexture(['ROLLERS', 'PUMP IT']));
     sign(centerX(PIPE.z0 - 4) + PIPE.dx, PIPE.z0 - 4, 4.6, 2.3, signTexture(['HALFPIPE', '4.5 M WALLS']));
-    // size boards beside every takeoff
+    // zone boards down the run, on the side of the first feature
+    const seen = new Set();
+    const firsts = [...JUMPS, ...RAILS].filter((f) => !['Jump Line', 'Rail Garden'].includes(f.zone)).sort((a, b) => a.z - b.z);
+    const SUBS = { 'Drop In': 'BOX · KICKER', 'The Wall': 'WALL HITS', 'Rail Yard': 'RAILS · BOXES · KINK', 'Big Air': 'ONE BIG KICKER', 'Forest Line': 'TREE RAILS', 'Kicker Line': 'FOUR TABLES', 'Last Call': 'RAILS · ONE MORE TABLE' };
+    for (const f of firsts) {
+      if (seen.has(f.zone)) continue;
+      seen.add(f.zone);
+      const z = f.z - 26, side = Math.sign(f.dx);
+      sign(centerX(z) + f.dx + side * 3, z, 4.2, 2.1, signTexture([f.zone.toUpperCase(), SUBS[f.zone] ?? ''], '#11161f', '#fff', '#3d8bff'), 0, 1.4);
+    }
+    // size boards beside every park takeoff
     for (const J of JUMPS) {
+      if (!J.speed) continue;
       const z = J.z - 2;
       sign(centerX(z) + J.dx - J.w / 2 - 2.4, z, 1.6, 1.1, signTexture([J.name === 'XL' ? 'XL' : J.name[0], Math.round(J.speed * 3.6) + ' KM/H'], '#11161f', '#fff', '#3d8bff'), 0, 1.0);
     }

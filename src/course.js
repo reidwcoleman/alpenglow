@@ -117,13 +117,27 @@ function kickerProfile(u, k) {
 // and a halfpipe beyond those. The race corridor down the middle stays clear.
 export const PARK = { top: 1032, z0: 1040, z1: 1400 };
 // z: start of the takeoff ramp; h: lip height over the slope; ramp/table/land: lengths (m)
-export const JUMPS = [
+export const PARK_JUMPS = [
 // speed: the approach (m/s at the foot of the ramp) that lands in the sweet spot (tools/parkjump.mjs)
-  { name: 'Small', z: 1062, dx: -28, h: 1.6, ramp: 6.5, table: 4, land: 8, w: 7, speed: 10.5 },
-  { name: 'Medium', z: 1130, dx: -28, h: 2.5, ramp: 8.5, table: 7, land: 11, w: 9, speed: 12.5 },
-  { name: 'Large', z: 1205, dx: -28, h: 3.3, ramp: 10.5, table: 10, land: 14, w: 11, speed: 14.6 },
-  { name: 'XL', z: 1290, dx: -28, h: 4.1, ramp: 12, table: 13, land: 17, w: 12, speed: 16.2 },
+  { name: 'Small', zone: 'Jump Line', z: 1062, dx: -28, h: 1.6, ramp: 6.5, table: 4, land: 8, w: 7, speed: 10.5 },
+  { name: 'Medium', zone: 'Jump Line', z: 1130, dx: -28, h: 2.5, ramp: 8.5, table: 7, land: 11, w: 9, speed: 12.5 },
+  { name: 'Large', zone: 'Jump Line', z: 1205, dx: -28, h: 3.3, ramp: 10.5, table: 10, land: 14, w: 11, speed: 14.6 },
+  { name: 'XL', zone: 'Jump Line', z: 1290, dx: -28, h: 4.1, ramp: 12, table: 13, land: 17, w: 12, speed: 16.2 },
 ];
+// the rest of the run's kickers, each off to one side so the race line stays clear
+const RUN_JUMPS = [
+  { name: 'Drop In', zone: 'Drop In', z: 112, dx: -22, h: 1.3, ramp: 6, table: 3, land: 7, w: 7 },
+  { name: 'Wall Hit', zone: 'The Wall', z: 330, dx: -24, h: 1.5, ramp: 7, table: 2, land: 8, w: 8 },
+  { name: 'Wall Hit', zone: 'The Wall', z: 450, dx: 24, h: 1.5, ramp: 7, table: 2, land: 8, w: 8 },
+  { name: 'Wall Hit', zone: 'The Wall', z: 570, dx: -24, h: 1.5, ramp: 7, table: 2, land: 8, w: 8 },
+  { name: 'Big Air', zone: 'Big Air', z: 1585, dx: 30, h: 4.6, ramp: 15, table: 6, land: 26, w: 14 },
+  { name: 'Express', zone: 'Kicker Line', z: 2480, dx: -22, h: 2.2, ramp: 8, table: 5, land: 10, w: 9 },
+  { name: 'Express', zone: 'Kicker Line', z: 2560, dx: 22, h: 2.4, ramp: 8.5, table: 5, land: 11, w: 9 },
+  { name: 'Express', zone: 'Kicker Line', z: 2700, dx: -22, h: 2.6, ramp: 9, table: 6, land: 12, w: 10 },
+  { name: 'Express', zone: 'Kicker Line', z: 2790, dx: 22, h: 2.8, ramp: 9.5, table: 6, land: 12, w: 10 },
+  { name: 'Last Call', zone: 'Last Call', z: 3230, dx: -24, h: 2.4, ramp: 9, table: 6, land: 11, w: 10 },
+];
+export const JUMPS = [...RUN_JUMPS, ...PARK_JUMPS].sort((a, b) => a.z - b.z);
 for (const J of JUMPS) {
   J.lip = J.z + J.ramp;
   J.len = J.ramp + J.table + J.land;
@@ -138,7 +152,7 @@ PIPE.H = PIPE.R * (1 - Math.cos(P72)) + 0.3 * Math.tan(P72);
 export const ROLLERS = { z0: 1058, z1: 1382, dx: -58, len: 14, h: 1.15, w: 12 };
 // rails and boxes: ridden onto from a short snow ramp. shape: down (parallel to the slope),
 // flat, kink (flat then down), rainbow (an arch)
-export const RAILS = [
+export const PARK_RAILS = [
   { name: 'Butter Box', z: 1062, dx: 26, len: 7, h: 0.45, kind: 'box', shape: 'down', color: 0x2a7de1 },
   { name: 'Down Rail', z: 1108, dx: 24, len: 9, h: 0.6, kind: 'rail', shape: 'down', color: 0xf2b705 },
   { name: 'Rainbow Box', z: 1155, dx: 28, len: 8, h: 0.5, kind: 'box', shape: 'rainbow', color: 0xff4f8b },
@@ -146,6 +160,21 @@ export const RAILS = [
   { name: 'Flat Box', z: 1258, dx: 28, len: 7, h: 0.5, kind: 'box', shape: 'flat', color: 0x18a868 },
   { name: 'Long Tube', z: 1305, dx: 25, len: 14, h: 0.8, kind: 'rail', shape: 'down', color: 0xff6a2b },
 ];
+for (const R of PARK_RAILS) R.zone = 'Rail Garden';
+// rail zones down the rest of the run
+const RUN_RAILS = [
+  { name: 'Start Box', zone: 'Drop In', z: 116, dx: 22, len: 8, h: 0.5, kind: 'box', shape: 'flat', color: 0x2a7de1 },
+  { name: 'Yard Rail', zone: 'Rail Yard', z: 740, dx: 24, len: 10, h: 0.7, kind: 'rail', shape: 'down', color: 0xf2b705 },
+  { name: 'Yard Box', zone: 'Rail Yard', z: 775, dx: -24, len: 9, h: 0.5, kind: 'box', shape: 'flat', color: 0x18a868 },
+  { name: 'Yard Kink', zone: 'Rail Yard', z: 860, dx: 24, len: 12, h: 0.7, kind: 'rail', shape: 'kink', color: 0xd8342c },
+  { name: 'Yard Rainbow', zone: 'Rail Yard', z: 900, dx: -24, len: 9, h: 0.55, kind: 'box', shape: 'rainbow', color: 0xff4f8b },
+  { name: 'Forest Rail', zone: 'Forest Line', z: 2050, dx: 17, len: 10, h: 0.6, kind: 'rail', shape: 'down', color: 0xff6a2b },
+  { name: 'Forest Box', zone: 'Forest Line', z: 2200, dx: -17, len: 10, h: 0.5, kind: 'box', shape: 'down', color: 0x8e3fd1 },
+  { name: 'Last Box', zone: 'Last Call', z: 3020, dx: 24, len: 10, h: 0.5, kind: 'box', shape: 'flat', color: 0x2a7de1 },
+  { name: 'Last Tube', zone: 'Last Call', z: 3080, dx: -24, len: 14, h: 0.75, kind: 'rail', shape: 'down', color: 0xf2b705 },
+  { name: 'Last Kink', zone: 'Last Call', z: 3150, dx: 24, len: 11, h: 0.7, kind: 'rail', shape: 'kink', color: 0xd8342c },
+];
+export const RAILS = [...RUN_RAILS, ...PARK_RAILS].sort((a, b) => a.z - b.z);
 const RAMP_L = 3.4;
 for (const R of RAILS) R.hw = R.kind === 'box' ? 0.32 : 0.045;
 
@@ -169,48 +198,96 @@ export function pipeProfile(a) {
 }
 export const pipeWalls = (z) => smoothstep(PIPE.z0, PIPE.z0 + 22, z) * (1 - smoothstep(PIPE.z1 - 16, PIPE.z1, z));
 
-// added height of the park's features at (dx from the centre line, z)
+// every feature's stretch of the run, bucketed along z so the height lookup stays cheap
+const B0 = -300, BS = 8, BN = 500;
+const FEATS = [
+  ...JUMPS.map((J) => ({ z0: J.z, z1: J.z + J.len, k: 0, J })),
+  { z0: ROLLERS.z0, z1: ROLLERS.z1, k: 1 },
+  { z0: PIPE.z0, z1: PIPE.z1, k: 2 },
+  ...RAILS.map((R) => ({ z0: R.z - RAMP_L, z1: R.z + 0.35, k: 3, R })),
+];
+function bucketize(list) {
+  const B = Array.from({ length: BN }, () => []);
+  for (const f of list) for (let b = Math.floor((f.z0 - B0) / BS); b <= Math.floor((f.z1 - B0) / BS); b++) if (b >= 0 && b < BN) B[b].push(f);
+  return B;
+}
+const FEAT_B = bucketize(FEATS);
+
+// added height of the features at (dx from the centre line, z)
 export function parkAt(dx, z) {
-  if (z < PARK.z0 - 10 || z > PARK.z1 + 10) return 0;
+  const b = Math.floor((z - B0) / BS);
+  if (b < 0 || b >= BN) return 0;
+  const L = FEAT_B[b];
+  if (!L.length) return 0;
   let y = 0;
-  for (const J of JUMPS) {
-    const u = z - J.z;
-    if (u < 0 || u > J.len) continue;
-    const v = Math.abs(dx - J.dx);
-    const lat = 1 - smoothstep(J.w / 2 - 1, J.w / 2 + 2.5, v);
-    if (lat > 0) y += jumpProfile(u, J) * lat;
-  }
-  const RL = ROLLERS;
-  if (z > RL.z0 && z < RL.z1) {
-    const lat = 1 - smoothstep(RL.w / 2 - 2, RL.w / 2 + 2, Math.abs(dx - RL.dx));
-    if (lat > 0) { const s = Math.sin((Math.PI * (z - RL.z0)) / RL.len); y += RL.h * s * s * lat; }
-  }
-  if (z > PIPE.z0 && z < PIPE.z1) {
-    const a = Math.abs(dx - PIPE.dx) - PIPE.flat;
-    if (a > 0 && a < PIPE.lip + PIPE.deck + PIPE.outer) y += pipeProfile(a) * pipeWalls(z);
-  }
-  for (const R of RAILS) {
-    const u = z - R.z;
-    if (u < -RAMP_L || u > 0.35) continue;
-    const lat = 1 - smoothstep(R.hw + 0.45, R.hw + 1.0, Math.abs(dx - R.dx));
-    if (lat <= 0) continue;
-    const top = R.h - 0.06;
-    y += lat * (u < 0 ? top * Math.pow((u + RAMP_L) / RAMP_L, 1.3) : top * (1 - u / 0.35));
+  for (let i = 0; i < L.length; i++) {
+    const f = L[i];
+    if (z < f.z0 || z > f.z1) continue;
+    if (f.k === 0) {
+      const J = f.J;
+      const v = Math.abs(dx - J.dx);
+      const lat = 1 - smoothstep(J.w / 2 - 1, J.w / 2 + 2.5, v);
+      if (lat > 0) y += jumpProfile(z - J.z, J) * lat;
+    } else if (f.k === 1) {
+      const RL = ROLLERS;
+      const lat = 1 - smoothstep(RL.w / 2 - 2, RL.w / 2 + 2, Math.abs(dx - RL.dx));
+      if (lat > 0) { const s = Math.sin((Math.PI * (z - RL.z0)) / RL.len); y += RL.h * s * s * lat; }
+    } else if (f.k === 2) {
+      const a = Math.abs(dx - PIPE.dx) - PIPE.flat;
+      if (a > 0 && a < PIPE.lip + PIPE.deck + PIPE.outer) y += pipeProfile(a) * pipeWalls(z);
+    } else {
+      const R = f.R, u = z - R.z;
+      const lat = 1 - smoothstep(R.hw + 0.45, R.hw + 1.0, Math.abs(dx - R.dx));
+      if (lat <= 0) continue;
+      const top = R.h - 0.06;
+      y += lat * (u < 0 ? top * Math.pow(Math.max(0, (u + RAMP_L) / RAMP_L), 1.3) : top * Math.max(0, 1 - u / 0.35));
+    }
   }
   return y;
 }
 
-// areas the park's own fine surface covers (the coarse terrain hides underneath)
+// areas the features' own fine surface covers (the coarse terrain hides underneath)
 export const PARK_FEET = [
   ...JUMPS.map((J) => ({ dx0: J.dx - J.w / 2 - 6, dx1: J.dx + J.w / 2 + 6, z0: J.z - 3, z1: J.z + J.len + 3 })),
   { dx0: ROLLERS.dx - 10, dx1: ROLLERS.dx + 10, z0: ROLLERS.z0 - 3, z1: ROLLERS.z1 + 3 },
   { dx0: PIPE.dx - 23, dx1: PIPE.dx + 23, z0: PIPE.z0 - 3, z1: PIPE.z1 + 3 },
   ...RAILS.map((R) => ({ dx0: R.dx - 3, dx1: R.dx + 3, z0: R.z - RAMP_L - 3, z1: R.z + 3 })),
 ];
+const FEET_B = bucketize(PARK_FEET.map((f) => ({ ...f, z0: f.z0 - 2, z1: f.z1 + 2, f })));
 function inFeet(dx, z) {
-  for (const f of PARK_FEET) if (dx > f.dx0 && dx < f.dx1 && z > f.z0 && z < f.z1) return true;
+  const b = Math.floor((z - B0) / BS);
+  if (b < 0 || b >= BN) return false;
+  for (const { f } of FEET_B[b]) if (dx > f.dx0 && dx < f.dx1 && z > f.z0 && z < f.z1) return true;
   return false;
 }
+
+// the piste is groomed smooth around every feature so it sits true
+const CALM = new Float32Array(PN);
+for (let i = 0; i < PN; i++) {
+  const z = i + Z_MIN;
+  let c = smoothstep(PARK.z0 - 60, PARK.z0, z) * (1 - smoothstep(PARK.z1, PARK.z1 + 60, z));
+  for (const f of FEATS) if (z > f.z0 - 40 && z < f.z1 + 40) c = Math.max(c, smoothstep(f.z0 - 35, f.z0 - 8, z) * (1 - smoothstep(f.z1 + 8, f.z1 + 35, z)));
+  CALM[i] = c;
+}
+
+// which named part of the run (x, z) is in
+export function zoneAt(x, z) {
+  const dx = x - centerX(z);
+  if (z > PARK.top - 20 && z < PARK.z1 + 30) {
+    if (z > PIPE.z0 - 10 && z < PIPE.z1 && Math.abs(dx - PIPE.dx) < 20) return 'Halfpipe';
+    if (dx < -44) return 'Rollers';
+    if (dx < -12) return 'Jump Line';
+    if (dx > 12) return 'Rail Garden';
+    return 'Terrain Park';
+  }
+  for (const Z of ZONES) if (z < Z.z1) return Z.name;
+  return 'Village';
+}
+export const ZONES = [
+  { name: 'Drop In', z1: 170 }, { name: 'The Wall', z1: 700 }, { name: 'Rail Yard', z1: 950 }, { name: 'Terrain Park', z1: 1490 },
+  { name: 'Big Air', z1: 1680 }, { name: 'Glacier Bowl', z1: 1900 }, { name: 'Forest Line', z1: 2400 }, { name: 'Kicker Line', z1: 2950 },
+  { name: 'Last Call', z1: FINISH_Z - 10 }, { name: 'Finish', z1: FINISH_Z + 60 },
+];
 
 // Mogul field on the skier's left of Glacier Bowl.
 const MOGUL = { z0: 1530, z1: 1860 };
@@ -237,8 +314,8 @@ export function heightAt(x, z) {
 
   // groomed piste vs natural snow
   const onP = 1 - smoothstep(hw - 6, hw + 14, adx);
-  // (the park is shaped flat so its features sit true)
-  const roll = fbm(N2, x / 70, z / 70, 3) * 2.2 * (1 - 0.85 * smoothstep(PARK.z0 - 60, PARK.z0, z) * (1 - smoothstep(PARK.z1, PARK.z1 + 60, z)));
+  // (flattened around the features so they sit true)
+  const roll = fbm(N2, x / 70, z / 70, 3) * 2.2 * (1 - 0.85 * prof(CALM, z));
   const natural = fbm(N2, x / 45, z / 45, 4) * 6 + N3(x / 7, z / 7) * 0.45;
   y += roll * onP + natural * (1 - onP);
 
@@ -275,7 +352,6 @@ export function heightAt(x, z) {
 // (the minimum over a vertex spacing), so the sharp features are never poked through
 export function meshHeightAt(x, z, step) {
   const y = heightAt(x, z);
-  if (z < PARK.z0 - 30 || z > PARK.z1 + 30) return y;
   const dx = x - prof(CX, z);
   if (!inFeet(dx, z)) return y;
   let mn = Infinity;

@@ -5,11 +5,11 @@ import { Skier } from '../src/skier.js';
 import { AIController } from '../src/ai.js';
 import { randomOutfit } from '../src/skiermodel.js';
 import { mulberry32 } from '../src/noise.js';
-import { PARK, PIPE, JUMPS, RAILS, centerX } from '../src/course.js';
+import { PARK, PIPE, PARK_JUMPS as JUMPS, PARK_RAILS as RAILS, centerX } from '../src/course.js';
 const T = Number(process.argv[2] ?? 120);
 const scene = new THREE.Scene();
 const skiers = [];
-const world = { scene, forest: null, tracks: null, skiers };
+const world = { scene, forest: null, tracks: null, skiers, arcade: process.env.REAL !== '1' };
 const rnd = mulberry32(5);
 const stats = {};
 for (const line of ['jumps', 'rails', 'pipe']) for (let i = 0; i < 3; i++) {

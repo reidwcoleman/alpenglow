@@ -1,4 +1,4 @@
-// Alpenglow: boot, game modes (Race the Cup / Free Ride), loop, HUD.
+// Alpenglow: boot, game modes (The Run / Ski Park / Race the Cup), scoring, loop, HUD.
 import * as THREE from 'three';
 import { Environment, PRESETS } from './sky.js';
 import { Terrain } from './terrain.js';
@@ -18,7 +18,7 @@ import { Debris } from './debris.js';
 import { Park } from './park.js';
 import { preloadAvatars } from './avatar.js';
 import { mulberry32, clamp, smoothstep } from './noise.js';
-import { START_Z, FINISH_Z, GATES, centerX, halfWidth, sectionName, heightAt, SECTIONS, PARK, JUMPS, RAILS, PIPE, ROLLERS } from './course.js';
+import { START_Z, FINISH_Z, GATES, centerX, halfWidth, sectionName, heightAt, PARK, JUMPS, RAILS, PARK_JUMPS, PARK_RAILS, PIPE, ROLLERS, zoneAt } from './course.js';
 
 const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -41,6 +41,8 @@ function fmt(t) {
   const m = Math.floor(t / 60), s = t - m * 60;
   return `${m}:${s.toFixed(2).padStart(5, '0')}`;
 }
+// run clock, mm:ss
+const clock = (t) => `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 const ord = (n) => (n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th');
 const hex = (c) => '#' + new THREE.Color(c).getHexString();
 
@@ -52,6 +54,8 @@ class Game {
     this.quality = params.get('q') ?? store.get('quality', 'high');
     if (!QUALITY[this.quality]) this.quality = 'high';
     this.jacket = Number(store.get('jacket', JACKETS[0]));
+    this.selMode = store.get('mode', 'run');
+    if (!['run', 'park', 'race'].includes(this.selMode)) this.selMode = 'run';
     this.skiers = [];
     this.ais = [];
     this.player = null;
@@ -101,7 +105,7 @@ class Game {
     this.particles = new Particles(scene);
     this.snowfall = new Snowfall(scene);
     this.debris = new Debris(scene);
-    this.world = { scene, forest: this.forest, tracks: this.tracks, particles: this.particles, race: false, raceStarted: false, skiers: this.skiers };
+    this.world = { scene, forest: this.forest, tracks: this.tracks, particles: this.particles, race: false, raceStarted: false, skiers: this.skiers, arcade: true };
     this.shade = new ShadeField(r);
     patchTree(scene);
     this.post = new Post(r, scene, this.camera, { ...QUALITY[this.quality], ...JSON.parse(params.get('post') ?? '{}') });
@@ -128,10 +132,13 @@ class Game {
     this.renderer.setAnimationLoop(() => this.frame());
     setTimeout(() => { $('loading').style.opacity = 0; setTimeout(() => $('loading').classList.add('hidden'), 800); }, 150);
     const mode = params.get('mode');
-    if (params.get('menu') === '0' && mode) this.start(mode === 'race' ? 'race' : mode === 'park' ? 'park' : 'free');
+    if (params.get('menu') === '0' && mode) this.start(mode === 'race' ? 'race' : mode === 'park' ? 'park' : 'run');
     else this.showMenu();
     window.__game = this;
     window.__cx = centerX;
+    window.__parkJumps = PARK_JUMPS;
+    window.__rails = RAILS;
+    window.__jumps = JUMPS;
     window.__h = heightAt;
     window.__lift = this.props.liftPoints;
     window.__ready = true;
@@ -181,14 +188,35 @@ class Game {
       b.onclick = () => { if (k === this.quality) return; store.set('quality', k); location.reload(); };
       q.appendChild(b);
     }
-    $('b-race').onclick = () => this.start('race');
-    $('b-free').onclick = () => this.start('free');
-    $('b-park').onclick = () => this.start('park');
+    // tabs: ride (the mode cards), locker, how to ride
+    const tabs = [...document.querySelectorAll('#tabs button')];
+    for (const t of tabs) t.onclick = () => {
+      tabs.forEach((x) => x.classList.toggle('on', x === t));
+      for (const k of ['ride', 'locker', 'how']) $('tab-' + k).classList.toggle('hidden', k !== t.dataset.tab);
+    };
+    const cards = [...document.querySelectorAll('.card2')];
+    const pick = (m) => {
+      this.selMode = m; store.set('mode', m);
+      cards.forEach((c) => c.classList.toggle('on', c.dataset.mode === m));
+      $('ridelbl').textContent = { run: 'RIDE', park: 'RIDE THE PARK', race: 'RACE' }[m];
+      this.showBest();
+    };
+    for (const c of cards) { c.onclick = () => pick(c.dataset.mode); c.ondblclick = () => this.start(c.dataset.mode); }
+    pick(this.selMode);
+    $('b-ride').onclick = () => this.start(this.selMode);
+    $('menubtn').onclick = () => this.setPaused(true);
     $('p-resume').onclick = () => this.setPaused(false);
     $('p-restart').onclick = () => { this.setPaused(false); this.start(this.mode); };
     $('p-menu').onclick = () => { this.setPaused(false); this.showMenu(); };
     $('tc-cam').onclick = () => this.cycleCam();
     if (matchMedia('(pointer: coarse)').matches) { document.body.classList.add('touch'); $('tc-cam').classList.remove('hidden'); }
+    this.buildMinimap();
+  }
+
+  showBest() {
+    const m = this.selMode;
+    const best = m === 'race' ? Number(store.get('best', '0')) : Number(store.get('best.' + m, '0'));
+    $('best').innerHTML = best ? (m === 'race' ? `Best Cup time<b>${fmt(best)}</b>` : `Best ${m === 'run' ? 'run' : 'park session'}<b>${best.toLocaleString()}</b>`) : 'No score yet<b>Send it</b>';
   }
 
   showMenu() {
@@ -197,10 +225,10 @@ class Game {
     $('menu').classList.remove('hidden');
     $('hud').classList.add('hidden');
     $('results').classList.add('hidden');
+    this.world.arcade = true;
     this.populateFree(true);
     this.menuT = 0;
-    const best = Number(store.get('best', '0'));
-    $('best').textContent = best ? `Your best Cup time  ${fmt(best)}` : '';
+    this.showBest();
   }
 
   setPaused(p) {
@@ -212,16 +240,23 @@ class Game {
   cycleCam() {
     const m = this.rig.cycle();
     const names = { chase: 'Chase cam', action: 'Action cam', helmet: 'Helmet cam', tv: 'TV cam' };
-    $('camlbl').textContent = names[m] + ' · C';
+    const l = $('camlbl');
+    l.textContent = names[m] + ' · C';
+    l.classList.add('show');
+    clearTimeout(this.camT); this.camT = setTimeout(() => l.classList.remove('show'), 1600);
   }
 
+  // the big trick call-out on the left: one at a time, newest wins
+  say(name, pts = '', sub = '', cls = '', ms = 2300) {
+    const el = $('callout');
+    el.innerHTML = `<div class="c ${cls}"><div class="n">${name}</div>${pts ? `<div class="p">${pts}</div>` : ''}${sub ? `<div class="s">${sub}</div>` : ''}</div>`;
+    this.liveCall = false;
+    clearTimeout(this.sayT);
+    this.sayT = setTimeout(() => { el.firstChild?.classList.add('out'); }, ms);
+  }
   popup(html, cls = '') {
-    const d = document.createElement('div');
-    d.className = 'popi ' + cls; d.innerHTML = html;
-    const pop = $('pop');
-    while (pop.children.length > 2) pop.firstChild.remove();
-    pop.appendChild(d);
-    setTimeout(() => d.remove(), 1900);
+    const [name, sub] = html.split('<small>');
+    this.say(name, '', (sub ?? '').replace('</small>', ''), cls);
   }
 
   // ---------------- population ----------------
@@ -292,8 +327,8 @@ class Game {
   // drop a skier at the top of a park line (k: how far down it, 0..1)
   parkSpawn(s, line, k = 0) {
     const L = {
-      jumps: [JUMPS[0].dx, JUMPS[0].z - 40, JUMPS[3].z - 30],
-      rails: [RAILS[0].dx, RAILS[0].z - 30, RAILS[5].z - 25],
+      jumps: [PARK_JUMPS[0].dx, PARK_JUMPS[0].z - 40, PARK_JUMPS[3].z - 30],
+      rails: [PARK_RAILS[0].dx, PARK_RAILS[0].z - 30, PARK_RAILS[5].z - 25],
       pipe: [PIPE.dx, PIPE.z0 - 18, PIPE.z0 - 6],
       rollers: [ROLLERS.dx, ROLLERS.z0 - 20, ROLLERS.z0 - 20],
       middle: [0, PARK.top - 20, PARK.z1 - 40],
@@ -332,36 +367,100 @@ class Game {
     p.on('crash', (e) => {
       this.audio.thump(1.2); this.rig.bump(1);
       this.burst(p, 90, 5);
-      this.popup('WIPEOUT<small>' + (e.reason === 'landing' ? 'land it straight' : e.reason === 'tree' ? 'that tree did not move' : e.reason === 'skier' ? 'watch the traffic' : e.reason === 'rail' ? 'stay on top of it' : 'ouch') + '</small>', 'bad');
-      this.freeStats && (this.freeStats.crashes++);
-      if (this.combo?.n > 1 && this.time - this.combo.t < 4) setTimeout(() => this.popup('COMBO LOST', 'bad'), 500);
-      if (this.combo) this.combo.n = 0;
+      const sc = this.sc;
+      if (sc) {
+        sc.crashes++;
+        const lost = Math.round(sc.pend * this.lineMult());
+        sc.pend = 0; sc.n = 0; sc.names = [];
+        this.say('BAIL', '', lost > 0 ? `line lost · ${lost.toLocaleString()}` : { landing: 'land it straight', tree: 'that tree did not move', skier: 'watch the traffic', rail: 'stay on top of it', net: 'into the nets' }[e.reason] ?? '', 'bad', 1800);
+        this.status('BAIL');
+      } else this.say('WIPEOUT', '', e.reason === 'landing' ? 'land it straight' : '', 'bad');
     });
-    p.on('takeoff', () => {});
+    p.on('recover', () => { if (this.sc) this.say('BACK ON YOUR FEET', '', '', '', 1300); });
     p.on('grindStart', () => this.audio.thump(0.35));
     p.on('grindEnd', (g) => this.onPlayerGrind(g));
+    p.on('railSwap', () => this.audio.beep(880, 0.05, 0.08));
+    p.on('butter', (b) => this.onPlayerButter(b));
   }
 
-  // tricks inside a few seconds of each other chain into a combo
-  scoreTrick(name, detail, base) {
-    const f = this.freeStats;
-    if (!f) return;
-    const c = (this.combo ??= { n: 0, t: 0 });
-    c.n = this.time - c.t < 4 ? Math.min(c.n + 1, 8) : 1;
-    c.t = this.time;
-    const pts = Math.round(base * c.n);
-    const big = base > 900;
-    this.popup(`${name}<small>${detail} · +${pts.toLocaleString()}${c.n > 1 ? ` · x${c.n} COMBO` : ''}</small>`, big || c.n >= 4 ? 'gold' : '');
-    if (big || c.n >= 4) this.audio.chime();
-    f.score += pts;
-    if (pts > f.best.pts) f.best = { pts, name };
+  // ---------------- scoring ----------------
+  // Spins pay by the square of the turns (a 720 is four 360s), flips count as turns, grabs
+  // multiply, every feature in a row adds x0.25 to the line, landing on snow banks it and a
+  // bail loses it. Repeating the same trick pays less each time.
+  resetScore() {
+    this.sc = { score: 0, shown: 0, pend: 0, n: 0, names: [], last: -99, reps: new Map(), clean: 0, best: { pts: 0, name: '—' }, top: 0, crashes: 0, t: 0, laps: 0, air: 0, started: false, done: false };
+  }
+
+  lineMult() { return 1 + 0.25 * Math.max(0, this.sc.n - 1); }
+
+  repeat(key) {
+    const n = this.sc.reps.get(key) ?? 0;
+    this.sc.reps.set(key, n + 1);
+    return [1, 0.75, 0.55, 0.4][Math.min(n, 3)];
+  }
+
+  status(txt) { this.statusTxt = txt; this.statusT = 2.2; }
+
+  trickName(t) {
+    const N = { cork: 'Cork', bio: 'Bio', rodeo: 'Rodeo', misty: 'Misty', flatspin: 'Flatspin', backflip: 'Backflip', frontflip: 'Frontflip', sideflip: 'Sideflip' };
+    const mult = ['', '', 'Double ', 'Triple ', 'Quad '][Math.min(t.flips, 4)];
+    let core = '';
+    if (t.flips && t.type) core = `${mult}${N[t.type]}${t.spin >= 180 ? ' ' + t.spin : ''}`;
+    else if (t.flips) core = `${mult}${t.flipDir > 0 ? 'Frontflip' : 'Backflip'}`;
+    else if (t.spin >= 180) core = String(t.spin);
+    if (core && t.switchIn) core = 'Switch ' + core;
+    const G = { mute: 'Mute', tail: 'Tail', japan: 'Japan' };
+    const grabs = t.grabs.map(([k]) => G[k] ?? 'Grab').join(' + ');
+    let name = core && grabs ? `${core} ${grabs}` : core || (grabs ? `${grabs} Grab` : '');
+    if (!name && t.pipe) name = t.rise > 1.5 ? 'Big Pipe Air' : 'Pipe Air';
+    return name;
+  }
+
+  addFeature(pts, name) {
+    const sc = this.sc;
+    sc.pend += pts; sc.n++; sc.last = this.time;
+    if (name) sc.names.push(name);
+  }
+
+  // landing on snow banks the line
+  bank(name, sketchy, air) {
+    const sc = this.sc;
+    const mult = this.lineMult();
+    let award = sc.pend * mult * (sketchy ? 0.5 : 1);
+    const bonus = air >= 0.5 ? 450 + award * 0.15 : 0;
+    const total = Math.round(award + bonus);
+    sc.pend = 0;
+    if (total <= 0) return;
+    sc.score += total; sc.clean++;
+    const title = name || (sketchy ? 'SKETCHY LANDING' : 'CLEAN LANDING');
+    if (total > sc.best.pts && name) sc.best = { pts: total, name };
+    const prev = name && sc.names[sc.names.length - 1] === name ? sc.names.slice(0, -1) : sc.names.filter((x) => x !== name);
+    const line = prev.length ? prev.join(' · ') + ' · ' : '';
+    sc.names = [];
+    const big = total > 6000 || mult >= 1.5;
+    this.say(title, `+${total.toLocaleString()}${mult > 1 ? `<em>×${mult.toFixed(2).replace(/0$/, '')}</em>` : ''}`, sketchy ? 'sketchy' : line ? line.slice(0, -3) : '', big ? 'gold' : '');
+    this.status(sketchy ? 'SKETCHY' : 'CLEAN LANDING');
+    if (big) this.audio.chime();
   }
 
   onPlayerGrind(g) {
-    if (g.fell || g.dist < 1.2) return;
-    const side = g.kind !== '50-50' && g.kind !== 'Switch 50-50';
-    const base = g.dist * 42 * (side ? 1.45 : 1) * (g.kind.startsWith('Switch') ? 1.25 : 1) + (g.spinIn >= 180 ? 150 : 0);
-    this.scoreTrick(`${g.spinIn >= 180 ? g.spinIn + ' on · ' : ''}${g.kind}`, `${g.rail} · ${g.dist.toFixed(1)} m`, base);
+    const sc = this.sc;
+    if (!sc || g.fell || g.t < 0.25) return;
+    let pts = 750 * g.t + 450 * g.swaps + (g.spinIn >= 180 ? 300 : 0);
+    if (g.switchIn) pts *= 1.25;
+    const name = `${g.spinIn >= 180 ? g.spinIn + ' on ' : ''}${g.switchIn && g.kind === '50-50' ? 'Switch 50-50' : g.kind}`;
+    pts *= this.repeat(name + g.rail);
+    this.addFeature(pts, name);
+    this.liveCall = false;
+  }
+
+  onPlayerButter(b) {
+    const sc = this.sc;
+    if (!sc) return;
+    const name = `${b.tail ? 'Tail' : 'Nose'} Butter${b.spin ? ' 180' : ''}`;
+    const pts = Math.round((b.spin ? 300 : 150) * this.repeat(name));
+    sc.score += pts;
+    this.say(name, `+${pts}`, '', '', 1500);
   }
 
   onPlayerLand(t) {
@@ -369,62 +468,59 @@ class Game {
     this.audio.thump(Math.min(1, t.vn / 8));
     this.rig.bump(Math.min(0.6, t.vn / 20));
     this.burst(p, 20 + t.vn * 4, 2);
-    if (t.air < 0.55) return;
-    // name it the way a park rider would
-    let core = '';
-    if (t.flips) {
-      const n = t.flips === 2 ? 'Double ' : t.flips === 3 ? 'Triple ' : '';
-      core = t.spin >= 360 ? `${n}${t.flipDir > 0 ? 'Misty' : 'Cork'} ${t.spin}` : `${n}${t.flipDir > 0 ? 'Front Flip' : 'Backflip'}`;
-    } else if (t.spin >= 180) core = String(t.spin);
-    if (core && t.switchIn) core = 'Switch ' + core;
-    const grab = t.grab ? (t.grabTime > 0.9 ? 'Tweaked Mute' : t.flips ? 'Safety' : t.spin >= 360 ? 'Japan' : 'Mute Grab') : '';
-    let name = [core, grab].filter(Boolean).join(' · ');
-    if (!name) name = t.pipe ? (t.rise > 1.5 ? 'Big Pipe Air' : 'Pipe Air') : t.height > 3 ? 'Big Air' : 'Air';
-    if (t.switchOut && !t.pipe) name += ' to Switch';
-    const base = t.air * 120 + (t.spin / 180) * 220 + t.flips * 700 + (t.grab ? 180 + Math.min(t.grabTime, 1.5) * 80 : 0) + t.height * 25 + (t.pipe ? Math.max(0, t.rise) * 90 : 0);
-    this.scoreTrick(name, `${t.air.toFixed(1)}s air`, base);
+    const sc = this.sc;
+    if (!sc) return;
+    sc.air += t.air;
+    const trick = t.spin >= 180 || t.flips > 0 || t.grabs.length > 0;
+    // little hops on the flat don't count
+    if (t.air < 0.5 && !trick) { if (sc.pend > 0) this.bank(sc.names[sc.names.length - 1] ?? '', t.sketchy, 0); return; }
+    const turns = t.spin / 360 + t.flips;
+    const rot = turns > 0 ? 900 * turns * turns * (1 + 0.15 * t.flips) * (t.switchIn ? 1.25 : 1) : 0;
+    let pts = rot + 135 * t.air + 36 * Math.max(0, t.height);
+    if (t.grabs.length) pts *= (1.25 + 0.25 * smoothstep(0.25, 1, t.grabs[0][1])) * (t.grabs.length > 1 ? 1.3 : 1);
+    if (t.pipe) pts += Math.max(0, t.rise) * 90;
+    const name = this.trickName(t);
+    // riding off the end of a rail is part of the rail, not a feature of its own
+    if (t.fromRail && !trick) { sc.pend += pts; this.bank(sc.names[sc.names.length - 1] ?? '', t.sketchy, t.air); return; }
+    pts *= this.repeat(name || 'air');
+    this.addFeature(pts, name);
+    this.bank(name, t.sketchy, t.air);
   }
 
   // ---------------- modes ----------------
   start(mode) {
+    if (mode === 'free') mode = 'run';
     this.audio.start();
     this.mode = mode;
     $('menu').classList.add('hidden');
     $('results').classList.add('hidden');
     $('hud').classList.remove('hidden');
-    $('pop').innerHTML = '';
+    $('callout').innerHTML = '';
     this.raceTime = 0;
     this.finishShown = false;
     this.cheerT = 0;
+    this.sc = null;
+    this.holdR = 0;
+    this.world.arcade = mode !== 'race';
+    $('scorebox').classList.toggle('hidden', mode === 'race');
+    $('racebox').classList.toggle('hidden', mode !== 'race');
+    $('course').classList.toggle('hidden', mode === 'park');
+    $('botbar').classList.toggle('hidden', mode === 'park');
     if (mode === 'race') {
       this.populateRace();
       this.state = 'countdown';
       this.countdown = 3.6;
       this.lastBeep = 4;
-      $('score').classList.add('hidden');
-      $('pos').classList.remove('hidden');
-      $('sub').textContent = 'Race the Cup · Downhill';
     } else if (mode === 'park') {
       this.populatePark();
       this.state = 'free';
-      this.freeStats = { score: 0, best: { pts: 0, name: '—' }, top: 0, crashes: 0, t: 0, nearT: 0, laps: 0 };
-      this.combo = { n: 0, t: -99 };
-      $('score').classList.remove('hidden');
-      $('pos').classList.add('hidden');
-      $('board').innerHTML = '';
-      $('gates').textContent = 'Park score';
-      $('sub').textContent = 'Alpenglow Park';
-      this.popup('ALPENGLOW PARK<small>jumps left · rails right · pipe far right · keys 1–4 pick a line</small>');
+      this.resetScore();
+      this.say('SKI PARK', '', 'jumps left · rails right · pipe far right · 1–4 pick a line', '', 3200);
     } else {
       this.populateFree(false);
       this.state = 'free';
-      this.freeStats = { score: 0, best: { pts: 0, name: '—' }, top: 0, crashes: 0, t: 0, nearT: 0 };
-      $('score').classList.remove('hidden');
-      $('pos').classList.add('hidden');
-      $('board').innerHTML = '';
-      $('gates').textContent = 'Trick score';
-      $('sub').textContent = 'Free Ride';
-      this.popup('FREE RIDE<small>terrain park ~1 km down · spin with ←/→ in the air</small>');
+      this.resetScore();
+      this.say('DROP IN', '', 'summit to village · hold R to restart', '', 3000);
     }
     if (params.get('auto') === '1') {
       this.player.ai = new AIController(this.player, mode === 'race' ? 'racer' : 'park', this.rnd, this.world); this.player.ai.skill = 0.95;
@@ -434,23 +530,30 @@ class Game {
     if (z) this.player.place(centerX(z) + Number(params.get('x') ?? 0), z, null, Number(params.get('v') ?? 15));
     if (params.get('cam')) while (this.rig.mode !== params.get('cam')) this.cycleCam();
     this.rig.snap = true;
-    this.buildProgress();
     this.secName = '';
+    this.startAt = this.time;
   }
 
-  buildProgress() {
-    const tr = $('progtrack');
-    tr.innerHTML = '';
-    this.progDots = [];
-    $('prog').classList.toggle('hidden', this.mode === 'park');
-    const list = this.mode === 'race' ? this.racers.map((r) => r.s) : [this.player];
-    for (const s of list) {
-      const i = document.createElement('i');
-      if (s === this.player) i.className = 'me';
-      else i.style.background = hex(this.racers.find((r) => r.s === s).color);
-      tr.appendChild(i);
-      this.progDots.push([s, i]);
-    }
+  // hold R: back to the top (the whole run, or your park line), score wiped
+  restart() {
+    if (this.mode === 'park') { this.parkSpawn(this.player, this.player.parkLine ?? 'gate'); this.say('BACK TO THE TOP', '', '', '', 1200); }
+    else { this.start(this.mode); return; }
+    this.rig.snap = true;
+  }
+
+  buildMinimap() {
+    const svg = $('minimap');
+    let mx = 0;
+    const cx0 = centerX(START_Z);
+    const pts = [];
+    for (let z = START_Z; z <= FINISH_Z; z += 40) pts.push([centerX(z) - cx0, z]);
+    for (const [x] of pts) mx = Math.max(mx, Math.abs(x));
+    const k = 16 / mx;
+    this.mm = { k, cx0 };
+    const P = (x, z) => [(22 + x * k).toFixed(1), (4 + ((z - START_Z) / (FINISH_Z - START_Z)) * 120).toFixed(1)];
+    const d = pts.map(([x, z], i) => (i ? 'L' : 'M') + P(x, z).join(' ')).join(' ');
+    const feats = JUMPS.map((J) => P(centerX(J.z) - cx0 + J.dx * 0.15, J.z)).map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.6" fill="rgba(255,255,255,.75)"/>`).join('');
+    svg.innerHTML = `<path d="${d}" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="5" stroke-linecap="round"/><path d="${d}" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/>${feats}<circle id="mmdot" r="4.5" fill="#fff" stroke="#10141c" stroke-width="2"/>`;
   }
 
   finishRace() {
@@ -466,30 +569,35 @@ class Game {
     const title = me === 1 ? 'VICTORY' : me <= 3 ? 'PODIUM' : 'FINISHED';
     $('rescard').innerHTML = `<h2>${title}</h2><p class="lead">You finished ${me}${ord(me)} of ${rs.length}${this.racers.find((r) => r.s === this.player).missed ? ', with ' + this.racers.find((r) => r.s === this.player).missed + ' missed gates' : ''}.</p>
       <table class="res">${rows}</table>
-      <div class="row"><button class="btn p" id="r-again">Race again</button><button class="btn" id="r-free">Free ride</button><button class="btn" id="r-menu">Menu</button></div>`;
+      <div class="row"><button class="btn p" id="r-again">Race again</button><button class="btn" id="r-free">The Run</button><button class="btn" id="r-menu">Menu</button></div>`;
     $('results').classList.remove('hidden');
     $('r-again').onclick = () => this.start('race');
-    $('r-free').onclick = () => this.start('free');
+    $('r-free').onclick = () => this.start('run');
     $('r-menu').onclick = () => this.showMenu();
     const best = Number(store.get('best', '0'));
     const mine = this.racers.find((r) => r.s === this.player).finish;
     if (mine && (!best || mine < best)) store.set('best', mine);
   }
 
-  finishFree() {
+  finishRun() {
     this.state = 'results';
-    const f = this.freeStats;
-    $('rescard').innerHTML = `<h2>RUN COMPLETE</h2><p class="lead">Summit to village in ${fmt(f.t)}.</p>
+    const sc = this.sc;
+    const prev = Number(store.get('best.run', '0'));
+    const isBest = sc.score > prev;
+    if (isBest) store.set('best.run', sc.score);
+    $('rescard').innerHTML = `<h2>RUN COMPLETE</h2>
+      <div class="bigscore">${sc.score.toLocaleString()}</div><p class="lead" style="margin-top:0">${isBest ? 'New best run.' : prev ? `Best ${prev.toLocaleString()}` : ''}</p>
       <div class="stats">
-        <div class="stat"><b>${f.score}</b><span>Trick score</span></div>
-        <div class="stat"><b>${Math.round(f.top * 3.6)}</b><span>Top km/h</span></div>
-        <div class="stat"><b>${f.crashes}</b><span>Wipeouts</span></div>
+        <div class="stat"><b>${clock(sc.t)}</b><span>Time</span></div>
+        <div class="stat"><b>${Math.round(sc.top * 3.6)} km/h</b><span>Top speed</span></div>
+        <div class="stat"><b>${sc.clean}</b><span>Clean landings</span></div>
+        <div class="stat"><b>${sc.crashes}</b><span>Bails</span></div>
       </div>
-      <p class="lead" style="margin-top:14px">Best trick: <b style="color:#ffc36b">${f.best.name}</b>${f.best.pts ? ' (' + f.best.pts + ')' : ''}</p>
-      <div class="row"><button class="btn p" id="r-lift">Ride the lift</button><button class="btn" id="r-race">Race the Cup</button><button class="btn" id="r-menu">Menu</button></div>`;
+      <p class="lead" style="margin-top:16px">Best trick <b style="color:var(--gold)">${sc.best.name}</b>${sc.best.pts ? ' · ' + sc.best.pts.toLocaleString() : ''}</p>
+      <div class="row"><button class="btn p" id="r-lift">Ride again</button><button class="btn" id="r-park">Ski Park</button><button class="btn" id="r-menu">Menu</button></div>`;
     $('results').classList.remove('hidden');
-    $('r-lift').onclick = () => { $('results').classList.add('hidden'); this.state = 'free'; this.freeStats = { score: 0, best: { pts: 0, name: '—' }, top: 0, crashes: 0, t: 0, nearT: 0 }; this.player.place(centerX(START_Z), START_Z, null, 0); this.rig.snap = true; };
-    $('r-race').onclick = () => this.start('race');
+    $('r-lift').onclick = () => this.start('run');
+    $('r-park').onclick = () => this.start('park');
     $('r-menu').onclick = () => this.showMenu();
   }
 
@@ -534,28 +642,31 @@ class Game {
         }
       }
     }
-    // free ride bookkeeping
-    if (this.state === 'free' && this.player) {
-      const p = this.player, f = this.freeStats;
-      f.t += h; f.top = Math.max(f.top, p.speed);
-      // near misses: zip past another skier at speed
-      f.nearT -= h;
-      if (f.nearT <= 0 && p.onGround && p.crash <= 0 && p.speed > 12) {
-        for (const o of this.skiers) {
-          if (o === p || o.crash > 0) continue;
-          const d = Math.hypot(o.pos.x - p.pos.x, o.pos.z - p.pos.z);
-          if (d < 2.0 && d > 0.9) { f.score += 75; f.nearT = 2.5; this.popup('NEAR MISS<small>+75</small>'); break; }
-        }
+    // run / park bookkeeping
+    if ((this.state === 'free' || this.state === 'results') && this.player && this.sc) {
+      const p = this.player, sc = this.sc;
+      if (!sc.started && (p.speed > 1.2 || this.mode === 'park')) sc.started = true;
+      if (sc.started && !sc.done) sc.t += h;
+      sc.top = Math.max(sc.top, p.speed);
+      // a line stays open while the features keep coming
+      if (sc.n > 0 && p.onGround && !p.grind && this.time - sc.last > 6) sc.n = 0;
+      if (this.mode === 'run' && !sc.done && p.pos.z > FINISH_Z) {
+        sc.done = true;
+        this.finishAt = this.time;
+        this.say('FINISH', clock(sc.t), `${sc.score.toLocaleString()} points`, 'gold', 2400);
+        this.audio.cheer(); this.cheerT = 3;
       }
-      if (this.mode !== 'park' && p.pos.z > FINISH_Z + 25 && p.speed < 4 && !this.finishShown) { this.finishShown = true; this.finishFree(); }
+      if (this.mode === 'run' && sc.done && !this.finishShown && this.time - this.finishAt > 2.6) { this.finishShown = true; this.finishRun(); }
       // the park loops: through the bottom and you're back at the top of your line
       if (this.mode === 'park' && p.pos.z > PARK.z1 + 45 && p.crash <= 0) {
-        f.laps++;
+        sc.laps++;
         const dx = p.pos.x - centerX(p.pos.z);
         const line = dx < -44 ? 'rollers' : dx < -12 ? 'jumps' : dx < 38 ? (dx > 12 ? 'rails' : 'middle') : 'pipe';
         this.parkSpawn(p, line === 'middle' ? 'gate' : line);
         this.rig.snap = true;
-        this.popup(`LAP ${f.laps}<small>back to the top</small>`);
+        const prev = Number(store.get('best.park', '0'));
+        if (sc.score > prev) store.set('best.park', sc.score);
+        this.say(`LAP ${sc.laps}`, '', 'back to the top', '', 1600);
       }
     }
     if (this.mode === 'park') {
@@ -645,20 +756,30 @@ class Game {
     const inp = this.input;
     if (inp.hit('Escape') || inp.hit('KeyP') || inp.padHit?.[9]) this.setPaused(!this.paused);
     if (inp.hit('KeyM')) { this.audio.setMuted(!this.audio.muted); store.set('muted', this.audio.muted ? '1' : '0'); }
-    if (inp.hit('KeyC') || inp.padHit?.[3]) this.cycleCam();
+    if (inp.hit('KeyC') || inp.padHit?.[12]) this.cycleCam();
+    if (inp.hit('Enter') || inp.padHit?.[0]) {
+      if (this.state === 'menu') this.start(this.selMode);
+      else if (this.state === 'results' && !$('results').classList.contains('hidden')) this.start(this.mode);
+    }
 
     if (!this.paused) {
       if (this.player && !this.player.ai) {
-        const c = inp.read(dt, !this.player.onGround);
+        const c = inp.read(dt, !this.player.onGround && !this.player.grind);
         Object.assign(this.player.controls, c);
         if (this.state === 'countdown' || this.state === 'results') { this.player.controls.steer = 0; this.player.controls.tuck = 0; this.player.controls.brake = this.state === 'results' ? 1 : 0; this.player.controls.jump = false; }
-        if ((inp.hit('KeyR') || inp.padHit?.[8]) && this.state !== 'countdown') {
-          if (this.mode === 'park') this.parkSpawn(this.player, this.player.parkLine ?? 'gate'); else this.player.respawn();
-          this.rig.snap = true;
+        if (this.mode === 'race') {
+          if ((inp.hit('KeyR') || inp.padHit?.[8]) && this.state !== 'countdown') { this.player.respawn(); this.rig.snap = true; }
+        } else {
+          // hold R (or View) to restart
+          const held = inp.down('KeyR') || !!inp.pad()?.buttons[8]?.pressed;
+          this.holdR = held ? (this.holdR ?? 0) + dt : 0;
+          const need = this.mode === 'park' ? 0.7 : 2;
+          if (this.holdR >= need) { this.holdR = -99; this.restart(); }
         }
         if (this.mode === 'park') {
           const keys = { Digit1: 'jumps', Digit2: 'rails', Digit3: 'pipe', Digit4: 'rollers' };
-          for (const [k, line] of Object.entries(keys)) if (inp.hit(k)) { this.parkSpawn(this.player, line); this.rig.snap = true; this.popup(line.toUpperCase()); }
+          const names = { jumps: 'JUMP LINE', rails: 'RAIL GARDEN', pipe: 'HALFPIPE', rollers: 'ROLLERS' };
+          for (const [k, line] of Object.entries(keys)) if (inp.hit(k)) { this.parkSpawn(this.player, line); this.rig.snap = true; this.say(names[line], '', '', '', 1200); }
         }
       }
       if (this.state === 'countdown') {
@@ -759,13 +880,28 @@ class Game {
 
   hud(dt) {
     const p = this.player;
-    $('spd').textContent = Math.round(p.speed * 3.6);
-    const name = sectionName(p.pos.z);
-    if (name !== this.secName) {
-      this.secName = name;
-      const sec = SECTIONS.find((s) => s.name === name);
-      const diff = { 'The Wall': 'Black', 'Glacier Bowl': 'Black', 'Run-out': 'Blue', Village: 'Blue', 'Summit Start': 'Blue' }[name] ?? 'Red';
-      $('sec').innerHTML = `${name}<small>${diff}${sec ? '' : ''}</small>`;
+    const name = this.mode === 'race' ? sectionName(p.pos.z) : zoneAt(p.pos.x, p.pos.z);
+    if (name !== this.secName) { this.secName = name; $('zone').textContent = name; }
+    // speed, or air time while flying
+    const kmh = Math.round(p.speed * 3.6);
+    const flying = !p.onGround && !p.grind && p.crash <= 0 && p.airTime > 0.2;
+    if (flying !== this.wasFlying) {
+      this.wasFlying = flying;
+      $('spdl').textContent = flying ? 'Air time' : 'Speed';
+      $('spdu').textContent = flying ? 'S' : 'KM/H';
+    }
+    $('spd').textContent = flying ? p.airTime.toFixed(1) : kmh;
+    $('spdbar').firstChild.style.width = Math.min(100, (kmh / 140) * 100).toFixed(1) + '%';
+    this.statusT = Math.max(0, (this.statusT ?? 0) - dt);
+    $('air2').textContent = flying ? `${kmh} KM/H · ${Math.round(Math.max(0, p.maxAirY))} M` : this.statusT > 0 ? this.statusTxt : '';
+    // run progress: the minimap, altitude, distance left, the bar along the bottom
+    if (this.mode !== 'park') {
+      const k = clamp((p.pos.z - START_Z) / (FINISH_Z - START_Z), 0, 1);
+      const dot = $('mmdot');
+      if (dot) { dot.setAttribute('cx', (22 + (p.pos.x - this.mm.cx0) * this.mm.k).toFixed(1)); dot.setAttribute('cy', (4 + k * 120).toFixed(1)); }
+      $('alt').textContent = `${Math.round(1650 + p.pos.y).toLocaleString()} M`;
+      $('kmleft').textContent = `${Math.max(0, (FINISH_Z - p.pos.z) / 1000).toFixed(1)} KM LEFT`;
+      $('botbar').firstChild.style.width = (k * 100).toFixed(2) + '%';
     }
     if (this.mode === 'race') {
       const rs = this.standings();
@@ -782,37 +918,54 @@ class Game {
       const t = r.finish ?? this.raceTime + r.pen;
       $('timer').textContent = fmt(t);
       this.penFlash = Math.max(0, (this.penFlash ?? 0) - dt);
-      $('timer').classList.toggle('pen', this.penFlash > 0);
-    } else {
-      $('timer').textContent = fmt(this.freeStats.t);
-      $('score').textContent = this.freeStats.score.toLocaleString();
-      if (this.mode === 'park') {
-        const c = this.combo;
-        const live = c && c.n > 1 && this.time - c.t < 4;
-        $('gates').textContent = live ? `Park score · x${c.n} combo` : 'Park score';
-      }
+      $('timer').style.color = this.penFlash > 0 ? '#ff8d7a' : '';
+    } else if (this.sc) {
+      const sc = this.sc;
+      $('timer').textContent = clock(sc.t);
+      // the score rolls up to the new total
+      sc.shown += (sc.score - sc.shown) * Math.min(1, dt * 6);
+      if (Math.abs(sc.score - sc.shown) < 1) sc.shown = sc.score;
+      $('score').textContent = Math.round(sc.shown).toLocaleString();
+      const live = sc.n > 0 && (sc.pend > 0 || this.time - sc.last < 6);
+      $('combo').textContent = live && sc.n > 1 ? `LINE ×${this.lineMult().toFixed(2).replace(/0$/, '')}` : this.mode === 'park' && sc.laps ? `LAP ${sc.laps + 1}` : '';
+      // on a rail: the slide and its points tick up live
+      if (p.grind && p.grind.t > 0.12) {
+        const g = p.grind;
+        const pts = Math.round((750 * g.t + 450 * g.swaps) * (g.switchIn ? 1.25 : 1));
+        const el = $('callout');
+        if (!this.liveCall) { el.innerHTML = `<div class="c"><div class="n"></div><div class="p"></div></div>`; this.liveCall = true; clearTimeout(this.sayT); }
+        el.querySelector('.n').textContent = g.kind;
+        el.querySelector('.p').textContent = '+' + pts.toLocaleString();
+      } else if (this.liveCall && p.onGround) { this.liveCall = false; $('callout').firstChild?.classList.add('out'); }
     }
-    for (const [s, el] of this.progDots) {
-      const k = clamp((s.pos.z - START_Z) / (FINISH_Z - START_Z), 0, 1);
-      el.style.left = (k * 100).toFixed(2) + '%';
-    }
-    const stuck = p.stuck > 3 && this.state !== 'countdown' && p.pos.z < FINISH_Z;
-    const offPiste = Math.abs(p.pos.x - centerX(p.pos.z)) > halfWidth(p.pos.z) + 120;
-    const hint = $('hint');
-    let msg = stuck || offPiste ? (this.mode === 'park' ? 'Press R to go back to the top of your line' : 'Press R (or ⟲) to get back on the piste') : '';
-    // on the jump line: the speed each table wants
-    if (!msg && p.onGround && p.crash <= 0) {
+    // hints: load the pop, restart, the speed each park table wants
+    let hint = '';
+    if ((p.onGround || p.grind) && p.jumpCharge > 0.12 && p.crash <= 0) hint = 'Release to pop';
+    else if (p.grind && p.grind.t < 1.2) hint = 'A / D to swap · space to pop';
+    const h = $('hint');
+    if (hint !== this.hintTxt) { this.hintTxt = hint; h.textContent = hint; h.classList.toggle('hidden', !hint); }
+    let tip = '';
+    const stuck = p.stuck > 3 && this.state !== 'countdown';
+    if (stuck) tip = this.mode === 'race' ? 'Press R to get back on the piste' : 'Hold R to go back to the top';
+    if (!tip && this.mode === 'park' && p.onGround && p.crash <= 0) {
       const dx = p.pos.x - centerX(p.pos.z);
-      for (const J of JUMPS) {
+      for (const J of PARK_JUMPS) {
         const dz = J.z - p.pos.z;
         if (dz > 0 && dz < 45 && Math.abs(dx - J.dx) < J.w / 2 + 3) {
-          const want = Math.round(J.speed * 3.6), now = Math.round(p.speed * 3.6);
-          msg = `${J.name} jump · aim ${want - 2}–${want + 3} km/h${now < want - 6 ? ' · tuck!' : now > want + 8 ? ' · scrub some speed' : ''}`;
+          const want = Math.round(J.speed * 3.6), now = kmh;
+          tip = `${J.name} jump · ${want - 2}–${want + 3} km/h${now < want - 6 ? ' · tuck!' : now > want + 8 ? ' · scrub some speed' : ''}`;
           break;
         }
       }
     }
-    if (msg) { hint.textContent = msg; hint.classList.remove('hidden'); } else hint.classList.add('hidden');
+    if (!tip && this.sc && this.time - (this.startAt ?? 0) < 10 && !document.body.classList.contains('touch')) tip = 'A/D spin · W/S flip · arrows roll · Shift/Q/E grab · hold Space, release to pop';
+    const tp = $('tip');
+    if (tip !== this.tipTxt) { this.tipTxt = tip; tp.textContent = tip; tp.classList.toggle('hidden', !tip); }
+    // hold-to-restart ring
+    const need = this.mode === 'park' ? 0.7 : 2;
+    const hk = this.holdR > 0.15 ? Math.min(1, this.holdR / need) : 0;
+    $('hold').classList.toggle('hidden', !hk);
+    if (hk) { $('holdring').setAttribute('stroke-dashoffset', (94.25 * (1 - hk)).toFixed(1)); $('holdlbl').textContent = this.mode === 'park' ? 'Top of the line' : 'Restart run'; }
   }
 }
 

@@ -31,13 +31,30 @@ export class CameraRig {
     const sp = s.speed;
     const hv = new THREE.Vector3(s.vel.x, 0, s.vel.z);
     const want = hv.lengthSq() > 4 ? hv.normalize() : new THREE.Vector3(Math.sin(s.heading), 0, Math.cos(s.heading));
-    this.dir.lerp(want, this.snap ? 1 : Math.min(1, dt * (s.onGround ? 3.2 : 1.2))).normalize();
+    this.dir.lerp(want, this.snap ? 1 : Math.min(1, dt * (s.onGround || s.grind ? 3.2 : 1.2))).normalize();
     const cam = this.cam;
     let fov = 62 + clamp(sp - 8, 0, 30) * 0.55;
     const tgt = new THREE.Vector3();
     const look = new THREE.Vector3();
-    if (this.mode === 'chase' || this.mode === 'action') {
-      const close = this.mode === 'action';
+    // big airs: the camera eases out and up to frame the whole trick and the landing
+    const airT = s.onGround || s.grind || s.crash > 0 ? 0 : s.airTime;
+    const big = smoothstep(0.25, 1.1, airT) * smoothstep(1.2, 5, s.maxAirY ?? 0);
+    this.pull = (this.pull ?? 0) + (big - (this.pull ?? 0)) * Math.min(1, dt * (big > (this.pull ?? 0) ? 1.6 : 1.1));
+    if (this.mode === 'chase') {
+      // low and close behind, the rider in the lower middle of the frame
+      const pull = this.pull;
+      const dist = 3.5 + clamp(sp, 0, 50) * 0.028 + pull * 4;
+      const h = 1.3 + clamp(sp, 0, 50) * 0.008 + pull * 2.2;
+      // through a carve the camera swings out to the side of the turn
+      this.swing = (this.swing ?? 0) + ((s.onGround ? -s.lean * 1.6 : 0) - (this.swing ?? 0)) * Math.min(1, dt * 2.5);
+      const side = new THREE.Vector3(this.dir.z, 0, -this.dir.x);
+      tgt.copy(s.pos).addScaledVector(this.dir, -dist).addScaledVector(side, this.swing);
+      tgt.y = Math.max(s.pos.y + h, heightAt(tgt.x, tgt.z) + 0.9);
+      look.copy(s.pos).addScaledVector(this.dir, 5.5 * (1 - pull * 0.7));
+      look.y = s.pos.y + 0.75 + pull * 0.2;
+      fov = 64 + clamp(sp - 6, 0, 40) * 0.42 + pull * 4;
+    } else if (this.mode === 'action') {
+      const close = true;
       const dist = close ? 2.7 + sp * 0.015 : 4.3 + sp * 0.045;
       const h = close ? 1.0 : 1.75 + sp * 0.01;
       tgt.copy(s.pos).addScaledVector(this.dir, -dist);
@@ -52,6 +69,15 @@ export class CameraRig {
       look.copy(tgt).addScaledVector(this.dir, 10);
       look.y = heightAt(look.x, look.z) + 1.0;
       fov += 6;
+      if (!s.onGround && s.crash <= 0) {
+        // in the air the view turns with every spin and flip
+        const q = s.model.group.quaternion;
+        const up = new THREE.Vector3(0, 1, 0).applyQuaternion(q);
+        const f = new THREE.Vector3(0, 0, 1).applyQuaternion(q);
+        tgt.copy(s.model.group.position).addScaledVector(up, 1.55).addScaledVector(f, 0.12);
+        look.copy(tgt).addScaledVector(f, 10).addScaledVector(up, -2.5);
+        this.helmUp = up;
+      }
     } else {
       // trackside TV camera: pick a spot ahead at the piste edge, hold until passed
       if (!this.tvSpot || s.pos.z > this.tvSpot.z + 25 || s.pos.distanceTo(this.tvSpot) > 140) {
@@ -70,7 +96,7 @@ export class CameraRig {
       tgt.copy(s.pos).addScaledVector(this.dir, -4); tgt.y += 2.2; look.copy(s.pos);
     }
     if (this.snap) { this.pos.copy(tgt); this.look.copy(look); this.snap = false; }
-    const k = this.mode === 'helmet' ? 1 : this.mode === 'tv' ? 1 : Math.min(1, dt * 7);
+    const k = this.mode === 'helmet' ? 1 : this.mode === 'tv' ? 1 : Math.min(1, dt * (this.mode === 'chase' ? 9 : 7));
     this.pos.lerp(tgt, k);
     this.look.lerp(look, Math.min(1, dt * 12));
     cam.position.copy(this.pos);
@@ -81,14 +107,18 @@ export class CameraRig {
       cam.position.x += (Math.sin(this.t * 47) + Math.sin(this.t * 31)) * buzz;
       cam.position.y += (Math.sin(this.t * 53) + Math.sin(this.t * 23)) * buzz;
     }
+    const airHelm = this.mode === 'helmet' && this.helmUp && !s.onGround && s.crash <= 0;
+    if (airHelm) { this.pos.copy(tgt); this.look.copy(look); cam.position.copy(tgt); cam.up.copy(this.helmUp); } else cam.up.set(0, 1, 0);
+    this.helmUp = null;
     cam.lookAt(this.look);
-    if (this.mode === 'helmet') cam.rotateZ(-s.lean * 0.35);
+    if (this.mode === 'helmet' && !airHelm) cam.rotateZ(-s.lean * 0.35);
     cam.fov += (fov - cam.fov) * Math.min(1, dt * 3);
     cam.updateProjectionMatrix();
   }
 
   // menu: cinematic shots that track AI skiers down the mountain
   menu(dt, t, skiers) {
+    this.cam.up.set(0, 1, 0);
     this.shotT = (this.shotT ?? 99) + dt;
     const ok = (s) => s && s.crash <= 0 && s.pos.z > 120 && s.pos.z < 3200 && s.speed > 8;
     if (this.shotT > 9 || !ok(this.subject)) {

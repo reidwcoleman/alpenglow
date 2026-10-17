@@ -2,7 +2,7 @@
 // controls (steer / tuck / brake / jump). Each has a style: racers attack
 // gates, experts rip fast GS turns, cruisers and beginners make wide
 // speed-controlling turns, park rats hunt the kickers and throw spins.
-import { centerX, halfWidth, GATES, FINISH_Z, START_Z, heightAt, lineX, lineCurv, JUMPS, RAILS, PIPE, PARK } from './course.js';
+import { centerX, halfWidth, GATES, FINISH_Z, START_Z, heightAt, lineX, lineCurv, PARK_JUMPS as JUMPS, PARK_RAILS as RAILS, PIPE, PARK } from './course.js';
 import { wrapAngle } from './skier.js';
 import { clamp, smoothstep } from './noise.js';
 
@@ -59,8 +59,10 @@ export class AIController {
         const lipX = centerX(J.lip) + J.dx;
         if (z > J.z - 4 && !this.trick) {
           const spins = [Math.PI * 2, Math.PI * 3, Math.PI * 2, Math.PI, Math.PI * 4, 0];
-          this.trick = { spin: spins[Math.floor(this.rnd() * spins.length)], dir: this.rnd() < 0.5 ? 1 : -1, grab: this.rnd() < 0.7, grabEnd: 0.5 + this.rnd() * 0.5 };
+          this.trick = { spin: spins[Math.floor(this.rnd() * spins.length)], dir: this.rnd() < 0.5 ? 1 : -1, grab: this.rnd() < 0.7, grabEnd: 0.5 + this.rnd() * 0.5, kind: ['mute', 'tail', 'japan'][Math.floor(this.rnd() * 3)] };
           if (J.name === 'Small') this.trick.spin = Math.min(this.trick.spin, Math.PI * 2);
+          // the big tables get the odd cork or backflip
+          if ((J.name === 'Large' || J.name === 'XL') && this.world.arcade && this.rnd() < 0.45) { this.trick.flip = -1; this.trick.spin = this.rnd() < 0.5 ? Math.PI * 4 : this.rnd() < 0.5 ? Math.PI * 2 : 0; }
         }
         return { tx: lipX, tz: Math.max(J.lip, z + 6) };
       }
@@ -103,9 +105,10 @@ export class AIController {
     // on a rail: catch the balance, sometimes pop a spin off the end
     if (s.grind) {
       const g = s.grind;
-      c.steer = clamp(g.bal * 2.6 + Math.sin(this.wobble * 5) * (1 - this.skill) * 0.4, -1, 1);
+      c.steer = this.world.arcade ? 0 : clamp(g.bal * 2.6 + Math.sin(this.wobble * 5) * (1 - this.skill) * 0.4, -1, 1);
       c.tuck = 0; c.brake = 0; c.grab = false; c.flip = 0;
-      c.jump = g.s > g.R.L - 1.2 && this.popOff;
+      // load it up near the end, release just before the end to pop
+      c.jump = g.s > g.R.L - 2.4 && g.s < g.R.L - 0.9 && this.popOff;
       if (c.jump && !this.trick) this.trick = { spin: Math.PI, dir: this.rnd() < 0.5 ? 1 : -1, grab: false, grabEnd: 0 };
       return;
     }
@@ -119,11 +122,23 @@ export class AIController {
     // in the air: tricks for the park crowd, otherwise stay neutral
     if (!s.onGround) {
       c.brake = 0; c.jump = false;
+      // rolled off the end of a rail without popping: no room for a spin
+      if (this.trick && s.fromRail && !s.popped) this.trick = null;
+      if (this.trick && this.trick.spin > 0) {
+        // running out of air: settle for the last half turn it can still finish
+        const h = Math.max(0, s.pos.y - heightAt(s.pos.x, s.pos.z));
+        const tRem = (s.vel.y + Math.sqrt(s.vel.y * s.vel.y + 2 * 9.81 * h)) / 9.81;
+        const reach = Math.abs(s.spin) + 7.6 * Math.max(0, tRem - 0.2);
+        if (reach < this.trick.spin - 0.35) this.trick.spin = Math.max(Math.round(Math.abs(s.spin) / Math.PI) * Math.PI, Math.floor((reach + 0.35) / Math.PI) * Math.PI);
+      }
       if (this.trick) {
         c.steer = Math.abs(s.spin) < this.trick.spin - 0.35 ? this.trick.dir : 0;
         c.grab = this.trick.grab && s.airTime > 0.15 && s.airTime < this.trick.grabEnd;
-        c.flip = 0;
-      } else { c.steer = 0; c.grab = false; c.flip = 0; }
+        c.grabKind = this.trick.kind ?? 'mute';
+        // one flip: hold it until it's most of the way round
+        c.flip = this.trick.flip && s.airTime > 0.05 && Math.abs(s.pitch) < Math.PI * 2 - 1.2 ? this.trick.flip : 0;
+        c.roll = 0;
+      } else { c.steer = 0; c.grab = false; c.flip = 0; c.roll = 0; }
       return;
     }
     this.trick = null; c.grab = false; c.flip = 0;

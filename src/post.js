@@ -37,7 +37,7 @@ const LensShader = {
         col = acc / w;
       }
       // subtle chromatic fringe at the edges
-      float ca = 0.0016 * smoothstep(0.25, 0.8, r);
+      float ca = 0.0006 * smoothstep(0.25, 0.8, r);
       col.r = mix(col.r, texture2D(tDiffuse, vUv + c * ca).r, 0.6);
       col.b = mix(col.b, texture2D(tDiffuse, vUv - c * ca).b, 0.6);
       col *= uWarm;

@@ -13,7 +13,7 @@ const rnd = mulberry32(Number(process.env.SEED ?? 7));
 const scene = new THREE.Scene();
 const forest = new Forest(scene);
 const skiers = [], ais = [];
-const world = { scene, forest, tracks: null, race: mode === 'race', raceStarted: true, skiers };
+const world = { scene, forest, tracks: null, race: mode === 'race', raceStarted: true, skiers, arcade: mode !== 'race' };
 const stats = new Map();
 function add(style, z, x) {
   const s = new Skier(world, { outfit: randomOutfit(rnd, style === 'racer'), name: style + skiers.length, sidecut: style === 'racer' ? 24 : 16 });

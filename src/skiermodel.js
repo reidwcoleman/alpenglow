@@ -260,6 +260,13 @@ export class SkierModel {
     const innerLift = Math.abs(p.lean) * 0.09;
     if (p.lean > 0) j.ankR.y += innerLift; else j.ankL.y += innerLift;
     if (air > 0) { j.ankL.y += air * 0.12; j.ankR.y += air * 0.12; }
+    // grabs: mute crosses the skis, tail pulls the tips up, japan tucks the knees and drops the tips
+    const gk = p.grab ? p.grabKind || 'mute' : null;
+    const g = p.grab || 0;
+    if (gk === 'japan') { j.ankL.y += 0.16 * g; j.ankR.y += 0.16 * g; j.ankL.z -= 0.1 * g; j.ankR.z -= 0.1 * g; }
+    if (gk === 'tail') { j.ankL.y += 0.06 * g; j.ankR.y += 0.06 * g; }
+    const cross = (gk === 'mute' ? 0.32 : 0) * g + (p.press || 0) * 0.3;
+    const tipPitch = (gk === 'tail' ? -0.42 : gk === 'japan' ? 0.5 : gk === 'mute' ? 0.2 : 0) * g;
     // skating stride: push one ski out and back while the other glides
     const skate = p.skate || 0;
     const pushL = skate * Math.max(0, Math.sin(p.skatePhase || 0)), pushR = skate * Math.max(0, -Math.sin(p.skatePhase || 0));
@@ -296,9 +303,9 @@ export class SkierModel {
     const plowYaw = p.plow * 0.32;
     // skis roll further onto edge than the body leans when edging at low speed
     const extraEdge = clamp((p.edge || 0) * 0.75 - p.lean, -0.45, 0.45) * (Math.abs(p.edge || 0) > Math.abs(p.lean) ? 1 : 0);
-    for (const [s, ank, ski, boot, cuff, yaw] of [[1, j.ankL, P.skiL, P.bootL, P.cuffL, -plowYaw + skate * 0.36], [-1, j.ankR, P.skiR, P.bootR, P.cuffR, plowYaw - skate * 0.36]]) {
+    for (const [s, ank, ski, boot, cuff, yaw] of [[1, j.ankL, P.skiL, P.bootL, P.cuffL, -plowYaw + skate * 0.36 - cross], [-1, j.ankR, P.skiR, P.bootR, P.cuffR, plowYaw - skate * 0.36 + cross]]) {
       ski.position.set(ank.x, ank.y - 0.17, ank.z);
-      ski.rotation.set(air * -0.12 + (p.grabTip || 0) * 0.2, yaw, extraEdge);
+      ski.rotation.set(air * -0.12 + tipPitch, yaw, extraEdge);
       boot.position.set(ank.x, ank.y - 0.17, ank.z);
       boot.rotation.copy(ski.rotation);
       cuff.position.copy(boot.position);
@@ -341,8 +348,18 @@ export class SkierModel {
     if (air > 0) {
       j.hdL.lerp(tmpV.set(0.42, hipH + 0.18, hipZ + 0.2), air * (1 - p.grab));
       j.hdR.lerp(tmpV.set(-0.42, hipH + 0.18, hipZ + 0.2), air * (1 - p.grab));
-      // mute grab: left hand to the right ski tip area
-      j.hdL.lerp(tmpV.set(-0.05, j.ankR.y + 0.02, 0.32), p.grab);
+      if (gk === 'tail') {
+        // tail grab: right hand back to the right ski's tail, left arm out for balance
+        j.hdR.lerp(tmpV.set(-0.16, j.ankR.y + 0.06, -0.3), g);
+        j.hdL.lerp(tmpV.set(0.5, hipH + 0.3, hipZ + 0.1), g);
+      } else if (gk === 'japan') {
+        // japan: left hand to the front of the left binding, the skis pulled back under
+        j.hdL.lerp(tmpV.set(0.12, j.ankL.y + 0.04, 0.14), g);
+        j.hdR.lerp(tmpV.set(-0.45, hipH + 0.35, hipZ + 0.05), g);
+      } else {
+        // mute grab: left hand to the right ski tip area
+        j.hdL.lerp(tmpV.set(-0.05, j.ankR.y + 0.02, 0.32), g);
+      }
     }
     if (twist) for (const h of [j.hdL, j.hdR]) h.sub(j.pelvis).applyQuaternion(tmpQ.setFromAxisAngle(Y, twist)).add(j.pelvis);
     // pole plant: reach the inside hand forward and down

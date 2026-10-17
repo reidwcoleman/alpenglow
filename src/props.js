@@ -531,29 +531,33 @@ export class Props {
     this.scene.add(caps);
   }
 
-  // ---------------- safety nets ----------------
+  // ---------------- course nets ----------------
+  // blue mesh fencing down both sides of the whole run (the skier physics bounces off it)
   buildNets() {
-    const tex = canvasTex(64, 64, (c, w, h) => {
+    const tex = canvasTex(128, 64, (c, w, h) => {
       c.clearRect(0, 0, w, h);
-      c.strokeStyle = 'rgba(255,110,20,1)'; c.lineWidth = 5;
+      c.strokeStyle = 'rgba(40,120,235,1)'; c.lineWidth = 3;
       c.beginPath();
-      for (let i = -w; i < w * 2; i += 16) { c.moveTo(i, 0); c.lineTo(i + h, h); c.moveTo(i, h); c.lineTo(i + h, 0); }
+      for (let i = -w; i < w * 2; i += 8) { c.moveTo(i, 0); c.lineTo(i + h, h); c.moveTo(i, h); c.lineTo(i + h, 0); }
       c.stroke();
-      c.fillStyle = 'rgba(255,110,20,1)'; c.fillRect(0, 0, w, 6);
+      c.fillStyle = 'rgba(30,96,215,1)'; c.fillRect(0, 0, w, 7); c.fillRect(0, h - 4, w, 4);
     });
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-    const mat = new THREE.MeshStandardMaterial({ map: tex, transparent: true, alphaTest: 0.35, side: THREE.DoubleSide, roughness: 0.7 });
-    const runs = [[160, 700], [1460, 1880], [2420, 2940]];
+    tex.anisotropy = 8;
+    const mat = new THREE.MeshStandardMaterial({ map: tex, transparent: true, alphaTest: 0.3, side: THREE.DoubleSide, roughness: 0.75 });
+    const runs = [[64, FINISH_Z - 262]];
+    const H = 1.25, seg = 3;
     const pos = [], uv = [], idx = [];
     let v = 0;
     for (const [za, zb] of runs) for (const s of [-1, 1]) {
       let u = 0;
-      for (let z = za; z < zb; z += 3) {
-        const x0 = centerX(z) + s * (halfWidth(z) + 3), x1 = centerX(z + 3) + s * (halfWidth(z + 3) + 3);
-        const y0 = heightAt(x0, z), y1 = heightAt(x1, z + 3);
-        pos.push(x0, y0 - 0.1, z, x1, y1 - 0.1, z + 3, x0, y0 + 2.0, z, x1, y1 + 2.0, z + 3);
-        uv.push(u, 0, u + 3 / 2.2, 0, u, 1, u + 3 / 2.2, 1);
-        u += 3 / 2.2;
+      for (let z = za; z < zb; z += seg) {
+        const x0 = centerX(z) + s * (halfWidth(z) + 2.8), x1 = centerX(z + seg) + s * (halfWidth(z + seg) + 2.8);
+        const y0 = heightAt(x0, z), y1 = heightAt(x1, z + seg);
+        const d = Math.hypot(x1 - x0, z + seg - z) / 2.6;
+        pos.push(x0, y0 - 0.12, z, x1, y1 - 0.12, z + seg, x0, y0 + H, z, x1, y1 + H, z + seg);
+        uv.push(u, 0, u + d, 0, u, 1, u + d, 1);
+        u += d;
         idx.push(v, v + 1, v + 2, v + 1, v + 3, v + 2);
         v += 4;
       }
@@ -568,11 +572,12 @@ export class Props {
     // posts
     const posts = [];
     for (const [za, zb] of runs) for (const s of [-1, 1]) for (let z = za; z < zb; z += 6) {
-      const x = centerX(z) + s * (halfWidth(z) + 3);
+      const x = centerX(z) + s * (halfWidth(z) + 2.8);
       posts.push([x, z]);
     }
-    const im = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.03, 0.03, 2.2, 5).translate(0, 1.0, 0), new THREE.MeshStandardMaterial({ color: 0x2a2a2a }), posts.length);
+    const im = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.03, 0.03, H + 0.3, 5).translate(0, (H + 0.3) / 2 - 0.15, 0), new THREE.MeshStandardMaterial({ color: 0x23272e, roughness: 0.6 }), posts.length);
     posts.forEach((p, i) => { tmpM.makeTranslation(p[0], heightAt(p[0], p[1]), p[1]); im.setMatrixAt(i, tmpM); });
+    im.castShadow = true;
     this.scene.add(im);
     this.netRuns = runs;
   }
