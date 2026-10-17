@@ -2,9 +2,55 @@
 // finish arena and crowd, village chalets, piste markers, safety nets,
 // plus rocks and terrain-park dressing.
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { heightAt, centerX, halfWidth, GATES, KICKERS, LIFT, START_Z, FINISH_Z, SECTIONS, slopeAt } from './course.js';
 import { mulberry32, makeSimplex, smoothstep } from './noise.js';
+import { pbr } from './terrain.js';
+
+// boulders: scanned rock (triplanar) with real snow settled on the tops
+function rockMaterial() {
+  const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85 });
+  const u = {
+    uRockC: { value: pbr('rock_face_04_c.webp', true) }, uRockN: { value: pbr('rock_face_04_n.webp', false) },
+    uSnowC: { value: pbr('snow_02_c.webp', true) },
+  };
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, u);
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vRW; varying vec3 vRN;')
+      .replace('#include <project_vertex>', `#include <project_vertex>
+        mat4 rM = modelMatrix;
+        #ifdef USE_INSTANCING
+          rM = modelMatrix * instanceMatrix;
+        #endif
+        vRW = (rM * vec4(transformed, 1.0)).xyz;
+        vRN = normalize(mat3(rM) * objectNormal);`);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform sampler2D uRockC, uRockN, uSnowC; varying vec3 vRW; varying vec3 vRN; float rSnow; vec3 rW;')
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        {
+          vec3 n = normalize(vRN);
+          rW = pow(abs(n), vec3(4.0)); rW /= rW.x + rW.y + rW.z;
+          vec3 q = vRW / 2.6;
+          vec3 rc = texture2D(uRockC, q.zy).rgb * rW.x + texture2D(uRockC, q.xz).rgb * rW.y + texture2D(uRockC, q.xy).rgb * rW.z;
+          float j = fract(sin(dot(floor(vRW.xz * 1.7), vec2(12.9898, 78.233))) * 43758.5453);
+          rSnow = smoothstep(0.35, 0.75, n.y + (j - 0.5) * 0.25);
+          vec3 sc = texture2D(uSnowC, vRW.xz / 3.1).rgb * 1.15;
+          diffuseColor.rgb = mix(rc * 0.9, sc, rSnow);
+        }`)
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(0.82, 0.6, rSnow);')
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        {
+          vec3 q = vRW / 2.6;
+          vec2 tx = texture2D(uRockN, q.zy).xy * 2.0 - 1.0, ty = texture2D(uRockN, q.xz).xy * 2.0 - 1.0, tz = texture2D(uRockN, q.xy).xy * 2.0 - 1.0;
+          vec3 rn = vec3(0.0, tx.y, tx.x) * rW.x + vec3(ty.x, 0.0, -ty.y) * rW.y + vec3(tz.x, tz.y, 0.0) * rW.z;
+          vec3 nW = normalize(normalize(vRN) + rn * 1.2 * (1.0 - rSnow * 0.8));
+          normal = normalize((viewMatrix * vec4(nW, 0.0)).xyz);
+        }`);
+  };
+  m.customProgramCacheKey = () => 'rock';
+  return m;
+}
 
 const tmpM = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpS = new THREE.Vector3(), tmpP = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
@@ -534,16 +580,19 @@ export class Props {
   // ---------------- rocks ----------------
   buildRocks() {
     const noise = makeSimplex(31);
-    const base = new THREE.IcosahedronGeometry(1, 3);
+    const ico = new THREE.IcosahedronGeometry(1, 4);
+    ico.deleteAttribute('normal'); ico.deleteAttribute('uv');
+    const base = mergeVertices(ico); // shared vertices: smooth normals, not facets
     const p = base.attributes.position;
     for (let i = 0; i < p.count; i++) {
       tmpP.fromBufferAttribute(p, i);
-      const n = 1 + noise(tmpP.x * 1.3, tmpP.z * 1.3 + tmpP.y) * 0.28 + noise(tmpP.x * 3, tmpP.y * 3) * 0.1;
-      tmpP.multiplyScalar(n); tmpP.y *= 0.7;
+      // craggy: broad lumps, then facets
+      let n = 1 + noise(tmpP.x * 1.3, tmpP.z * 1.3 + tmpP.y) * 0.3 + noise(tmpP.x * 3, tmpP.y * 3 + tmpP.z) * 0.12;
+      n += Math.abs(noise(tmpP.x * 6 + 5, tmpP.z * 6 - tmpP.y * 4)) * 0.06;
+      tmpP.multiplyScalar(n); tmpP.y *= 0.68;
       p.setXYZ(i, tmpP.x, tmpP.y, tmpP.z);
     }
     base.computeVertexNormals();
-    snowCap(base, 0x3d3a38, 0.45);
     const list = [];
     for (let i = 0; i < 2600 && list.length < 900; i++) {
       const z = -200 + this.rnd() * 3600;
@@ -556,7 +605,7 @@ export class Props {
       list.push([x, z, size]);
       if (off < halfWidth(z) + 150 && size > 0.7) this.forest.addCollider(x, z, size * 0.8, 'rock');
     }
-    const im = new THREE.InstancedMesh(base, this.vc, list.length);
+    const im = new THREE.InstancedMesh(base, rockMaterial(), list.length);
     list.forEach((r, i) => {
       tmpM.compose(tmpP.set(r[0], heightAt(r[0], r[1]) - r[2] * 0.25, r[1]),
         tmpQ.setFromEuler(new THREE.Euler((this.rnd() - 0.5) * 0.5, this.rnd() * 6, (this.rnd() - 0.5) * 0.5)),

@@ -50,12 +50,29 @@ function makeNoiseTexture(size = 256) {
 
 export const noiseTex = makeNoiseTexture();
 
+// scanned PBR textures (Poly Haven, CC0; tools/build_assets.py)
+const TEX = import.meta.env.BASE_URL + 'tex/';
+const texLoader = new THREE.TextureLoader();
+export function pbr(name, srgb) {
+  const t = texLoader.load(TEX + name);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+  t.anisotropy = 16;
+  return t;
+}
+
 export function makeSnowMaterial(env) {
   const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.62, metalness: 0 });
   mat.userData.shared = {
     uNoise: { value: noiseTex },
     uSunDir: { value: env.sunDir },
     uSunCol: { value: env.sun.color },
+    uSnowC: { value: pbr('snow_02_c.webp', true) },
+    uSnowN: { value: pbr('snow_02_n.webp', false) },
+    uSnowR: { value: pbr('snow_02_arm.webp', false) },
+    uRockC: { value: pbr('rock_face_04_c.webp', true) },
+    uRockN: { value: pbr('rock_face_04_n.webp', false) },
+    uRockR: { value: pbr('rock_face_04_arm.webp', false) },
   };
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, mat.userData.shared);
@@ -70,9 +87,11 @@ export function makeSnowMaterial(env) {
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
         uniform sampler2D uNoise; uniform vec3 uSunDir; uniform vec3 uSunCol;
+        uniform sampler2D uSnowC, uSnowN, uSnowR, uRockC, uRockN, uRockR;
         varying vec3 vWPos; varying vec3 vWNrm; varying float vPiste; varying float vIce;
         float hash12(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
-        float gRock;`)
+        float gRock; float gSnowRough; float gRockRough; vec2 gSnowUv1; vec2 gSnowUv2; float gSnowMix; vec3 gTriW;
+        mat2 rot2(float a) { float c = cos(a), s = sin(a); return mat2(c, -s, s, c); }`)
       .replace('#include <color_fragment>', `#include <color_fragment>
         {
           vec2 wp = vWPos.xz;
@@ -83,23 +102,42 @@ export function makeSnowMaterial(env) {
           float slope = 1.0 - vWNrm.y;
           float rk = slope + (nM.g - 0.5) * 0.28 + (nL.r - 0.5) * 0.16 - vPiste;
           gRock = smoothstep(0.44, 0.58, rk);
-          // snow ledges on rock faces
-          gRock *= 1.0 - smoothstep(0.62, 0.75, nS.b + (0.55 - slope));
-          vec3 snow = vec3(0.93, 0.955, 1.0);
-          snow *= 0.955 + 0.06 * nM.r + 0.025 * nS.g;
-          // wind-packed patches pick up a faint blue cast, fresh drifts are brighter
-          snow = mix(snow, vec3(0.86, 0.91, 1.0), smoothstep(0.55, 0.8, nL.b) * 0.5 * (1.0 - vPiste));
-          // groomed piste: compacted, slightly grey bands from the groomer passes
+          gRock *= 1.0 - smoothstep(0.62, 0.75, nS.b + (0.55 - slope)); // snow ledges on rock faces
+          // scanned snow at two scales, the larger one turned so the repeats never line up
+          gSnowUv1 = wp / 3.1;
+          gSnowUv2 = rot2(0.61) * wp / 13.7;
+          gSnowMix = clamp(0.35 + (nM.r - 0.5) * 1.4 + smoothstep(40.0, 160.0, dist) * 0.5, 0.0, 1.0);
+          vec3 sc1 = texture2D(uSnowC, gSnowUv1).rgb, sc2 = texture2D(uSnowC, gSnowUv2).rgb;
+          vec3 sTex = mix(sc1, sc2, gSnowMix);
+          // (the scan has dark drag marks in its albedo: keep its grain, drop the marks)
+          float sl = dot(sTex, vec3(0.3333));
+          sTex *= (0.39 + clamp(sl - 0.39, -0.035, 0.04)) / max(sl, 1e-3);
+          // the scan is a little grey: lift it to fresh-snow albedo, keep its relief
+          vec3 snow = clamp(sTex * 1.18, 0.0, 1.0) * vec3(0.97, 0.985, 1.0);
+          snow = mix(snow, vec3(0.92, 0.94, 0.97), smoothstep(150.0, 600.0, dist) * 0.6);
+          snow = mix(snow, snow * vec3(0.9, 0.95, 1.0), smoothstep(0.55, 0.8, nL.b) * 0.4 * (1.0 - vPiste));
           float band = abs(fract(wp.x / 4.6 + nL.g * 0.6) - 0.5);
-          snow *= 1.0 - vPiste * (0.035 + 0.025 * smoothstep(0.42, 0.5, band));
-          vec3 rock = mix(vec3(0.085, 0.08, 0.08), vec3(0.23, 0.21, 0.2), nS.r);
-          rock = mix(rock, vec3(0.30, 0.26, 0.22), smoothstep(0.6, 0.8, nM.a) * 0.6);
+          snow *= 1.0 - vPiste * (0.03 + 0.02 * smoothstep(0.42, 0.5, band));
+          gSnowRough = mix(texture2D(uSnowR, gSnowUv1).g, texture2D(uSnowR, gSnowUv2).g, gSnowMix);
+          // scanned rock, triplanar so cliffs don't smear
+          vec3 rock = vec3(0.2);
+          gRockRough = 0.8;
+          gTriW = pow(abs(normalize(vWNrm)), vec3(4.0));
+          gTriW /= (gTriW.x + gTriW.y + gTriW.z);
+          if (gRock > 0.01) {
+            vec3 q = vWPos / 9.0;
+            rock = texture2D(uRockC, q.zy).rgb * gTriW.x + texture2D(uRockC, q.xz).rgb * gTriW.y + texture2D(uRockC, q.xy).rgb * gTriW.z;
+            vec3 q2 = vWPos / 41.0;
+            rock *= 0.75 + 0.5 * (texture2D(uRockC, q2.zy + 0.3).r * gTriW.x + texture2D(uRockC, q2.xz + 0.3).r * gTriW.y + texture2D(uRockC, q2.xy + 0.3).r * gTriW.z);
+            rock = mix(rock, rock * vec3(0.85, 0.9, 1.0), 0.3);
+            gRockRough = texture2D(uRockR, q.xz).g;
+          }
           diffuseColor.rgb = mix(snow, rock, gRock);
           // scraped ice: grey-blue, polished
           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.50, 0.58, 0.70), smoothstep(0.0, 0.6, vIce) * 0.9);
         }`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-        roughnessFactor = mix(mix(mix(0.66, 0.5, vPiste), 0.85, gRock), 0.2, smoothstep(0.0, 0.6, vIce));`)
+        roughnessFactor = mix(mix(mix(0.35 + gSnowRough * 0.5, 0.45, vPiste * 0.5), gRockRough, gRock), 0.18, smoothstep(0.0, 0.6, vIce));`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         {
           vec2 wp = vWPos.xz;
@@ -107,30 +145,30 @@ export function makeSnowMaterial(env) {
           vec3 nW = normalize(vWNrm);
           float e = 1.0 / 256.0;
           vec2 g = vec2(0.0);
-          // groomer corduroy runs down the fall line (derivatives outside any branch)
           float cw = wp.x * 6.2832 / 0.075;
           float fade = 1.0 - smoothstep(0.05, 0.22, fwidth(cw) / 6.2832);
+          // scanned snow relief
+          vec2 n1 = texture2D(uSnowN, gSnowUv1).xy * 2.0 - 1.0;
+          vec2 n2 = rot2(-0.61) * (texture2D(uSnowN, gSnowUv2).xy * 2.0 - 1.0);
+          vec2 sn = mix(n1, n2, gSnowMix) * (1.0 - smoothstep(60.0, 380.0, dist) * 0.7);
+          g += vec2(sn.x, -sn.y) * mix(0.55, 0.32, vPiste);
           if (dist < 260.0) {
-            // wind ripples (sastrugi) off piste
             vec2 u1 = vec2(wp.x * 0.07 + wp.y * 0.02, wp.y * 0.09);
             float h0 = texture2D(uNoise, u1).a, hx = texture2D(uNoise, u1 + vec2(e, 0.)).a, hz = texture2D(uNoise, u1 + vec2(0., e)).a;
-            g = vec2(h0 - hx, h0 - hz) * (1.0 - vPiste) * 1.3 * (1.0 - smoothstep(60.0, 260.0, dist));
-            // fine crust
-            if (dist < 45.0) {
-              vec2 u2 = wp * 0.55;
-              float f0 = texture2D(uNoise, u2).b, fx = texture2D(uNoise, u2 + vec2(e, 0.)).b, fz = texture2D(uNoise, u2 + vec2(0., e)).b;
-              g += vec2(f0 - fx, f0 - fz) * 0.9 * (1.0 - smoothstep(10.0, 45.0, dist));
-            }
+            g += vec2(h0 - hx, h0 - hz) * (1.0 - vPiste) * 1.3 * (1.0 - smoothstep(60.0, 260.0, dist));
             g.x += cos(cw) * 0.045 * vPiste * fade;
           }
-          // rock gets coarser relief at any distance
-          if (gRock > 0.01) {
-            vec2 u3 = wp * 0.21;
-            float r0 = texture2D(uNoise, u3).r, rx = texture2D(uNoise, u3 + vec2(e, 0.)).r, rz = texture2D(uNoise, u3 + vec2(0., e)).r;
-            g += vec2(r0 - rx, r0 - rz) * gRock * 6.0;
-          }
+          g *= 1.0 - gRock;
           g *= 1.0 - vIce * 0.85;
-          nW = normalize(nW + vec3(g.x, 0.0, g.y) * 2.2);
+          nW = normalize(nW + vec3(g.x, 0.0, g.y) * 1.6);
+          if (gRock > 0.01) {
+            vec3 q = vWPos / 9.0;
+            vec2 tx = texture2D(uRockN, q.zy).xy * 2.0 - 1.0;
+            vec2 ty = texture2D(uRockN, q.xz).xy * 2.0 - 1.0;
+            vec2 tz = texture2D(uRockN, q.xy).xy * 2.0 - 1.0;
+            vec3 rn = vec3(0.0, tx.y, tx.x) * gTriW.x + vec3(ty.x, 0.0, -ty.y) * gTriW.y + vec3(tz.x, tz.y, 0.0) * gTriW.z;
+            nW = normalize(nW + rn * gRock * 1.4);
+          }
           normal = normalize((viewMatrix * vec4(nW, 0.0)).xyz);
         }`)
       .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>

@@ -15,7 +15,7 @@ const measure = async (label, js) => {
 };
 await measure('baseline', '');
 await measure('no shadows', 'g.env.sun.castShadow = false;');
-await measure('no forest', 'g.env.sun.castShadow = true; for (const c of g.forest.cells.values()) for (const l of c.meshes) for (const m of l) m.layers.set(5);');
+await measure('no forest', 'g.env.sun.castShadow = true; g.forest.veg.group.visible = false;');
 await measure('no tracks', 'g.tracks.mesh.visible = false;');
 await measure('no post', 'g.post.render = () => g.renderer.render(g.scene, g.camera);');
 await measure('no skiers', 'for (const s of g.skiers) s.model.group.layers.set(5); for (const s of g.skiers) s.model.group.traverse(o=>o.layers.set(5));');

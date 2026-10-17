@@ -13,10 +13,12 @@ import { Input } from './input.js';
 import { CameraRig } from './camera.js';
 import { Audio } from './audio.js';
 import { Post } from './post.js';
-import { AG, ShadeField, patchTree } from './atmos.js';
+import { AG, ShadeField, patchTree, patchMaterial } from './atmos.js';
 import { Debris } from './debris.js';
+import { Park } from './park.js';
+import { preloadAvatars } from './avatar.js';
 import { mulberry32, clamp, smoothstep } from './noise.js';
-import { START_Z, FINISH_Z, GATES, centerX, halfWidth, sectionName, heightAt, SECTIONS } from './course.js';
+import { START_Z, FINISH_Z, GATES, centerX, halfWidth, sectionName, heightAt, SECTIONS, PARK, JUMPS, RAILS, PIPE, ROLLERS } from './course.js';
 
 const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -75,6 +77,8 @@ class Game {
     this.camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 70000);
     this.env = new Environment(r, scene);
     this.env.sun.shadow.mapSize.setScalar(QUALITY[this.quality].shadow);
+    setLoad(4, 'Loading the sky…');
+    await this.env.load();
     this.env.apply(this.tod);
     setLoad(8, 'Shaping the mountain…');
     await nextFrame();
@@ -85,9 +89,14 @@ class Game {
     setLoad(55, 'Growing the forest…');
     await nextFrame();
     this.forest = new Forest(scene);
+    setLoad(62, 'Planting the forest…');
+    await this.forest.buildRender(r, patchMaterial, this.quality);
     setLoad(75, 'Building the lift and the village…');
     await nextFrame();
     this.props = new Props(scene, this.forest, this.env);
+    setLoad(80, 'Shaping the park…');
+    this.park = new Park(scene, this.terrain.material);
+    await this.park.build();
     this.tracks = new Tracks(scene);
     this.particles = new Particles(scene);
     this.snowfall = new Snowfall(scene);
@@ -103,13 +112,14 @@ class Game {
     this.audio.setMuted(store.get('muted', '0') === '1');
     this.rig = new CameraRig(this.camera);
     this.applyConditions();
-    setLoad(90, 'Waking up the skiers…');
+    setLoad(86, 'Waking up the skiers…');
+    await preloadAvatars((k) => setLoad(86 + k * 8)).catch((e) => console.warn('avatars', e));
     await nextFrame();
     this.populateFree(true);
     // compile shaders before the first visible frame
     this.rig.menu(0.016, 0, this.skiers);
     this.terrain.update(this.camera.position.x, this.camera.position.z, 1e9);
-    this.forest.update(this.camera.position.x, this.camera.position.z, 0);
+    this.forest.update(this.camera, 0, this.env.sunDir);
     this.renderer.compile(scene, this.camera);
     setLoad(100, 'Ready');
     addEventListener('resize', () => this.resize());
@@ -118,7 +128,7 @@ class Game {
     this.renderer.setAnimationLoop(() => this.frame());
     setTimeout(() => { $('loading').style.opacity = 0; setTimeout(() => $('loading').classList.add('hidden'), 800); }, 150);
     const mode = params.get('mode');
-    if (params.get('menu') === '0' && mode) this.start(mode === 'race' ? 'race' : 'free');
+    if (params.get('menu') === '0' && mode) this.start(mode === 'race' ? 'race' : mode === 'park' ? 'park' : 'free');
     else this.showMenu();
     window.__game = this;
     window.__cx = centerX;
@@ -143,8 +153,9 @@ class Game {
     const warm = { bluebird: [1.0, 1.0, 1.02], golden: [1.04, 1.0, 0.95], alpenglow: [1.05, 0.98, 1.0], storm: [0.98, 1.0, 1.03] }[this.tod];
     this.post.lens.uniforms.uWarm.value.set(...warm);
     const p = PRESETS[this.tod];
-    this.sunLit = new THREE.Color(p.sun).multiplyScalar(p.sunI * 0.22 * Math.min(1, Math.sin(p.elev * Math.PI / 180) * 3 + 0.3))
-      .add(new THREE.Color(p.hemiSky).multiplyScalar(0.55 + p.hemiI * 0.4));
+    // snow spray: lit like snow (albedo ~0.9 over pi) by the sun and the sky
+    const e = this.env;
+    this.sunLit = new THREE.Color(p.sun).multiplyScalar(e.sunL * Math.max(0.15, e.sunDir.y) * 0.29).addScalar(e.skyL * 0.29);
   }
 
   // ---------------- UI ----------------
@@ -172,6 +183,7 @@ class Game {
     }
     $('b-race').onclick = () => this.start('race');
     $('b-free').onclick = () => this.start('free');
+    $('b-park').onclick = () => this.start('park');
     $('p-resume').onclick = () => this.setPaused(false);
     $('p-restart').onclick = () => { this.setPaused(false); this.start(this.mode); };
     $('p-menu').onclick = () => { this.setPaused(false); this.showMenu(); };
@@ -254,6 +266,45 @@ class Game {
     }
   }
 
+  // the park: riders on every line, you at the gate
+  populatePark() {
+    this.clearSkiers();
+    this.world.race = false; this.world.raceStarted = false;
+    this.props.setRaceMode(false);
+    const lines = [['jumps', 6], ['rails', 4], ['pipe', 4]];
+    let n = 0;
+    for (const [line, count] of lines) for (let i = 0; i < count; i++) {
+      const s = this.addSkier({ outfit: randomOutfit(this.rnd), name: NAMES[n % NAMES.length] }, 'park');
+      s.ai.line = line;
+      this.parkSpawn(s, line, this.rnd() * 0.85);
+      n++;
+    }
+    for (let i = 0; i < 4; i++) {
+      const s = this.addSkier({ outfit: randomOutfit(this.rnd), name: NAMES[n++ % NAMES.length] }, i < 2 ? 'cruiser' : 'carver');
+      this.parkSpawn(s, 'middle', this.rnd() * 0.8);
+    }
+    const p = this.addSkier({ outfit: { ...randomOutfit(this.rnd), jacket: this.jacket }, name: 'You', isPlayer: true, grip: 1.75, sidecut: 16 });
+    this.player = p;
+    this.hookPlayer(p);
+    this.parkSpawn(p, 'gate', 0);
+  }
+
+  // drop a skier at the top of a park line (k: how far down it, 0..1)
+  parkSpawn(s, line, k = 0) {
+    const L = {
+      jumps: [JUMPS[0].dx, JUMPS[0].z - 40, JUMPS[3].z - 30],
+      rails: [RAILS[0].dx, RAILS[0].z - 30, RAILS[5].z - 25],
+      pipe: [PIPE.dx, PIPE.z0 - 18, PIPE.z0 - 6],
+      rollers: [ROLLERS.dx, ROLLERS.z0 - 20, ROLLERS.z0 - 20],
+      middle: [0, PARK.top - 20, PARK.z1 - 40],
+      gate: [0, PARK.top - 14, PARK.top - 14],
+    }[line];
+    const z = L[1] + (L[2] - L[1]) * k;
+    s.place(centerX(z) + L[0], z, null, s.isPlayer ? 0 : 6);
+    if (s.ai) { s.ai.lastZ = z; s.ai.finished = false; }
+    s.parkLine = line;
+  }
+
   populateRace() {
     this.clearSkiers();
     this.world.race = true; this.world.raceStarted = false;
@@ -281,10 +332,36 @@ class Game {
     p.on('crash', (e) => {
       this.audio.thump(1.2); this.rig.bump(1);
       this.burst(p, 90, 5);
-      this.popup('WIPEOUT<small>' + (e.reason === 'landing' ? 'land it straight' : e.reason === 'tree' ? 'that tree did not move' : e.reason === 'skier' ? 'watch the traffic' : 'ouch') + '</small>', 'bad');
+      this.popup('WIPEOUT<small>' + (e.reason === 'landing' ? 'land it straight' : e.reason === 'tree' ? 'that tree did not move' : e.reason === 'skier' ? 'watch the traffic' : e.reason === 'rail' ? 'stay on top of it' : 'ouch') + '</small>', 'bad');
       this.freeStats && (this.freeStats.crashes++);
+      if (this.combo?.n > 1 && this.time - this.combo.t < 4) setTimeout(() => this.popup('COMBO LOST', 'bad'), 500);
+      if (this.combo) this.combo.n = 0;
     });
     p.on('takeoff', () => {});
+    p.on('grindStart', () => this.audio.thump(0.35));
+    p.on('grindEnd', (g) => this.onPlayerGrind(g));
+  }
+
+  // tricks inside a few seconds of each other chain into a combo
+  scoreTrick(name, detail, base) {
+    const f = this.freeStats;
+    if (!f) return;
+    const c = (this.combo ??= { n: 0, t: 0 });
+    c.n = this.time - c.t < 4 ? Math.min(c.n + 1, 8) : 1;
+    c.t = this.time;
+    const pts = Math.round(base * c.n);
+    const big = base > 900;
+    this.popup(`${name}<small>${detail} · +${pts.toLocaleString()}${c.n > 1 ? ` · x${c.n} COMBO` : ''}</small>`, big || c.n >= 4 ? 'gold' : '');
+    if (big || c.n >= 4) this.audio.chime();
+    f.score += pts;
+    if (pts > f.best.pts) f.best = { pts, name };
+  }
+
+  onPlayerGrind(g) {
+    if (g.fell || g.dist < 1.2) return;
+    const side = g.kind !== '50-50' && g.kind !== 'Switch 50-50';
+    const base = g.dist * 42 * (side ? 1.45 : 1) * (g.kind.startsWith('Switch') ? 1.25 : 1) + (g.spinIn >= 180 ? 150 : 0);
+    this.scoreTrick(`${g.spinIn >= 180 ? g.spinIn + ' on · ' : ''}${g.kind}`, `${g.rail} · ${g.dist.toFixed(1)} m`, base);
   }
 
   onPlayerLand(t) {
@@ -293,19 +370,19 @@ class Game {
     this.rig.bump(Math.min(0.6, t.vn / 20));
     this.burst(p, 20 + t.vn * 4, 2);
     if (t.air < 0.55) return;
-    const parts = [];
-    if (t.flips) parts.push((t.flips > 1 ? (t.flips === 2 ? 'Double ' : 'Triple ') : '') + (t.flipDir > 0 ? 'Front Flip' : 'Backflip'));
-    if (t.spin >= 180) parts.push(String(t.spin));
-    if (t.grab) parts.push('Mute Grab');
-    const pts = Math.round(t.air * 120 + (t.spin / 180) * 220 + t.flips * 700 + (t.grab ? 180 : 0) + t.height * 25);
-    const name = parts.length ? parts.join(' · ') : t.height > 3 ? 'Big Air' : 'Air';
-    const big = pts > 900;
-    this.popup(`${name}<small>${t.air.toFixed(1)}s air · +${pts}</small>`, big ? 'gold' : '');
-    if (big) this.audio.chime();
-    if (this.freeStats) {
-      this.freeStats.score += pts;
-      if (pts > this.freeStats.best.pts) this.freeStats.best = { pts, name };
-    }
+    // name it the way a park rider would
+    let core = '';
+    if (t.flips) {
+      const n = t.flips === 2 ? 'Double ' : t.flips === 3 ? 'Triple ' : '';
+      core = t.spin >= 360 ? `${n}${t.flipDir > 0 ? 'Misty' : 'Cork'} ${t.spin}` : `${n}${t.flipDir > 0 ? 'Front Flip' : 'Backflip'}`;
+    } else if (t.spin >= 180) core = String(t.spin);
+    if (core && t.switchIn) core = 'Switch ' + core;
+    const grab = t.grab ? (t.grabTime > 0.9 ? 'Tweaked Mute' : t.flips ? 'Safety' : t.spin >= 360 ? 'Japan' : 'Mute Grab') : '';
+    let name = [core, grab].filter(Boolean).join(' · ');
+    if (!name) name = t.pipe ? (t.rise > 1.5 ? 'Big Pipe Air' : 'Pipe Air') : t.height > 3 ? 'Big Air' : 'Air';
+    if (t.switchOut && !t.pipe) name += ' to Switch';
+    const base = t.air * 120 + (t.spin / 180) * 220 + t.flips * 700 + (t.grab ? 180 + Math.min(t.grabTime, 1.5) * 80 : 0) + t.height * 25 + (t.pipe ? Math.max(0, t.rise) * 90 : 0);
+    this.scoreTrick(name, `${t.air.toFixed(1)}s air`, base);
   }
 
   // ---------------- modes ----------------
@@ -327,6 +404,17 @@ class Game {
       $('score').classList.add('hidden');
       $('pos').classList.remove('hidden');
       $('sub').textContent = 'Race the Cup · Downhill';
+    } else if (mode === 'park') {
+      this.populatePark();
+      this.state = 'free';
+      this.freeStats = { score: 0, best: { pts: 0, name: '—' }, top: 0, crashes: 0, t: 0, nearT: 0, laps: 0 };
+      this.combo = { n: 0, t: -99 };
+      $('score').classList.remove('hidden');
+      $('pos').classList.add('hidden');
+      $('board').innerHTML = '';
+      $('gates').textContent = 'Park score';
+      $('sub').textContent = 'Alpenglow Park';
+      this.popup('ALPENGLOW PARK<small>jumps left · rails right · pipe far right · keys 1–4 pick a line</small>');
     } else {
       this.populateFree(false);
       this.state = 'free';
@@ -338,7 +426,10 @@ class Game {
       $('sub').textContent = 'Free Ride';
       this.popup('FREE RIDE<small>terrain park ~1 km down · spin with ←/→ in the air</small>');
     }
-    if (params.get('auto') === '1') { this.player.ai = new AIController(this.player, mode === 'race' ? 'racer' : 'park', this.rnd, this.world); this.player.ai.skill = 0.95; }
+    if (params.get('auto') === '1') {
+      this.player.ai = new AIController(this.player, mode === 'race' ? 'racer' : 'park', this.rnd, this.world); this.player.ai.skill = 0.95;
+      if (params.get('line')) { this.player.ai.line = params.get('line'); this.parkSpawn(this.player, params.get('line')); }
+    }
     const z = Number(params.get('z'));
     if (z) this.player.place(centerX(z) + Number(params.get('x') ?? 0), z, null, Number(params.get('v') ?? 15));
     if (params.get('cam')) while (this.rig.mode !== params.get('cam')) this.cycleCam();
@@ -351,6 +442,7 @@ class Game {
     const tr = $('progtrack');
     tr.innerHTML = '';
     this.progDots = [];
+    $('prog').classList.toggle('hidden', this.mode === 'park');
     const list = this.mode === 'race' ? this.racers.map((r) => r.s) : [this.player];
     for (const s of list) {
       const i = document.createElement('i');
@@ -455,11 +547,26 @@ class Game {
           if (d < 2.0 && d > 0.9) { f.score += 75; f.nearT = 2.5; this.popup('NEAR MISS<small>+75</small>'); break; }
         }
       }
-      if (p.pos.z > FINISH_Z + 25 && p.speed < 4 && !this.finishShown) { this.finishShown = true; this.finishFree(); }
+      if (this.mode !== 'park' && p.pos.z > FINISH_Z + 25 && p.speed < 4 && !this.finishShown) { this.finishShown = true; this.finishFree(); }
+      // the park loops: through the bottom and you're back at the top of your line
+      if (this.mode === 'park' && p.pos.z > PARK.z1 + 45 && p.crash <= 0) {
+        f.laps++;
+        const dx = p.pos.x - centerX(p.pos.z);
+        const line = dx < -44 ? 'rollers' : dx < -12 ? 'jumps' : dx < 38 ? (dx > 12 ? 'rails' : 'middle') : 'pipe';
+        this.parkSpawn(p, line === 'middle' ? 'gate' : line);
+        this.rig.snap = true;
+        this.popup(`LAP ${f.laps}<small>back to the top</small>`);
+      }
+    }
+    if (this.mode === 'park') {
+      for (const ai of this.ais) {
+        const s = ai.s;
+        if (s.pos.z > PARK.z1 + 30 || s.stuck > 4 || (ai.finished && ai.restTimer > 1)) this.parkSpawn(s, ai.line ?? 'middle', 0);
+      }
     }
     // AI who reached the village ride the lift back up
     for (const ai of this.ais) {
-      if (this.mode === 'race' && this.state !== 'menu') continue;
+      if ((this.mode === 'race' || this.mode === 'park') && this.state !== 'menu') continue;
       if (ai.finished && ai.restTimer > 1.5) {
         const z = 40 + this.rnd() * 60;
         ai.s.place(centerX(z) + (this.rnd() - 0.5) * 40, z, null, 2);
@@ -545,7 +652,14 @@ class Game {
         const c = inp.read(dt, !this.player.onGround);
         Object.assign(this.player.controls, c);
         if (this.state === 'countdown' || this.state === 'results') { this.player.controls.steer = 0; this.player.controls.tuck = 0; this.player.controls.brake = this.state === 'results' ? 1 : 0; this.player.controls.jump = false; }
-        if ((inp.hit('KeyR') || inp.padHit?.[8]) && this.state !== 'countdown') { this.player.respawn(); this.rig.snap = true; }
+        if ((inp.hit('KeyR') || inp.padHit?.[8]) && this.state !== 'countdown') {
+          if (this.mode === 'park') this.parkSpawn(this.player, this.player.parkLine ?? 'gate'); else this.player.respawn();
+          this.rig.snap = true;
+        }
+        if (this.mode === 'park') {
+          const keys = { Digit1: 'jumps', Digit2: 'rails', Digit3: 'pipe', Digit4: 'rollers' };
+          for (const [k, line] of Object.entries(keys)) if (inp.hit(k)) { this.parkSpawn(this.player, line); this.rig.snap = true; this.popup(line.toUpperCase()); }
+        }
       }
       if (this.state === 'countdown') {
         this.countdown -= dt;
@@ -604,7 +718,7 @@ class Game {
     }
     const focus = this.player && this.state !== 'menu' ? this.player.pos : cam.position;
     this.terrain.update(cam.position.x, cam.position.z, 4);
-    this.forest.update(cam.position.x, cam.position.z, dt);
+    this.forest.update(cam, this.time, this.env.sunDir);
     this.props.updateLift(this.time);
     this.cheerT = Math.max(0, (this.cheerT ?? 0) - dt);
     const nearFinish = smoothstep(260, 40, Math.abs(cam.position.z - FINISH_Z));
@@ -672,6 +786,11 @@ class Game {
     } else {
       $('timer').textContent = fmt(this.freeStats.t);
       $('score').textContent = this.freeStats.score.toLocaleString();
+      if (this.mode === 'park') {
+        const c = this.combo;
+        const live = c && c.n > 1 && this.time - c.t < 4;
+        $('gates').textContent = live ? `Park score · x${c.n} combo` : 'Park score';
+      }
     }
     for (const [s, el] of this.progDots) {
       const k = clamp((s.pos.z - START_Z) / (FINISH_Z - START_Z), 0, 1);
@@ -680,8 +799,20 @@ class Game {
     const stuck = p.stuck > 3 && this.state !== 'countdown' && p.pos.z < FINISH_Z;
     const offPiste = Math.abs(p.pos.x - centerX(p.pos.z)) > halfWidth(p.pos.z) + 120;
     const hint = $('hint');
-    if (stuck || offPiste) { hint.textContent = 'Press R (or ⟲) to get back on the piste'; hint.classList.remove('hidden'); }
-    else hint.classList.add('hidden');
+    let msg = stuck || offPiste ? (this.mode === 'park' ? 'Press R to go back to the top of your line' : 'Press R (or ⟲) to get back on the piste') : '';
+    // on the jump line: the speed each table wants
+    if (!msg && p.onGround && p.crash <= 0) {
+      const dx = p.pos.x - centerX(p.pos.z);
+      for (const J of JUMPS) {
+        const dz = J.z - p.pos.z;
+        if (dz > 0 && dz < 45 && Math.abs(dx - J.dx) < J.w / 2 + 3) {
+          const want = Math.round(J.speed * 3.6), now = Math.round(p.speed * 3.6);
+          msg = `${J.name} jump · aim ${want - 2}–${want + 3} km/h${now < want - 6 ? ' · tuck!' : now > want + 8 ? ' · scrub some speed' : ''}`;
+          break;
+        }
+      }
+    }
+    if (msg) { hint.textContent = msg; hint.classList.remove('hidden'); } else hint.classList.add('hidden');
   }
 }
 

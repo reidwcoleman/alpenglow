@@ -17,6 +17,7 @@ const info = await page.evaluate(([p, l, fov]) => {
   document.getElementById('hud').classList.add('hidden');
   return { P, L };
 }, [p, l, fov]);
+if (process.env.EVAL) await page.evaluate(process.env.EVAL);
 await page.waitForTimeout(3000);
 await page.screenshot({ path: out, quality: 85 });
 console.log('saved', out, JSON.stringify(info));

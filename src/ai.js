@@ -2,7 +2,7 @@
 // controls (steer / tuck / brake / jump). Each has a style: racers attack
 // gates, experts rip fast GS turns, cruisers and beginners make wide
 // speed-controlling turns, park rats hunt the kickers and throw spins.
-import { centerX, halfWidth, GATES, KICKERS, FINISH_Z, START_Z, heightAt, lineX, lineCurv } from './course.js';
+import { centerX, halfWidth, GATES, FINISH_Z, START_Z, heightAt, lineX, lineCurv, JUMPS, RAILS, PIPE, PARK } from './course.js';
 import { wrapAngle } from './skier.js';
 import { clamp, smoothstep } from './noise.js';
 
@@ -41,6 +41,56 @@ export class AIController {
     this.wobble = rnd() * 10;
     this.lineBias = (rnd() - 0.5) * 4; // racers each hold their own line through the gates
     this.ampBoost = 1;
+    // park riders each stick to a line: the jumps, the rails or the pipe
+    this.line = style === 'park' ? (rnd() < 0.5 ? 'jumps' : rnd() < 0.5 ? 'rails' : 'pipe') : null;
+    this.pipeSide = rnd() < 0.5 ? 1 : -1;
+  }
+
+  // where a park rider is heading, and how fast it wants to be going
+  parkLine(z, tz, speed) {
+    this.want = null; this.inPipe = false;
+    const s = this.s;
+    if (this.line === 'jumps') {
+      for (const J of JUMPS) {
+        if (J.lip < z - 1) continue;
+        const dz = J.z - z;
+        if (dz > 90) break;
+        this.want = J.speed + (this.skill - 0.7) * 1.5;
+        const lipX = centerX(J.lip) + J.dx;
+        if (z > J.z - 4 && !this.trick) {
+          const spins = [Math.PI * 2, Math.PI * 3, Math.PI * 2, Math.PI, Math.PI * 4, 0];
+          this.trick = { spin: spins[Math.floor(this.rnd() * spins.length)], dir: this.rnd() < 0.5 ? 1 : -1, grab: this.rnd() < 0.7, grabEnd: 0.5 + this.rnd() * 0.5 };
+          if (J.name === 'Small') this.trick.spin = Math.min(this.trick.spin, Math.PI * 2);
+        }
+        return { tx: lipX, tz: Math.max(J.lip, z + 6) };
+      }
+    } else if (this.line === 'rails') {
+      for (const R of RAILS) {
+        if (R.a.z + R.L < z - 1) continue;
+        const dz = R.a.z - z;
+        if (dz > 70) break;
+        this.want = R.kind === 'box' ? 7.5 : 8.5;
+        if (dz > 0 && dz < 6) this.popOff = this.rnd() < 0.45;
+        const along = Math.max(tz, R.a.z + 2);
+        return { tx: R.a.x + R.dir.x * (along - R.a.z) / R.dir.z, tz: along };
+      }
+    } else if (this.line === 'pipe') {
+      const ax = centerX(tz) + PIPE.dx;
+      if (z < PIPE.z0 + 12) { this.want = 12; return { tx: ax + this.pipeSide * 2, tz }; }
+      if (z < PIPE.z1 - 10) {
+        this.inPipe = true;
+        const spins = [Math.PI, Math.PI, Math.PI * 2, 0, Math.PI * 3];
+        this.trick = { spin: spins[Math.floor(this.rnd() * spins.length)], dir: this.pipeSide, grab: this.rnd() < 0.6, grabEnd: 0.4 + this.rnd() * 0.4 };
+        this.want = 13;
+        // once a wall turns us back in, aim at the other one
+        const off = s.pos.x - ax;
+        if (Math.abs(off) > PIPE.flat + 0.3) this.pipeSide = -Math.sign(off);
+        else if (Math.abs(s.vel.x) > 1.5) this.pipeSide = Math.sign(s.vel.x);
+        // carve hard across the flat bottom into the next wall
+        return { tx: ax + this.pipeSide * (PIPE.flat + 6), tz: z + 4 };
+      }
+    }
+    return null;
   }
 
   laneAt(z) {
@@ -50,6 +100,15 @@ export class AIController {
   update(dt, others) {
     const s = this.s, c = s.controls;
     if (s.crash > 0) { c.steer = 0; c.tuck = 0; c.brake = 0; c.jump = false; return; }
+    // on a rail: catch the balance, sometimes pop a spin off the end
+    if (s.grind) {
+      const g = s.grind;
+      c.steer = clamp(g.bal * 2.6 + Math.sin(this.wobble * 5) * (1 - this.skill) * 0.4, -1, 1);
+      c.tuck = 0; c.brake = 0; c.grab = false; c.flip = 0;
+      c.jump = g.s > g.R.L - 1.2 && this.popOff;
+      if (c.jump && !this.trick) this.trick = { spin: Math.PI, dir: this.rnd() < 0.5 ? 1 : -1, grab: false, grabEnd: 0 };
+      return;
+    }
     const speed = s.speed;
     const x = s.pos.x, z = s.pos.z;
     // turn phase advances with distance travelled down the hill
@@ -68,6 +127,7 @@ export class AIController {
       return;
     }
     this.trick = null; c.grab = false; c.flip = 0;
+    this.want = null; this.inPipe = false;
 
     // finished: slow down and stop in the village
     if (z > FINISH_Z + 8) {
@@ -96,20 +156,10 @@ export class AIController {
       if (kmax > 1e-4) speedCap = Math.sqrt((s.grip * 9.81 * (0.62 + this.skill * 0.25)) / kmax);
     } else {
       tx = centerX(tz) + hw * clamp(this.laneAt(tz), -0.85, 0.85);
-      // park rats line up the kickers
-      if (this.style === 'park') {
-        for (const k of KICKERS) {
-          if (k.kind !== 'park') continue;
-          const dz = k.z - z;
-          if (dz > -2 && dz < 70) {
-            tx = k.x; tz = Math.max(k.z, z + 6);
-            if (dz < 1.2 && dz > -1 && !this.trick) {
-              const spins = [Math.PI * 2, Math.PI * 3, Math.PI * 2, Math.PI, 0];
-              this.trick = { spin: spins[Math.floor(this.rnd() * spins.length)], dir: this.rnd() < 0.5 ? 1 : -1, grab: this.rnd() < 0.6, grabEnd: 0.6 + this.rnd() * 0.4 };
-            }
-            break;
-          }
-        }
+      // park rats ride their line
+      if (this.style === 'park' && z > PARK.z0 - 80 && z < PARK.z1) {
+        const r = this.parkLine(z, tz, speed);
+        if (r) { tx = r.tx; tz = r.tz; }
       }
     }
 
@@ -162,13 +212,13 @@ export class AIController {
       if (over > 5) c.brake = clamp((over - 5) / 6, 0, 0.8);
       if (this.style === 'beginner' && over > 0) c.brake = clamp(over / 3, 0.3, 1);
     }
-    // park: pop off the lip
     c.jump = false;
-    if (this.style === 'park') {
-      for (const k of KICKERS) {
-        const dz = k.z - z;
-        if (k.kind === 'park' && dz > 0.2 && dz < 2.2 && Math.abs(x - k.x) < k.w / 2) c.jump = true;
-      }
+    // park lines hold the speed their next feature wants
+    if (this.want != null) {
+      const d = speed - this.want;
+      c.brake = d > 0.6 ? clamp(d / 3, 0.2, 0.9) : 0;
+      c.tuck = d < -1 ? 1 : 0;
+      if (this.inPipe) { c.brake = 0; c.tuck = speed < 13 ? 1 : 0; }
     }
     if (this.world.race && !this.world.raceStarted) { c.steer = 0; c.tuck = 0; c.brake = 1; }
   }

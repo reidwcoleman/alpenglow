@@ -1,5 +1,5 @@
 // Raw terrain chunk arrays (no three.js) so a Web Worker can build them.
-import { heightAt, centerX, halfWidth, surfaceAt } from './course.js';
+import { heightAt, meshHeightAt, centerX, halfWidth, surfaceAt } from './course.js';
 import { smoothstep } from './noise.js';
 
 function pisteWeight(x, z) {
@@ -13,7 +13,7 @@ export function buildChunkArrays(cx, cz, segs, size) {
   const n = segs + 1;
   const gn = n + 2; // one-sample border for normals
   const H = new Float32Array(gn * gn);
-  for (let j = 0; j < gn; j++) for (let i = 0; i < gn; i++) H[j * gn + i] = heightAt(cx + (i - 1) * step, cz + (j - 1) * step);
+  for (let j = 0; j < gn; j++) for (let i = 0; i < gn; i++) H[j * gn + i] = meshHeightAt(cx + (i - 1) * step, cz + (j - 1) * step, step);
   const vCount = n * n + 4 * n;
   const pos = new Float32Array(vCount * 3);
   const nrm = new Float32Array(vCount * 3);

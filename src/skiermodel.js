@@ -1,6 +1,7 @@
 // Procedural skier: capsule limbs posed every frame with two-bone IK.
 // Local frame: +Z = ski tips, +Y = up, +X = skier's left.
 import * as THREE from 'three';
+import { avatarKits, AvatarRig } from './avatar.js';
 
 const THIGH = 0.44, SHIN = 0.45, UPPER = 0.29, FORE = 0.28, POLE = 1.18;
 
@@ -86,6 +87,7 @@ export function randomOutfit(rnd, racer = false) {
     boots: pick([0x15161a, 0xf0f0f0, 0x2a2d35, 0xd8342c], rnd),
     gloves: pick([0x15161a, 0x2a2d35, 0x5a3a28, jacket], rnd),
     skin: pick(PALETTE.skin, rnd),
+    avatar: rnd(),
     racer,
   };
 }
@@ -133,7 +135,7 @@ export class SkierModel {
     const jacketM = M(outfit.jacket, outfit.racer ? 0.35 : 0.72);
     const pantsM = M(outfit.pants, outfit.racer ? 0.35 : 0.8);
     const helmetM = M(outfit.helmet, 0.28, 0.05);
-    const goggleM = M(outfit.goggles, 0.06, 0.9, { envMapIntensity: 2.2 });
+    const goggleM = M(outfit.goggles, 0.18, 0.75, { envMapIntensity: 1.1 });
     const strapM = M(0x16171c, 0.8);
     const skinM = M(outfit.skin, 0.6);
     const gloveM = M(outfit.gloves, 0.75);
@@ -183,14 +185,65 @@ export class SkierModel {
     for (const k of ['hipL', 'hipR', 'kneeL', 'kneeR', 'ankL', 'ankR', 'pelvis', 'chest', 'neck', 'head', 'shL', 'shR', 'elL', 'elR', 'hdL', 'hdR', 'tipL', 'tipR', 'spine', 'side', 'fwd'])
       this.j[k] = new THREE.Vector3();
     this.lod = 0;
+    // a real body when the avatars are loaded (browser only); the capsules stay for far away
+    if (avatarKits.length) {
+      const kit = avatarKits[Math.floor((outfit.avatar ?? Math.random()) * avatarKits.length) % avatarKits.length];
+      this.rig = new AvatarRig(kit, outfit);
+      this.tilt.add(this.rig.root);
+      this.body = ['shinL', 'shinR', 'thighL', 'thighR', 'hips', 'torso', 'collar', 'face', 'upperL', 'upperR', 'foreL', 'foreR', 'handL', 'handR'].map((k) => this.parts[k]);
+      // the body wears its own (dyed) boots: what's left of the capsule boot is the binding
+      for (const k of ['cuffL', 'cuffR']) this.parts[k].scale.setScalar(0.001);
+      for (const k of ['bootL', 'bootR']) { this.parts[k].scale.set(0.95, 0.45, 1.05); this.parts[k].material = new THREE.MeshStandardMaterial({ color: 0x2b2e35, roughness: 0.4, metalness: 0.5 }); }
+      this.f = {
+        pelvis: new THREE.Vector3(), hipSide: new THREE.Vector3(), pelvisUp: new THREE.Vector3(), side: null, spine: null, fwd: null,
+        headQ: new THREE.Quaternion(), ank: [new THREE.Vector3(), new THREE.Vector3()], hand: [new THREE.Vector3(), new THREE.Vector3()],
+        kneePole: [new THREE.Vector3(), new THREE.Vector3()], elbowPole: [new THREE.Vector3(), new THREE.Vector3()],
+        foot: [new THREE.Quaternion(), new THREE.Quaternion()], grip: 1,
+      };
+      this.real = true;
+      for (const m of this.body) m.visible = false;
+    }
+  }
+
+  // close by: the avatar; far away the capsule figure is plenty
+  setReal(on) {
+    if (!this.rig || on === this.real) return;
+    this.real = on;
+    this.rig.root.visible = on;
+    for (const m of this.body) m.visible = !on;
   }
 
   setDetail(near) {
     const lod = near ? 0 : 1;
     if (lod === this.lod) return;
     this.lod = lod;
-    for (const k of this.small) if (!(this.gearOff && /grip|basket/.test(k))) this.parts[k].visible = near;
+    for (const k of this.small) if (!(this.gearOff && /grip|basket/.test(k)) && !(this.real && this.body?.includes(this.parts[k]))) this.parts[k].visible = near;
     for (const k in this.parts) this.parts[k].castShadow = near && !this.small.includes(k);
+  }
+
+  // the avatar's skeleton from this frame's joints (its own limb lengths: pelvis height scaled to its legs)
+  poseReal(p, hipSide, hq, twist) {
+    const j = this.j, f = this.f, kit = this.rig.kit, P = this.parts;
+    const legK = (kit.leg[0] + kit.leg[1]) / (THIGH + SHIN);
+    const ankY = (a) => a.y - 0.03;
+    f.pelvis.copy(j.pelvis);
+    f.pelvis.y = ankY(j.ankL) + (j.pelvis.y - j.ankL.y) * legK;
+    f.hipSide.copy(hipSide);
+    f.pelvisUp.copy(Y).lerp(j.spine, 0.45).normalize();
+    f.side = j.side; f.spine = j.spine; f.fwd = j.fwd;
+    f.headQ.copy(hq);
+    for (const [s, ank, hd, boot] of [[0, j.ankL, j.hdL, P.bootL], [1, j.ankR, j.hdR, P.bootR]]) {
+      f.ank[s].set(ank.x, ankY(ank), ank.z);
+      // hands: same place relative to the shoulders the capsule figure uses
+      f.hand[s].copy(hd);
+      f.hand[s].y += f.pelvis.y - j.pelvis.y;
+      f.kneePole[s].set(-p.lean * 0.9 + (s === 0 ? 0.1 + p.plow * 0.4 : -0.1 - p.plow * 0.4), 0.15, 1).normalize();
+      f.elbowPole[s].set(s === 0 ? 0.6 : -0.6, -0.6, -0.5).normalize();
+      if (twist) f.elbowPole[s].applyQuaternion(tmpQ.setFromAxisAngle(Y, twist));
+      f.foot[s].copy(boot.quaternion);
+    }
+    f.grip = this.gearOff ? 0.3 : 1;
+    this.rig.pose(f);
   }
 
   // p: { crouch, tuck, lean, angulate, plow, air, grab, polePlant, poleSide, crash, t, skidYaw }
@@ -262,7 +315,7 @@ export class SkierModel {
     P.collar.position.copy(j.neck);
     P.collar.quaternion.setFromUnitVectors(Y, j.spine);
     // head looks ahead: blend spine with vertical
-    const headUp = tmpV.copy(j.spine).lerp(Y, 0.55 + tuck * 0.2).normalize();
+    const headUp = (this._headUp ??= new THREE.Vector3()).copy(j.spine).lerp(Y, 0.55 + tuck * 0.2).normalize();
     j.head.copy(j.neck).addScaledVector(headUp, 0.12);
     const hq = new THREE.Quaternion().setFromUnitVectors(Y, headUp).multiply(new THREE.Quaternion().setFromAxisAngle(Y, twist * 1.15));
     for (const k of ['face', 'helmet', 'goggles', 'strap']) { P[k].position.copy(j.head); P[k].quaternion.copy(hq); }
@@ -300,6 +353,7 @@ export class SkierModel {
     if (p.crash) {
       j.hdL.set(0.5, hipH + 0.3, hipZ + 0.1); j.hdR.set(-0.5, hipH + 0.4, hipZ - 0.1);
     }
+    if (this.rig && this.real) this.poseReal(p, hipSide, hq, twist);
     ik(j.shL, j.hdL, UPPER, FORE, tmpV.set(0.6, -0.6, -0.5).normalize().clone(), j.elL);
     ik(j.shR, j.hdR, UPPER, FORE, tmpV.set(-0.6, -0.6, -0.5).normalize().clone(), j.elR);
     place(P.upperL, j.shL, j.elL); place(P.upperR, j.shR, j.elR);
@@ -307,6 +361,20 @@ export class SkierModel {
     P.handL.position.copy(j.hdL); P.handR.position.copy(j.hdR);
     P.handL.quaternion.copy(P.foreL.quaternion); P.handR.quaternion.copy(P.foreR.quaternion);
 
+    // gear on the real body: helmet on its head, bib on its chest, poles in its hands
+    if (this.rig && this.real) {
+      const r = this.rig;
+      for (const k of ['helmet', 'goggles', 'strap']) P[k].position.copy(r.skull);
+      P.helmet.position.addScaledVector(headUp, 0.022);
+      P.goggles.position.addScaledVector(headUp, 0.0).addScaledVector(j.fwd, 0.012);
+      P.strap.position.addScaledVector(headUp, 0.0);
+      for (const k of ['helmet', 'goggles', 'strap']) P[k].scale.setScalar(1.06);
+      j.hdL.copy(r.palm[0]); j.hdR.copy(r.palm[1]);
+      if (P.bib) {
+        P.bib.position.copy(r.chestP).addScaledVector(j.spine, 0.05).addScaledVector(j.fwd, 0.17);
+        P.bibBack.position.copy(r.chestP).addScaledVector(j.spine, 0.05).addScaledVector(j.fwd, -0.16);
+      }
+    }
     // poles: tip trails behind near the snow; planted tip is ahead
     for (const [s, hd, pole, grip, basket] of [[1, j.hdL, P.poleL, P.gripL, P.basketL], [-1, j.hdR, P.poleR, P.gripR, P.basketR]]) {
       const tip = tmpV.set(hd.x + s * 0.12, 0.06, hd.z - 0.62);
