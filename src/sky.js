@@ -14,11 +14,11 @@ export const PRESETS = {
   },
   golden: {
     label: 'Golden Hour', hdri: 'golden', az: 8, elev: 9, sun: 0xffb46e, sunOverSky: 1.9,
-    fogD: 0.00008, fogFall: 1 / 900, sunFog: 0xffc58e, key: 3.4, haze: 0.22, snow: 0,
+    fogD: 0.00005, fogFall: 1 / 900, sunFog: 0xffc58e, sunFogK: 0.6, key: 2.3, haze: 0.12, snow: 0,
   },
   alpenglow: {
-    label: 'Alpenglow Dusk', hdri: 'alpenglow', az: 334, elev: 3.2, sun: 0xff8a6a, sunOverSky: 0.9,
-    fogD: 0.0001, fogFall: 1 / 850, sunFog: 0xff9f7a, key: 3.6, haze: 0.2, snow: 0,
+    label: 'Alpenglow Dusk', hdri: 'alpenglow', az: 334, elev: 3.2, sun: 0xff9a78, sunOverSky: 0.9,
+    fogD: 0.00006, fogFall: 1 / 850, sunFog: 0xffa98a, sunFogK: 0.5, key: 2.2, haze: 0.1, snow: 0,
   },
   storm: {
     label: 'Powder Day', hdri: 'storm', az: 60, elev: 40, sun: 0xeef2ff, sunOverSky: 0.08,
@@ -146,7 +146,7 @@ export class Environment {
     u.uHazeCol.value.copy(hc);
     u.ground.value.copy(hc).multiplyScalar(0.8);
     AG.uSunDirA.value.copy(this.sunDir);
-    AG.uSunFog.value.set(p.sunFog).multiplyScalar(lum(m.horizon) * 1.6);
+    AG.uSunFog.value.set(p.sunFog).multiplyScalar(lum(m.horizon) * 1.6 * (p.sunFogK ?? 1));
     AG.uFogFall.value = p.fogFall;
     // image-based light from the same dome (haze off: the fog is applied per surface)
     const hz = u.uHaze.value;

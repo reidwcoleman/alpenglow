@@ -110,6 +110,7 @@ export class Park {
     this.buildRails();
     this.buildLines();
     this.buildSigns();
+    this.buildFlags();
   }
 
   buildRails() {
@@ -206,6 +207,58 @@ export class Park {
       const pts = [];
       for (let z = PIPE.z0 + 24; z <= PIPE.z1 - 16; z += 1.5) pts.push([centerX(z) + PIPE.dx + s * (PIPE.flat + PIPE.lip + 0.25), z]);
       add(ribbon(pts, 0.35, 0.04));
+    }
+  }
+
+  // pennants on the jump lips and knuckles, banner fences on the pipe decks
+  buildFlags() {
+    const COLS = [0xff6a2b, 0x2a7de1, 0xf2b705, 0xff4f8b, 0x18a868];
+    const poleG = new THREE.CylinderGeometry(0.025, 0.03, 2.4, 6).translate(0, 1.2, 0);
+    const flagG = new THREE.BufferGeometry();
+    flagG.setAttribute('position', new THREE.Float32BufferAttribute([0, 2.35, 0, 0, 1.75, 0, 0.75, 2.08, 0.04], 3));
+    flagG.computeVertexNormals();
+    const poleM = new THREE.MeshStandardMaterial({ color: 0xdedede, roughness: 0.5 });
+    const flagMs = COLS.map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.8, side: THREE.DoubleSide }));
+    let k = 0;
+    const flag = (x, z, out) => {
+      const y = heightAt(x, z);
+      const p = new THREE.Mesh(poleG, poleM);
+      p.position.set(x, y - 0.1, z);
+      p.castShadow = true;
+      const f = new THREE.Mesh(flagG, flagMs[k++ % flagMs.length]);
+      f.position.copy(p.position);
+      f.rotation.y = out > 0 ? 0.4 : Math.PI - 0.4;
+      f.castShadow = true;
+      this.group.add(p, f);
+    };
+    for (const J of JUMPS) for (const s of [-1, 1]) {
+      flag(centerX(J.lip) + J.dx + s * (J.w / 2 + 1.6), J.lip - 0.5, s);
+      flag(centerX(J.lip + J.table) + J.dx + s * (J.w / 2 + 2.2), J.lip + J.table, s);
+    }
+    for (const R of RAILS) for (const s of [-1, 1]) flag(R.a.x + s * 1.6, R.a.z - 3.5, s);
+    // banner fences along both pipe decks
+    const bannerT = signTexture(['ALPENGLOW', 'PARK · PIPE'], '#0f1420', '#fff', '#ff8a3d');
+    bannerT.wrapS = THREE.RepeatWrapping;
+    const bm = new THREE.MeshStandardMaterial({ map: bannerT, roughness: 0.7, side: THREE.DoubleSide });
+    for (const s of [-1, 1]) {
+      for (let z = PIPE.z0 + 30; z < PIPE.z1 - 24; z += 14) {
+        const a = PIPE.flat + PIPE.lip + PIPE.deck - 0.6;
+        const x0 = centerX(z) + PIPE.dx + s * a, x1 = centerX(z + 5) + PIPE.dx + s * a;
+        const y0 = heightAt(x0, z), y1 = heightAt(x1, z + 5);
+        // a quad strung between the two posts, following the deck's slope
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute([x0, y0 + 0.3, z, x1, y1 + 0.3, z + 5, x0, y0 + 1.3, z, x1, y1 + 1.3, z + 5], 3));
+        g.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1, 1, 1], 2));
+        g.setIndex([0, 1, 2, 2, 1, 3]);
+        g.computeVertexNormals();
+        this.group.add(new THREE.Mesh(g, bm));
+        for (const zz of [z, z + 5]) {
+          const xx = centerX(zz) + PIPE.dx + s * a;
+          const p = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.5, 6), poleM);
+          p.position.set(xx, heightAt(xx, zz) + 0.65, zz);
+          this.group.add(p);
+        }
+      }
     }
   }
 
