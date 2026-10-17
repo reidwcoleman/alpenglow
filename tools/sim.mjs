@@ -33,10 +33,24 @@ if (mode === 'race') {
     for (let i = 0; i < n; i++) { const z = style === 'park' ? 900 + rnd() * 400 : 60 + rnd() * 3000; add(style, z, centerX(z) + (rnd() - 0.5) * halfWidth(z)); }
 }
 const H = 1 / 100;
-let t = 0;
+let t = 0, bumps = 0;
 for (; t < secs; t += H) {
   for (const ai of ais) ai.update(H, skiers);
   for (const s of skiers) s.step(H);
+  for (let i = 0; i < skiers.length; i++) for (let j = i + 1; j < skiers.length; j++) {
+    const a = skiers[i], b = skiers[j];
+    const dx = a.pos.x - b.pos.x, dz = a.pos.z - b.pos.z, d2 = dx * dx + dz * dz;
+    if (d2 > 0.81) continue;
+    const d = Math.sqrt(d2) || 0.01, nx = dx / d, nz = dz / d;
+    const rel = (a.vel.x - b.vel.x) * nx + (a.vel.z - b.vel.z) * nz;
+    const push = (0.9 - d) / 2;
+    a.pos.x += nx * push; a.pos.z += nz * push; b.pos.x -= nx * push; b.pos.z -= nz * push;
+    if (rel < 0) {
+      a.vel.x -= rel * nx; a.vel.z -= rel * nz; b.vel.x += rel * nx; b.vel.z += rel * nz;
+      bumps++;
+      if (-rel > 5.5) for (const s of [a, b]) if (s.crash <= 0) s.startCrash('skier');
+    }
+  }
   for (const s of skiers) {
     const st = stats.get(s);
     st.top = Math.max(st.top, s.speed);
@@ -53,4 +67,4 @@ for (; t < secs; t += H) {
 for (const [s, st] of stats) {
   console.log(`${st.style.padEnd(8)} grip ${s.grip.toFixed(2)} fin ${st.finish?.toFixed(1) ?? '--'.padStart(5)} top ${(st.top * 3.6).toFixed(0)} km/h missed ${st.missed} stuck ${st.stuck} air ${st.maxAir.toFixed(1)} z ${s.pos.z.toFixed(0)} crashes ${st.crashes.length} ${st.crashes.slice(0, 4).join(' ')}`);
 }
-console.log('sim time', t.toFixed(1));
+console.log('sim time', t.toFixed(1), 'bumps', bumps);

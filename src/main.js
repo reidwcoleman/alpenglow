@@ -181,6 +181,8 @@ class Game {
     $('results').classList.add('hidden');
     this.populateFree(true);
     this.menuT = 0;
+    const best = Number(store.get('best', '0'));
+    $('best').textContent = best ? `Your best Cup time  ${fmt(best)}` : '';
   }
 
   setPaused(p) {
@@ -208,6 +210,7 @@ class Game {
   clearSkiers() {
     for (const s of this.skiers) s.dispose();
     this.skiers = []; this.ais = []; this.player = null;
+    if (this.rig) this.rig.subject = null;
   }
 
   addSkier(opts, style) {

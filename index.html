@@ -35,7 +35,7 @@
   #loading .ridge { position: absolute; left: 0; right: 0; bottom: 0; height: 34vh; pointer-events: none; }
 
   /* ---------- menu ---------- */
-  #menu { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; justify-content: space-between; padding: clamp(18px, 4vw, 54px); background: linear-gradient(90deg, rgba(8,10,18,.72) 0%, rgba(8,10,18,.35) 42%, rgba(8,10,18,0) 70%); }
+  #menu { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; justify-content: center; gap: clamp(18px, 3.2vh, 34px); padding: clamp(18px, 4vw, 54px); background: linear-gradient(90deg, rgba(8,10,18,.72) 0%, rgba(8,10,18,.35) 42%, rgba(8,10,18,0) 70%); }
   #menu .brand { font-family: 'Barlow Condensed'; font-weight: 800; font-style: italic; font-size: clamp(64px, 10vw, 150px); line-height: .82; letter-spacing: .01em; }
   #menu .brand span { background: linear-gradient(95deg, #fff 30%, var(--sun2) 70%, var(--sun) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
   #menu .tag { margin-top: 14px; max-width: 460px; font-size: clamp(14px, 1.4vw, 17px); line-height: 1.5; color: rgba(255,255,255,.82); }
@@ -47,7 +47,7 @@
   .mode .go { margin-left: auto; width: 40px; height: 40px; flex: none; border-radius: 50%; display: grid; place-items: center; background: #fff; color: var(--ink); font-weight: 700; }
   .mode.primary { background: linear-gradient(100deg, rgba(255,138,61,.92), rgba(229,72,104,.86)); border-color: rgba(255,255,255,.3); }
   .mode.primary:hover { background: linear-gradient(100deg, rgba(255,150,75,1), rgba(240,85,115,.95)); }
-  .opts { display: flex; flex-wrap: wrap; gap: 22px; align-items: flex-end; margin-top: 22px; }
+  .opts { display: flex; flex-wrap: wrap; gap: 16px 22px; align-items: flex-end; margin-top: 22px; max-width: 560px; }
   .opt label { display: block; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,.6); margin-bottom: 8px; }
   .seg { display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: var(--glass); border: 1px solid var(--line); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); flex-wrap: wrap; }
   .seg button { border: 0; background: transparent; color: rgba(255,255,255,.75); font: 600 13px Inter; padding: 8px 12px; border-radius: 9px; cursor: pointer; }
@@ -55,7 +55,8 @@
   .swatches { display: flex; gap: 8px; }
   .swatches button { width: 30px; height: 30px; border-radius: 50%; border: 2px solid rgba(255,255,255,.25); cursor: pointer; }
   .swatches button.on { border-color: #fff; box-shadow: 0 0 0 3px rgba(255,255,255,.25); }
-  .menu-bottom { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; flex-wrap: wrap; }
+  .menu-bottom { position: absolute; right: clamp(18px, 3vw, 40px); bottom: clamp(18px, 3vw, 40px); }
+  #best { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: rgba(255,255,255,.7); margin-top: 12px; }
   .keys { font-size: 12px; line-height: 1.9; color: rgba(255,255,255,.72); background: var(--glass); border: 1px solid var(--line); border-radius: 14px; padding: 14px 18px; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
   .keys b { display: inline-block; min-width: 22px; padding: 1px 6px; margin-right: 6px; border-radius: 5px; background: rgba(255,255,255,.16); color: #fff; font-weight: 600; text-align: center; font-size: 11px; }
 
@@ -124,6 +125,8 @@
   body.touch #prog, body.touch #camlbl { display: none; }
   body.touch #tc-cam { position: fixed; top: max(80px, env(safe-area-inset-top)); right: 14px; width: 46px; height: 46px; }
 
+  @media (max-height: 760px) { #menu .brand { font-size: clamp(54px, 8vw, 104px); } #menu .tag { margin-top: 8px; } .mode { padding: 13px 18px; } .mode .k { font-size: 28px; } .opts { margin-top: 14px; } }
+  @media (max-width: 1100px) { .menu-bottom { display: none; } }
   @media (max-width: 720px) {
     #menu { background: linear-gradient(180deg, rgba(8,10,18,.55), rgba(8,10,18,.25) 40%, rgba(8,10,18,.75)); }
     .menu-bottom .keys { display: none; }
@@ -152,8 +155,9 @@
   <div>
     <div class="modes">
       <button class="mode primary" id="b-race"><div><div class="k">RACE THE CUP</div><div class="d">Mass-start downhill against 7 AI racers. Miss a gate, lose 2 seconds.</div></div><div class="go">▶</div></button>
-      <button class="mode" id="b-free"><div><div class="k">FREE RIDE</div><div class="d">Open mountain, 30 skiers, terrain park with four kickers. Spin, flip, grab.</div></div><div class="go">▶</div></button>
+      <button class="mode" id="b-free"><div><div class="k">FREE RIDE</div><div class="d">Open mountain, 32 skiers, terrain park with four kickers. Spin, flip, grab.</div></div><div class="go">▶</div></button>
     </div>
+    <div id="best"></div>
     <div class="opts">
       <div class="opt"><label>Conditions</label><div class="seg" id="tod"></div></div>
       <div class="opt"><label>Jacket</label><div class="swatches" id="jackets"></div></div>
