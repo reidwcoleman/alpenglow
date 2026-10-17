@@ -40,6 +40,8 @@ export class Audio {
     this.carve = loop('bandpass', 2600, 1.4);
     this.skid = loop('bandpass', 700, 0.9);
     this.crowd = loop('bandpass', 1100, 0.7);
+    this.scrape = loop('bandpass', 3400, 3.5); // edges chattering on ice
+    this.powder = loop('lowpass', 420, 0.8); // soft roar of deep snow
     this.ambient = loop('lowpass', 300, 0.5);
   }
 
@@ -53,7 +55,7 @@ export class Audio {
     const t = this.ctx.currentTime;
     const sp = s ? s.speed : 0;
     const air = s && !s.onGround;
-    const ramp = (p, v) => p.setTargetAtTime(v, t, 0.06);
+    const ramp = (p, v) => { if (Number.isFinite(v)) p.setTargetAtTime(v, t, 0.06); };
     const w = Math.min(1, sp / 32);
     ramp(this.wind.g.gain, 0.04 + w * w * 0.75);
     ramp(this.wind.filt.frequency, 280 + sp * 22);
@@ -62,8 +64,12 @@ export class Audio {
     const carve = grounded * Math.min(1, Math.abs(s ? s.lean : 0) * 1.4) * Math.min(1, sp / 15);
     ramp(this.carve.g.gain, carve * 0.35 + grounded * Math.min(1, sp / 25) * 0.06);
     ramp(this.carve.filt.frequency, 2000 + sp * 40);
+    const ice = s ? s.surf?.ice ?? 0 : 0, powder = s ? s.surf?.powder ?? 0 : 0;
     const skid = grounded * Math.min(1, (s ? s.skid : 0) / 2.5);
-    ramp(this.skid.g.gain, skid * 0.75);
+    ramp(this.skid.g.gain, skid * 0.75 * (1 - powder * 0.7));
+    ramp(this.skid.filt.frequency, 700 + ice * 900);
+    ramp(this.scrape.g.gain, grounded * Math.min(1, (s ? s.scrape : 0) * 2.2) * 0.55);
+    ramp(this.powder.g.gain, grounded * powder * Math.min(1, sp / 14) * 0.6);
     ramp(this.crowd.g.gain, crowdK * 0.5);
     ramp(this.ambient.g.gain, 0.06);
     void air;

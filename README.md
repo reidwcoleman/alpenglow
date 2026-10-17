@@ -26,7 +26,8 @@ Touch controls appear on phones and tablets.
 
 ## How it works
 - `src/course.js`: one deterministic height function for the whole mountain (piste profile by section, valley walls, domain-warped ridges, moguls, kickers), plus race gates and a Catmull-Rom racing line.
-- `src/skier.js`: ski physics shared by player and AI: gravity, snow friction, air drag (upright vs tuck), edge grip that bends velocity through a carve and turns into a speed-scrubbing skid past its limit, ballistic airtime, crash rules.
+- `src/skier.js`: ski physics shared by player and AI: progressive edge roll with sidecut carving (R = Rsc / tan(edge)), flat skis drift, grip in g that turns into a speed-scrubbing skid past its limit, snow surfaces (groomed / deep powder / scraped ice from `surfaceAt`), altitude air drag with tuck and drafting, leg compression from g-load, ballistic airtime, and crashes that tumble and slide (yard sale in `src/debris.js`) before you get up where you stopped.
+- `src/atmos.js`: GPU heightfield pass for mountain-cast sun shadows (soft penumbra) and horizon AO, plus an altitude fog with a sun lobe, patched into every material.
 - `src/ai.js`: AI skiers drive the same physics through the same controls. Racers track the racing line (Stanley controller) with curvature-based speed checks, and everyone else follows pursuit lines with speed control, avoidance and park tricks.
 - `src/terrain.js`: chunked LOD terrain + mid/far rings, snow shader (wind ripples, corduroy, rock on steep faces, sun glints).
 - `src/trees.js`, `src/props.js`: instanced spruce forest, chairlift with moving chairs, gates, start house, finish arena + crowd, village, nets, rocks.

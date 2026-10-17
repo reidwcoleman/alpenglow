@@ -2,7 +2,8 @@
 // coarse far mesh for the surrounding ranges. The snow material adds wind
 // ripples, groomer corduroy, exposed rock on steep faces and sun glints.
 import * as THREE from 'three';
-import { heightAt, centerX, halfWidth } from './course.js';
+import { heightAt } from './course.js';
+import { buildChunkArrays } from './chunkbuild.js';
 import { makeSimplex, smoothstep } from './noise.js';
 
 export const CHUNK = 128;
@@ -60,16 +61,16 @@ export function makeSnowMaterial(env) {
     Object.assign(sh.uniforms, mat.userData.shared);
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>
-        attribute float aPiste;
-        varying vec3 vWPos; varying vec3 vWNrm; varying float vPiste;`)
+        attribute float aPiste; attribute float aIce;
+        varying vec3 vWPos; varying vec3 vWNrm; varying float vPiste; varying float vIce;`)
       .replace('#include <fog_vertex>', `#include <fog_vertex>
         vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
         vWNrm = normalize(mat3(modelMatrix) * objectNormal);
-        vPiste = aPiste;`);
+        vPiste = aPiste; vIce = aIce;`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
         uniform sampler2D uNoise; uniform vec3 uSunDir; uniform vec3 uSunCol;
-        varying vec3 vWPos; varying vec3 vWNrm; varying float vPiste;
+        varying vec3 vWPos; varying vec3 vWNrm; varying float vPiste; varying float vIce;
         float hash12(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
         float gRock;`)
       .replace('#include <color_fragment>', `#include <color_fragment>
@@ -94,31 +95,41 @@ export function makeSnowMaterial(env) {
           vec3 rock = mix(vec3(0.085, 0.08, 0.08), vec3(0.23, 0.21, 0.2), nS.r);
           rock = mix(rock, vec3(0.30, 0.26, 0.22), smoothstep(0.6, 0.8, nM.a) * 0.6);
           diffuseColor.rgb = mix(snow, rock, gRock);
+          // scraped ice: grey-blue, polished
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.50, 0.58, 0.70), smoothstep(0.0, 0.6, vIce) * 0.9);
         }`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-        roughnessFactor = mix(mix(0.66, 0.5, vPiste), 0.85, gRock);`)
+        roughnessFactor = mix(mix(mix(0.66, 0.5, vPiste), 0.85, gRock), 0.2, smoothstep(0.0, 0.6, vIce));`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         {
           vec2 wp = vWPos.xz;
           float dist = length(cameraPosition - vWPos);
           vec3 nW = normalize(vWNrm);
-          // wind ripples (sastrugi) off piste
           float e = 1.0 / 256.0;
-          vec2 u1 = vec2(wp.x * 0.07 + wp.y * 0.02, wp.y * 0.09);
-          float h0 = texture2D(uNoise, u1).a, hx = texture2D(uNoise, u1 + vec2(e, 0.)).a, hz = texture2D(uNoise, u1 + vec2(0., e)).a;
-          vec2 g = vec2(h0 - hx, h0 - hz) * (1.0 - vPiste) * 1.3 * (1.0 - smoothstep(60.0, 260.0, dist));
-          // fine crust
-          vec2 u2 = wp * 0.55;
-          float f0 = texture2D(uNoise, u2).b, fx = texture2D(uNoise, u2 + vec2(e, 0.)).b, fz = texture2D(uNoise, u2 + vec2(0., e)).b;
-          g += vec2(f0 - fx, f0 - fz) * 0.9 * (1.0 - smoothstep(10.0, 45.0, dist));
-          // groomer corduroy runs down the fall line
+          vec2 g = vec2(0.0);
+          // groomer corduroy runs down the fall line (derivatives outside any branch)
           float cw = wp.x * 6.2832 / 0.075;
           float fade = 1.0 - smoothstep(0.05, 0.22, fwidth(cw) / 6.2832);
-          g.x += cos(cw) * 0.045 * vPiste * fade;
-          // rock gets coarser relief
-          vec2 u3 = wp * 0.21;
-          float r0 = texture2D(uNoise, u3).r, rx = texture2D(uNoise, u3 + vec2(e, 0.)).r, rz = texture2D(uNoise, u3 + vec2(0., e)).r;
-          g += vec2(r0 - rx, r0 - rz) * gRock * 6.0;
+          if (dist < 260.0) {
+            // wind ripples (sastrugi) off piste
+            vec2 u1 = vec2(wp.x * 0.07 + wp.y * 0.02, wp.y * 0.09);
+            float h0 = texture2D(uNoise, u1).a, hx = texture2D(uNoise, u1 + vec2(e, 0.)).a, hz = texture2D(uNoise, u1 + vec2(0., e)).a;
+            g = vec2(h0 - hx, h0 - hz) * (1.0 - vPiste) * 1.3 * (1.0 - smoothstep(60.0, 260.0, dist));
+            // fine crust
+            if (dist < 45.0) {
+              vec2 u2 = wp * 0.55;
+              float f0 = texture2D(uNoise, u2).b, fx = texture2D(uNoise, u2 + vec2(e, 0.)).b, fz = texture2D(uNoise, u2 + vec2(0., e)).b;
+              g += vec2(f0 - fx, f0 - fz) * 0.9 * (1.0 - smoothstep(10.0, 45.0, dist));
+            }
+            g.x += cos(cw) * 0.045 * vPiste * fade;
+          }
+          // rock gets coarser relief at any distance
+          if (gRock > 0.01) {
+            vec2 u3 = wp * 0.21;
+            float r0 = texture2D(uNoise, u3).r, rx = texture2D(uNoise, u3 + vec2(e, 0.)).r, rz = texture2D(uNoise, u3 + vec2(0., e)).r;
+            g += vec2(r0 - rx, r0 - rz) * gRock * 6.0;
+          }
+          g *= 1.0 - vIce * 0.85;
           nW = normalize(nW + vec3(g.x, 0.0, g.y) * 2.2);
           normal = normalize((viewMatrix * vec4(nW, 0.0)).xyz);
         }`)
@@ -133,86 +144,29 @@ export function makeSnowMaterial(env) {
           float dist = length(cameraPosition - vWPos);
           vec2 cell = floor(vWPos.xz * 26.0);
           float r = hash12(cell);
-          if (r > 0.93 && dist < 70.0) {
+          if (r > 0.93 && dist < 70.0 && vIce < 0.3) {
             vec3 gn = normalize(vec3(hash12(cell + 3.1) - 0.5, 0.9, hash12(cell + 9.7) - 0.5));
             vec3 V = normalize(cameraPosition - vWPos);
             vec3 H = normalize(V + uSunDir);
             float s = pow(max(dot(gn, H), 0.0), 900.0);
             vec2 fc = fract(vWPos.xz * 26.0) - 0.5;
             s *= smoothstep(0.32, 0.0, length(fc));
-            reflectedLight.directSpecular += uSunCol * s * 26.0 * sh * (1.0 - gRock) * (1.0 - smoothstep(25.0, 70.0, dist));
+            reflectedLight.directSpecular += uSunCol * s * 26.0 * sh * agSun * (1.0 - gRock) * (1.0 - smoothstep(25.0, 70.0, dist));
           }
           // a whisper of subsurface blue in the shade
-          reflectedLight.indirectDiffuse += vec3(0.010, 0.018, 0.04) * (1.0 - sh) * (1.0 - gRock);
+          reflectedLight.indirectDiffuse += vec3(0.010, 0.018, 0.04) * (1.0 - sh * agSun) * (1.0 - gRock);
         }`);
   };
   return mat;
 }
 
-function pisteWeight(x, z) {
-  const hw = halfWidth(z);
-  const adx = Math.abs(x - centerX(z));
-  return 1 - smoothstep(hw - 3, hw + 6, adx);
-}
-
-function buildChunkGeometry(cx, cz, segs) {
-  const step = CHUNK / segs;
-  const n = segs + 1;
-  const gn = n + 2; // one-sample border for normals
-  const H = new Float32Array(gn * gn);
-  for (let j = 0; j < gn; j++) for (let i = 0; i < gn; i++) {
-    H[j * gn + i] = heightAt(cx + (i - 1) * step, cz + (j - 1) * step);
-  }
-  const vCount = n * n + 4 * n;
-  const pos = new Float32Array(vCount * 3);
-  const nrm = new Float32Array(vCount * 3);
-  const pst = new Float32Array(vCount);
-  let v = 0;
-  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
-    const x = cx + i * step, z = cz + j * step;
-    const k = (j + 1) * gn + (i + 1);
-    const hx = H[k + 1] - H[k - 1], hz = H[k + gn] - H[k - gn];
-    let nx = -hx, ny = 2 * step, nz = -hz;
-    const l = Math.hypot(nx, ny, nz); nx /= l; ny /= l; nz /= l;
-    pos[v * 3] = x; pos[v * 3 + 1] = H[k]; pos[v * 3 + 2] = z;
-    nrm[v * 3] = nx; nrm[v * 3 + 1] = ny; nrm[v * 3 + 2] = nz;
-    pst[v] = pisteWeight(x, z);
-    v++;
-  }
-  const idx = [];
-  for (let j = 0; j < segs; j++) for (let i = 0; i < segs; i++) {
-    const a = j * n + i, b = a + 1, c = a + n, d = c + 1;
-    idx.push(a, c, b, b, c, d);
-  }
-  // skirts hide cracks between neighbouring LODs
-  const drop = step * 1.5 + 1.5;
-  const edges = [];
-  for (let i = 0; i < n; i++) edges.push(i); // north
-  const sides = [
-    Array.from({ length: n }, (_, i) => i),
-    Array.from({ length: n }, (_, i) => (n - 1) * n + i),
-    Array.from({ length: n }, (_, j) => j * n),
-    Array.from({ length: n }, (_, j) => j * n + n - 1),
-  ];
-  const flips = [false, true, true, false];
-  sides.forEach((side, s) => {
-    const base = v;
-    for (const k of side) {
-      pos[v * 3] = pos[k * 3]; pos[v * 3 + 1] = pos[k * 3 + 1] - drop; pos[v * 3 + 2] = pos[k * 3 + 2];
-      nrm[v * 3] = nrm[k * 3]; nrm[v * 3 + 1] = nrm[k * 3 + 1]; nrm[v * 3 + 2] = nrm[k * 3 + 2];
-      pst[v] = pst[k];
-      v++;
-    }
-    for (let i = 0; i < n - 1; i++) {
-      const a = side[i], b = side[i + 1], c = base + i, d = base + i + 1;
-      if (flips[s]) idx.push(a, b, c, b, d, c); else idx.push(a, c, b, b, c, d);
-    }
-  });
+function toGeometry(a) {
   const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
-  g.setAttribute('aPiste', new THREE.BufferAttribute(pst, 1));
-  g.setIndex(idx);
+  g.setAttribute('position', new THREE.BufferAttribute(a.pos, 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(a.nrm, 3));
+  g.setAttribute('aPiste', new THREE.BufferAttribute(a.pst, 1));
+  g.setAttribute('aIce', new THREE.BufferAttribute(a.ice, 1));
+  g.setIndex(new THREE.BufferAttribute(a.idx, 1));
   g.computeBoundingSphere();
   g.computeBoundingBox();
   return g;
@@ -230,6 +184,20 @@ export class Terrain {
       this.chunks.push({ cx, cz, lod: -1, want: 3, geos: [], mesh });
     }
     this.buildFar();
+    // fine chunks are built off the main thread
+    this.inflight = new Map();
+    try {
+      this.worker = new Worker(new URL('./terrainWorker.js', import.meta.url), { type: 'module' });
+      this.worker.onmessage = (e) => {
+        const job = this.inflight.get(e.data.id);
+        this.inflight.delete(e.data.id);
+        if (!job) return;
+        const { c, l } = job;
+        if (!c.geos[l]) c.geos[l] = toGeometry(e.data);
+        if (c.want === l) this.show(c, l);
+      };
+    } catch { this.worker = null; }
+    this.jobId = 0;
   }
 
   // surrounding ranges: a finer middle ring and a coarse outer ring, each sunk
@@ -254,6 +222,7 @@ export class Terrain {
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
       g.setAttribute('aPiste', new THREE.BufferAttribute(pst, 1));
+      g.setAttribute('aIce', new THREE.BufferAttribute(new Float32Array(nx * nz), 1));
       g.setIndex(idx);
       g.computeVertexNormals();
       const m = new THREE.Mesh(g, this.material);
@@ -286,7 +255,7 @@ export class Terrain {
   }
 
   ensure(c, l) {
-    if (!c.geos[l]) c.geos[l] = buildChunkGeometry(c.cx, c.cz, LODS[l]);
+    if (!c.geos[l]) c.geos[l] = toGeometry(buildChunkArrays(c.cx, c.cz, LODS[l], CHUNK));
     return c.geos[l];
   }
 
@@ -310,6 +279,15 @@ export class Terrain {
     }
     pending.sort((a, b) => a.want - b.want);
     for (const c of pending) {
+      if (this.worker) {
+        if (this.inflight.size >= 6) break;
+        const key = c.cx + ',' + c.cz + ',' + c.want;
+        if ([...this.inflight.values()].some((j) => j.key === key)) continue;
+        const id = ++this.jobId;
+        this.inflight.set(id, { c, l: c.want, key });
+        this.worker.postMessage({ id, cx: c.cx, cz: c.cz, segs: LODS[c.want], size: CHUNK });
+        continue;
+      }
       if (performance.now() - t0 > budgetMs) break;
       this.ensure(c, c.want);
       this.show(c, c.want);

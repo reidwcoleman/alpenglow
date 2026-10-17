@@ -12,11 +12,11 @@ const secs = Number(process.argv[3] ?? 300);
 const rnd = mulberry32(Number(process.env.SEED ?? 7));
 const scene = new THREE.Scene();
 const forest = new Forest(scene);
-const world = { scene, forest, tracks: null, race: mode === 'race', raceStarted: true };
 const skiers = [], ais = [];
+const world = { scene, forest, tracks: null, race: mode === 'race', raceStarted: true, skiers };
 const stats = new Map();
 function add(style, z, x) {
-  const s = new Skier(world, { outfit: randomOutfit(rnd, style === 'racer'), name: style + skiers.length });
+  const s = new Skier(world, { outfit: randomOutfit(rnd, style === 'racer'), name: style + skiers.length, sidecut: style === 'racer' ? 24 : 16 });
   const ai = new AIController(s, style, rnd, world);
   s.place(x, z, null, style === 'racer' ? 0 : ai.targetSpeed * 0.7); ai.lastZ = z;
   skiers.push(s); ais.push(ai);

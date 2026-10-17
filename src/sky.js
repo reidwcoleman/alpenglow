@@ -1,27 +1,28 @@
 // Sky, sun, image-based light and fog for each time of day.
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
+import { AG } from './atmos.js';
 
 export const PRESETS = {
   bluebird: {
-    label: 'Bluebird Morning', elev: 26, azim: 205, turbidity: 2.2, rayleigh: 0.9, mie: 0.004, mieG: 0.8,
+    label: 'Bluebird Morning', elev: 28, azim: 68, turbidity: 2.2, rayleigh: 0.9, mie: 0.004, mieG: 0.8,
     sun: 0xfff2e2, sunI: 3.4, hemiSky: 0xbcd6ff, hemiGround: 0x9aa6b8, hemiI: 0.35, envI: 0.9,
-    fog: 0xb9cde6, fogD: 0.000085, exposure: 0.54, clouds: 0.28, snow: 0, haze: 0.35,
+    fog: 0xb3c8e4, fogD: 0.00009, fogFall: 1 / 950, sunFog: 0xfff0dc, exposure: 0.54, clouds: 0.28, snow: 0, haze: 0.35,
   },
   golden: {
-    label: 'Golden Hour', elev: 9, azim: 238, turbidity: 3.4, rayleigh: 1.6, mie: 0.006, mieG: 0.86,
+    label: 'Golden Hour', elev: 12, azim: 36, turbidity: 3.4, rayleigh: 1.6, mie: 0.006, mieG: 0.86,
     sun: 0xffc48a, sunI: 3.6, hemiSky: 0x9fb8e8, hemiGround: 0x8a7d86, hemiI: 0.32, envI: 1.0,
-    fog: 0xd8b9a8, fogD: 0.00009, exposure: 0.62, clouds: 0.36, snow: 0, haze: 0.25,
+    fog: 0xc9b4b0, fogD: 0.000085, fogFall: 1 / 850, sunFog: 0xffc58e, exposure: 0.62, clouds: 0.36, snow: 0, haze: 0.25,
   },
   alpenglow: {
-    label: 'Alpenglow Dusk', elev: 2.6, azim: 252, turbidity: 4.6, rayleigh: 2.6, mie: 0.008, mieG: 0.9,
+    label: 'Alpenglow Dusk', elev: 3.2, azim: 334, turbidity: 4.6, rayleigh: 2.6, mie: 0.008, mieG: 0.9,
     sun: 0xff9a70, sunI: 2.6, hemiSky: 0x7f8fcf, hemiGround: 0x6a5a72, hemiI: 0.42, envI: 1.25,
-    fog: 0xb898b4, fogD: 0.0001, exposure: 0.95, clouds: 0.42, snow: 0, haze: 0.2,
+    fog: 0xa48fb2, fogD: 0.00016, fogFall: 1 / 800, sunFog: 0xff9f7a, exposure: 0.95, clouds: 0.42, snow: 0, haze: 0.2,
   },
   storm: {
-    label: 'Powder Day', elev: 30, azim: 200, turbidity: 9, rayleigh: 0.4, mie: 0.02, mieG: 0.7,
+    label: 'Powder Day', elev: 34, azim: 60, turbidity: 9, rayleigh: 0.4, mie: 0.02, mieG: 0.7,
     sun: 0xe8eefc, sunI: 0.9, hemiSky: 0xd4dcea, hemiGround: 0xaab2c0, hemiI: 1.15, envI: 1.0,
-    fog: 0xc6ccd6, fogD: 0.0011, exposure: 0.85, clouds: 0.95, snow: 1, haze: 0.97,
+    fog: 0xc6ccd6, fogD: 0.0014, fogFall: 1 / 2200, sunFog: 0xdde3ee, exposure: 0.85, clouds: 0.95, snow: 1, haze: 0.97,
   },
 };
 
@@ -97,6 +98,9 @@ export class Environment {
     this.hemi.groundColor.set(p.hemiGround);
     this.hemi.intensity = p.hemiI;
     this.scene.fog.color.set(p.fog);
+    AG.uSunDirA.value.copy(this.sunDir);
+    AG.uSunFog.value.set(p.sunFog);
+    AG.uFogFall.value = p.fogFall;
     this.sky.material.uniforms.uHaze.value = p.haze ?? 0;
     this.sky.material.uniforms.uHazeCol.value.set(p.fog);
     this.scene.fog.density = p.fogD;

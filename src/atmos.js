@@ -1,0 +1,162 @@
+// Mountain-scale light: a GPU pass ray-marches a heightfield toward the sun
+// to find which slopes the peaks shade (soft penumbra) plus a horizon-based
+// ambient occlusion term. Every material is patched to use it, together with
+// an exponential height fog that thins with altitude and warms toward the sun.
+import * as THREE from 'three';
+import { heightAt } from './course.js';
+
+export const AG = {
+  uCamWorld: { value: new THREE.Matrix4() },
+  uShadeTex: { value: null },
+  uShadeBox: { value: new THREE.Vector4(-3200, -2600, 6400, 9200) },
+  uSunDirA: { value: new THREE.Vector3(0, 1, 0) },
+  uSunFog: { value: new THREE.Color(1, 0.8, 0.6) },
+  uFogFall: { value: 1 / 900 },
+  uFogBase: { value: 0 },
+};
+
+const FOG_PARS_V = `varying vec3 vAgW; uniform mat4 uCamWorld;
+#ifdef USE_FOG
+  varying float vFogDepth;
+#endif`;
+const FOG_V = `vAgW = (uCamWorld * mvPosition).xyz;
+#ifdef USE_FOG
+  vFogDepth = - mvPosition.z;
+#endif`;
+const FOG_PARS_F = `varying vec3 vAgW;
+uniform vec3 uSunDirA; uniform vec3 uSunFog; uniform float uFogFall; uniform float uFogBase;
+uniform sampler2D uShadeTex; uniform vec4 uShadeBox;
+float agSun = 1.0;
+#ifdef USE_FOG
+  uniform vec3 fogColor;
+  varying float vFogDepth;
+  #ifdef FOG_EXP2
+    uniform float fogDensity;
+  #else
+    uniform float fogNear; uniform float fogFar;
+  #endif
+#endif
+vec2 agShade() {
+  vec2 suv = (vAgW.xz - uShadeBox.xy) / uShadeBox.zw;
+  if (suv.x <= 0.0 || suv.y <= 0.0 || suv.x >= 1.0 || suv.y >= 1.0) return vec2(1.0);
+  return texture2D(uShadeTex, suv).rg;
+}`;
+const FOG_F = `#ifdef USE_FOG
+  #ifdef FOG_EXP2
+    float agDen = fogDensity;
+  #else
+    float agDen = 2.0 / max(fogFar, 1.0);
+  #endif
+  vec3 agRd = vAgW - cameraPosition;
+  float agD = length(agRd);
+  agRd /= max(agD, 1e-3);
+  float agK = agRd.y * uFogFall;
+  float agB = agDen * exp(-(cameraPosition.y - uFogBase) * uFogFall);
+  float agF = abs(agK) < 1e-6 ? agB * agD : agB * (1.0 - exp(-agD * agK)) / agK;
+  float fogFactor = 1.0 - exp(-max(agF, 0.0));
+  float agS = pow(max(dot(agRd, uSunDirA), 0.0), 10.0);
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, mix(fogColor, uSunFog, agS * 0.6), fogFactor);
+#endif`;
+const LIGHT_F = `#include <lights_fragment_end>
+  {
+    vec2 agSh = agShade();
+    agSun = agSh.r;
+    reflectedLight.directDiffuse *= agSh.r;
+    reflectedLight.directSpecular *= agSh.r;
+    reflectedLight.indirectDiffuse *= mix(1.0, agSh.g, 0.85);
+    reflectedLight.indirectSpecular *= agSh.g;
+  }`;
+
+export function patchMaterial(mat) {
+  if (!mat || mat.userData.ag || mat.fog === false) return;
+  mat.userData.ag = true;
+  const prev = mat.onBeforeCompile;
+  const prevKey = mat.customProgramCacheKey();
+  mat.onBeforeCompile = (sh, r) => {
+    if (prev) prev.call(mat, sh, r);
+    Object.assign(sh.uniforms, AG);
+    sh.vertexShader = sh.vertexShader.replace('#include <fog_pars_vertex>', FOG_PARS_V).replace('#include <fog_vertex>', FOG_V);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <fog_pars_fragment>', FOG_PARS_F).replace('#include <fog_fragment>', FOG_F);
+    if (sh.fragmentShader.includes('#include <lights_fragment_end>')) sh.fragmentShader = sh.fragmentShader.replace('#include <lights_fragment_end>', LIGHT_F);
+  };
+  mat.customProgramCacheKey = () => 'ag|' + prevKey;
+  mat.needsUpdate = true;
+}
+
+export function patchTree(obj) {
+  obj.traverse((o) => {
+    if (!o.material) return;
+    for (const m of Array.isArray(o.material) ? o.material : [o.material]) patchMaterial(m);
+  });
+}
+
+const SHADE_FRAG = `
+uniform sampler2D uH; uniform vec3 uSun; uniform vec4 uBox;
+varying vec2 vUv;
+float H(vec2 xz) { return texture2D(uH, (xz - uBox.xy) / uBox.zw).r; }
+void main() {
+  vec2 xz = uBox.xy + vUv * uBox.zw;
+  float h0 = H(xz) + 1.5;
+  vec2 sd = normalize(uSun.xz + vec2(1e-5));
+  float tanE = uSun.y / max(length(uSun.xz), 1e-4);
+  float vis = 1.0;
+  float t = 12.0;
+  for (int i = 0; i < 80; i++) {
+    vec2 p = xz + sd * t;
+    vec2 uv = (p - uBox.xy) / uBox.zw;
+    if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) break;
+    float d = H(p) - (h0 + t * tanE);
+    // penumbra widens with distance to the occluder
+    vis = min(vis, clamp(0.5 - d / (t * 0.018 + 4.0), 0.0, 1.0));
+    t = t * 1.06 + 6.0;
+  }
+  // ambient occlusion: how far the surrounding horizon rises
+  float occ = 0.0;
+  for (int r = 0; r < 3; r++) {
+    float rad = 22.0 * pow(3.2, float(r));
+    for (int k = 0; k < 8; k++) {
+      float a = float(k) * 0.7854 + float(r) * 0.39;
+      float rise = (H(xz + vec2(cos(a), sin(a)) * rad) - h0) / rad;
+      occ += clamp(rise, 0.0, 1.2);
+    }
+  }
+  float ao = clamp(1.0 - occ / 24.0 * 1.25, 0.4, 1.0);
+  gl_FragColor = vec4(vis, ao, 0.0, 1.0);
+}`;
+
+export class ShadeField {
+  constructor(renderer) {
+    this.renderer = renderer;
+    const box = AG.uShadeBox.value;
+    const S = 20;
+    const nx = Math.round(box.z / S) + 1, nz = Math.round(box.w / S) + 1;
+    const data = new Float32Array(nx * nz);
+    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) data[j * nx + i] = heightAt(box.x + i * S, box.y + j * S);
+    const linear = renderer.extensions.has('OES_texture_float_linear');
+    this.hTex = new THREE.DataTexture(data, nx, nz, THREE.RedFormat, THREE.FloatType);
+    this.hTex.magFilter = this.hTex.minFilter = linear ? THREE.LinearFilter : THREE.NearestFilter;
+    this.hTex.needsUpdate = true;
+    this.rt = new THREE.WebGLRenderTarget(nx * 2, nz * 2, { type: THREE.HalfFloatType, depthBuffer: false });
+    this.rt.texture.minFilter = this.rt.texture.magFilter = THREE.LinearFilter;
+    this.mat = new THREE.ShaderMaterial({
+      uniforms: { uH: { value: this.hTex }, uSun: { value: new THREE.Vector3() }, uBox: { value: box } },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+      fragmentShader: SHADE_FRAG,
+      depthTest: false, depthWrite: false,
+    });
+    this.quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.mat);
+    this.scene = new THREE.Scene();
+    this.scene.add(this.quad);
+    this.cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    AG.uShadeTex.value = this.rt.texture;
+  }
+
+  compute(sunDir) {
+    this.mat.uniforms.uSun.value.copy(sunDir);
+    const r = this.renderer;
+    const prev = r.getRenderTarget();
+    r.setRenderTarget(this.rt);
+    r.render(this.scene, this.cam);
+    r.setRenderTarget(prev);
+  }
+}

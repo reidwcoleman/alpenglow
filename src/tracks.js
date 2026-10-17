@@ -44,13 +44,14 @@ export class Tracks {
     return {
       last: null,
       break() { this.last = null; },
-      add(pos, fwd, n, skid) {
+      add(pos, fwd, n, skid, powder = 0) {
         _side.crossVectors(n, fwd).normalize();
         const cur = { x: pos.x, y: pos.y, z: pos.z, sx: _side.x, sz: _side.z, skid };
         if (this.last) {
           const d = Math.hypot(cur.x - this.last.x, cur.z - this.last.z);
           if (d < 3) {
-            if (skid > 0.6) sys.quad(this.last, cur, 0, 0.18 + Math.min(skid, 4) * 0.22, 0.32, n);
+            if (powder > 0.5) sys.quad(this.last, cur, 0, 0.32 + Math.min(skid, 3) * 0.2, 0.85, n, 0.72); // trench through the powder
+            else if (skid > 0.6) sys.quad(this.last, cur, 0, 0.18 + Math.min(skid, 4) * 0.22, 0.32, n);
             else for (const o of [0.105, -0.105]) sys.quad(this.last, cur, o, 0.055, 0.6, n);
           }
         }
@@ -59,7 +60,7 @@ export class Tracks {
     };
   }
 
-  quad(a, b, off, w, alpha, n) {
+  quad(a, b, off, w, alpha, n, deep = 0) {
     const i = this.next;
     this.next = (this.next + 1) % SEGS;
     const v = i * 4;
@@ -76,9 +77,10 @@ export class Tracks {
       const y = heightAt(x, z) + 0.035;
       P[(v + k) * 3] = x; P[(v + k) * 3 + 1] = y; P[(v + k) * 3 + 2] = z;
       // groove walls face inward: tilt the normal across the track
-      _p.set(n.x - a.sx * s * 0.55, n.y, n.z - a.sz * s * 0.55).normalize();
+      const tilt = deep ? 1.1 : 0.55;
+      _p.set(n.x - a.sx * s * tilt, n.y, n.z - a.sz * s * tilt).normalize();
       N[(v + k) * 3] = _p.x; N[(v + k) * 3 + 1] = _p.y; N[(v + k) * 3 + 2] = _p.z;
-      const shade = w > 0.1 ? 0.97 : 0.86;
+      const shade = deep ? deep : w > 0.1 ? 0.97 : 0.86;
       C[(v + k) * 4] = shade * 0.94; C[(v + k) * 4 + 1] = shade * 0.965; C[(v + k) * 4 + 2] = shade;
       C[(v + k) * 4 + 3] = alpha * fadeIn[0];
     }

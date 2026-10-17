@@ -126,16 +126,16 @@ export function heightAt(x, z) {
 
   // valley walls beyond the piste
   const s = Math.max(0, adx - hw - 10);
-  y += 0.1 * s + 0.00028 * s * s;
+  y += 300 * (1 - Math.exp(-s / 650)) + 0.05 * s; // valley sides rise, then level into benches
 
   // big alpine relief far from the run
-  const far = smoothstep(380, 1900, adx) + smoothstep(-300, -1600, z) + smoothstep(3900, 5600, z);
+  const far = smoothstep(800, 3600, adx) + smoothstep(-300, -1600, z) + smoothstep(3900, 5600, z);
   if (far > 0) {
     // domain-warped ridges: broad massifs with sharp crests rather than rows of teeth
     const wx = fbm(N3, x / 2600, z / 2600, 3) * 900, wz = fbm(N2, x / 2600 + 7, z / 2600, 3) * 900;
     const r = ridged(N, (x + wx) / 2300, (z + wz) / 2300, 6);
     const base = fbm(N2, x / 4000, z / 4000, 3);
-    y += Math.min(far, 1.4) * (r * 1100 + base * 360 - 100);
+    y += Math.min(far, 1.4) * (r * 950 + base * 320 - 90);
   }
 
   // groomed piste vs natural snow
@@ -256,6 +256,27 @@ export function treeDensity(x, z) {
   // edges of the piste get glades
   d *= smoothstep(5, 18, s);
   return clamp(d, 0, 1);
+}
+
+// Snow surface under (x, z): groomed piste, natural powder off piste, and
+// scraped ice patches on the steep, heavily skied pitches. Shared by the
+// physics (grip, friction) and the terrain shader (via a vertex attribute).
+const ICY = [[180, 690], [1470, 1870], [2450, 2900]];
+export function surfaceAt(x, z, out) {
+  const hw = prof(HW, z);
+  const adx = Math.abs(x - prof(CX, z));
+  const onP = 1 - smoothstep(hw - 3, hw + 6, adx);
+  out.powder = 1 - onP;
+  let ice = 0;
+  for (const [a, b] of ICY) {
+    if (z < a - 30 || z > b + 30) continue;
+    const sec = smoothstep(a - 30, a + 30, z) * (1 - smoothstep(b - 30, b + 30, z));
+    // long, fall-line streaks where everyone scrapes their turns
+    const n = N3(x / 11 + 31.7, z / 46) * 0.7 + N2(x / 5, z / 12) * 0.3;
+    ice = Math.max(ice, sec * smoothstep(0.3, 0.55, n) * smoothstep(hw * 0.95, hw * 0.55, adx));
+  }
+  out.ice = ice * onP;
+  return out;
 }
 
 export function slopeAt(x, z) {

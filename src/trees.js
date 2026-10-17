@@ -86,9 +86,9 @@ export class Forest {
     this.scene = scene;
     const rnd = mulberry32(99);
     this.geos = [
-      [spruceGeometry(11, 7, rnd, 0.5), spruceGeometry(9, 6, rnd, 0.35), spruceGeometry(12, 7, rnd, 0.62)],
-      [spruceGeometry(6, 4, rnd, 0.45)],
-      [spruceGeometry(3, 3, rnd, 0.4, false)],
+      [spruceGeometry(11, 6, rnd, 0.5), spruceGeometry(9, 6, rnd, 0.35), spruceGeometry(12, 6, rnd, 0.62)],
+      [spruceGeometry(5, 4, rnd, 0.45)],
+      [spruceGeometry(2, 3, rnd, 0.4, false)],
     ];
     this.mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0 });
     this.mat.onBeforeCompile = (sh) => {

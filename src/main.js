@@ -13,6 +13,8 @@ import { Input } from './input.js';
 import { CameraRig } from './camera.js';
 import { Audio } from './audio.js';
 import { Post } from './post.js';
+import { AG, ShadeField, patchTree } from './atmos.js';
+import { Debris } from './debris.js';
 import { mulberry32, clamp, smoothstep } from './noise.js';
 import { START_Z, FINISH_Z, GATES, centerX, halfWidth, sectionName, heightAt, SECTIONS } from './course.js';
 
@@ -89,7 +91,10 @@ class Game {
     this.tracks = new Tracks(scene);
     this.particles = new Particles(scene);
     this.snowfall = new Snowfall(scene);
-    this.world = { scene, forest: this.forest, tracks: this.tracks, particles: this.particles, race: false, raceStarted: false };
+    this.debris = new Debris(scene);
+    this.world = { scene, forest: this.forest, tracks: this.tracks, particles: this.particles, race: false, raceStarted: false, skiers: this.skiers };
+    this.shade = new ShadeField(r);
+    patchTree(scene);
     this.post = new Post(r, scene, this.camera, { ...QUALITY[this.quality], ...JSON.parse(params.get('post') ?? '{}') });
     this.post.setPixelRatio(this.maxDpr);
     this.post.setSize(innerWidth, innerHeight);
@@ -131,6 +136,7 @@ class Game {
 
   applyConditions() {
     this.env.apply(this.tod);
+    this.shade?.compute(this.env.sunDir);
     const dusk = { bluebird: 0.05, golden: 0.45, alpenglow: 1, storm: 0.35 }[this.tod] ?? 0;
     this.props.setDusk(dusk);
     this.snowfall.points.visible = !!PRESETS[this.tod].snow;
@@ -209,12 +215,16 @@ class Game {
   // ---------------- population ----------------
   clearSkiers() {
     for (const s of this.skiers) s.dispose();
-    this.skiers = []; this.ais = []; this.player = null;
+    this.skiers.length = 0; this.ais = []; this.player = null;
+    this.debris.items.forEach((it) => this.scene.remove(it.mesh)); this.debris.items = [];
     if (this.rig) this.rig.subject = null;
   }
 
   addSkier(opts, style) {
     const s = new Skier(this.world, opts);
+    patchTree(s.model.group);
+    s.on('yardsale', () => { if (this.camera.position.distanceTo(s.pos) < 200) { this.debris.spawn(s); s.model.gearOff = true; } });
+    s.on('gear', () => { this.debris.clear(s); s.model.gearOff = false; });
     this.skiers.push(s);
     if (style) { const ai = new AIController(s, style, this.rnd, this.world); s.ai = ai; this.ais.push(ai); }
     return s;
@@ -237,7 +247,7 @@ class Game {
       n++;
     }
     if (!menu) {
-      const p = this.addSkier({ outfit: { ...randomOutfit(this.rnd), jacket: this.jacket }, name: 'You', isPlayer: true, grip: 1.75 });
+      const p = this.addSkier({ outfit: { ...randomOutfit(this.rnd), jacket: this.jacket }, name: 'You', isPlayer: true, grip: 1.75, sidecut: 16 });
       p.place(centerX(START_Z), START_Z, null, 0);
       this.player = p;
       this.hookPlayer(p);
@@ -257,7 +267,7 @@ class Game {
       const isP = i === playerLane;
       const outfit = randomOutfit(this.rnd, true);
       if (isP) { outfit.jacket = this.jacket; outfit.pants = this.jacket; }
-      const s = this.addSkier({ outfit, name: isP ? 'You' : names[i], isPlayer: isP, bib: bib++, grip: isP ? 1.75 : undefined }, isP ? null : 'racer');
+      const s = this.addSkier({ outfit, name: isP ? 'You' : names[i], isPlayer: isP, bib: bib++, grip: isP ? 1.75 : undefined, sidecut: 24 }, isP ? null : 'racer');
       s.place(centerX(START_Z) + off, START_Z, null, 0);
       if (isP) { this.player = s; this.hookPlayer(s); }
       this.racers.push({ s, gate: 0, pen: 0, missed: 0, finish: null, color: outfit.jacket });
@@ -501,7 +511,9 @@ class Game {
       const d = cam.distanceTo(s.pos);
       if (d > 130) continue;
       const carve = Math.abs(s.lean) * sp;
-      const rate = (s.skid * 10 + Math.max(0, carve - 8) * 0.9 + (s.controls.brake ? 8 : 0)) * Math.min(1, sp / 10) * (sp > 6 ? 1 : 0.3);
+      const pw = s.surf.powder, ice = s.surf.ice;
+      // powder throws plumes, ice barely sprays at all
+      const rate = (s.skid * 10 + Math.max(0, carve - 8) * 0.9 + (s.controls.brake ? 8 : 0) + pw * sp * 1.6) * Math.min(1, sp / 10) * (sp > 6 ? 1 : 0.3) * (1 - ice * 0.75);
       let n = rate * dt;
       n = Math.floor(n) + (Math.random() < n % 1 ? 1 : 0);
       if (!n) continue;
@@ -512,7 +524,7 @@ class Game {
       this.particles.emit(
         s.pos.x + sx * out * 0.3 - Math.sin(s.heading) * 0.3, s.pos.y + 0.05, s.pos.z + sz * out * 0.3 - Math.cos(s.heading) * 0.3,
         s.vel.x * 0.4 + sx * out * k, 1.4 + s.skid * 0.5, s.vel.z * 0.4 + sz * out * k,
-        1.6, 0.32 + Math.min(s.skid, 3) * 0.08, 0.85, n);
+        1.6 + pw * 1.5, 0.32 + Math.min(s.skid, 3) * 0.08 + pw * 0.35, 0.85 + pw * 0.6, n);
     }
   }
 
@@ -587,6 +599,7 @@ class Game {
     if (!this.paused) {
       this.spray(dt);
       this.particles.update(dt, this.sunLit);
+      this.debris.update(dt);
       this.snowfall.update(dt, cam.position);
     }
     const focus = this.player && this.state !== 'menu' ? this.player.pos : cam.position;
@@ -602,6 +615,8 @@ class Game {
     const sp = this.player && this.state !== 'menu' ? this.player.speed : 0;
     this.post.lens.uniforms.uSpeed.value = smoothstep(14, 40, sp) * (this.rig.mode === 'tv' ? 0 : 1);
     this.post.lens.uniforms.uFlash.value *= 0.9;
+    cam.updateMatrixWorld();
+    AG.uCamWorld.value.copy(cam.matrixWorld);
     this.post.render(dt);
     inp.endFrame();
   }

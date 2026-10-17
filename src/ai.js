@@ -113,7 +113,8 @@ export class AIController {
       }
     }
 
-    // avoid other skiers ahead
+    // avoid other skiers ahead (and alongside: elbows out in the pack)
+    let avoid = 0;
     for (const o of others) {
       if (o === s) continue;
       const dz = o.pos.z - z;
@@ -125,8 +126,9 @@ export class AIController {
       // which side to pass: away from the other, toward the piste centre if tied
       const side = Math.abs(dx) < 0.5 ? Math.sign(centerX(z) - x) || 1 : -Math.sign(dx);
       const push = (4.5 - Math.abs(dx)) * smoothstep(L + 10, 0, dz);
-      if (push > 0) tx += side * push * 1.4;
+      if (push > 0) avoid += side * push * 1.4;
     }
+    tx += avoid;
     // stay inside the piste
     const c0 = centerX(tz), h0 = halfWidth(tz);
     tx = clamp(tx, c0 - h0 * 0.9, c0 + h0 * 0.9);
@@ -137,7 +139,10 @@ export class AIController {
     if (this.style === 'racer' && this.world.race && z < FINISH_Z) {
       const za = z + speed * 0.28;
       const slope = (lineX(za + 1.5) - lineX(za - 1.5)) / 3;
-      const e = lineX(z + 0.5) + this.lineBias * smoothstep(START_Z, START_Z + 120, z) + Math.sin(this.wobble * 0.9) * (1 - this.skill) * 2 - x;
+      // close to a gate the gate wins over elbowing
+      while (this.gate < GATES.length && GATES[this.gate].z < z) this.gate++;
+      const toGate = this.gate < GATES.length ? GATES[this.gate].z - z : 99;
+      const e = clamp(avoid, -3, 3) * 0.7 * smoothstep(3, 26, toGate) + lineX(z + 0.5) + this.lineBias * smoothstep(START_Z, START_Z + 120, z) * Math.min(1, halfWidth(z + 40) / 55) + Math.sin(this.wobble * 0.9) * (1 - this.skill) * 2 - x;
       want = Math.atan(slope) + Math.atan((1.6 * e) / (speed + 3));
     }
     const err = wrapAngle(want - s.heading);
