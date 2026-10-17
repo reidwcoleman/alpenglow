@@ -1,0 +1,41 @@
+// Drive the player with real key presses and report state.
+import { chromium } from 'playwright-core';
+import { CHROME, ANGLE } from './chrome.mjs';
+import fs from 'node:fs';
+fs.mkdirSync('shots/play', { recursive: true });
+const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: [ANGLE, '--enable-gpu', '--ignore-gpu-blocklist'] });
+const page = await browser.newPage({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
+page.on('pageerror', (e) => console.log('[pageerror]', e.message));
+page.on('console', (m) => { if (m.type() === 'error') console.log('[error]', m.text().slice(0, 300)); });
+await page.goto(`http://127.0.0.1:5260/?menu=0&mode=race&fixdpr=1`, { waitUntil: 'domcontentloaded' });
+await page.waitForFunction(() => window.__ready === true, null, { timeout: 180000 });
+const st = () => page.evaluate(() => { const p = window.__game.player; return { state: window.__game.state, z: +p.pos.z.toFixed(1), x: +p.pos.x.toFixed(1), v: +(p.speed * 3.6).toFixed(0), head: +p.heading.toFixed(2), ground: p.onGround, crash: p.crash > 0, lean: +p.lean.toFixed(2) }; });
+console.log('countdown', await st());
+await page.waitForTimeout(4200);
+console.log('go', await st());
+await page.keyboard.down('KeyW'); await page.waitForTimeout(2500); await page.keyboard.up('KeyW');
+console.log('after tuck', await st());
+await page.keyboard.down('KeyD'); await page.waitForTimeout(900);
+console.log('right carve', await st());
+await page.screenshot({ path: 'shots/play/carve.jpg', quality: 80 });
+await page.keyboard.up('KeyD');
+await page.keyboard.down('KeyA'); await page.waitForTimeout(900); await page.keyboard.up('KeyA');
+console.log('left carve', await st());
+await page.keyboard.down('KeyS'); await page.waitForTimeout(700);
+await page.screenshot({ path: 'shots/play/stop.jpg', quality: 80 });
+await page.waitForTimeout(800); await page.keyboard.up('KeyS');
+console.log('hockey stop', await st());
+// jump on a park kicker with a 360
+await page.evaluate(() => { const g = window.__game; const k = { z: 1290, x: window.__cx(1290) - 6 }; g.player.place(k.x, k.z - 45, 0, 17); g.rig.snap = true; });
+await page.waitForTimeout(1900);
+console.log('approach', await st());
+for (let i = 0; i < 30; i++) { await page.waitForTimeout(60); const s = await st(); if (!s.ground) { console.log('air', s); break; } }
+await page.keyboard.down('KeyD');
+await page.waitForTimeout(300);
+await page.screenshot({ path: 'shots/play/air.jpg', quality: 80 });
+await page.waitForTimeout(500);
+await page.keyboard.up('KeyD');
+await page.waitForTimeout(1500);
+console.log('after jump', await st(), await page.evaluate(() => document.getElementById('pop').innerText));
+await page.screenshot({ path: 'shots/play/land.jpg', quality: 80 });
+await browser.close();

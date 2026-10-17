@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Alpenglow</title>
+<meta name="description" content="Alpenglow: a big-mountain skiing game in your browser. Race the Cup against AI racers or free ride a mountain full of skiers." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22%3E%3Crect width=%2264%22 height=%2264%22 rx=%2214%22 fill=%22%23ff8a3d%22/%3E%3Cpath d=%22M6 52 L24 22 L34 36 L42 26 L58 52Z%22 fill=%22%23fff%22/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,500;0,600;0,700;0,800;1,700;1,800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --ink: #0d1018;
+    --paper: #f6f3ee;
+    --sun: #ff8a3d;
+    --sun2: #ffc36b;
+    --ice: #9fd3ff;
+    --glass: rgba(14, 18, 28, 0.42);
+    --glass-strong: rgba(12, 15, 24, 0.72);
+    --line: rgba(255, 255, 255, 0.16);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0b0e16; color: #fff; font-family: Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased; user-select: none; -webkit-user-select: none; touch-action: none; }
+  canvas#gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .num { font-family: 'Barlow Condensed', sans-serif; font-variant-numeric: tabular-nums; }
+  .hidden { display: none !important; }
+
+  /* ---------- loading ---------- */
+  #loading { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: radial-gradient(120% 90% at 50% 110%, #ff8a3d 0%, #b2456e 35%, #2a2350 68%, #0b0e16 100%); transition: opacity .8s ease; }
+  #loading .t { font-family: 'Barlow Condensed'; font-weight: 800; font-style: italic; font-size: clamp(54px, 11vw, 140px); letter-spacing: .02em; line-height: .9; text-shadow: 0 10px 50px rgba(0,0,0,.35); }
+  #loading .bar { width: min(320px, 70vw); height: 3px; background: rgba(255,255,255,.18); border-radius: 3px; margin: 26px auto 10px; overflow: hidden; }
+  #loading .bar i { display: block; height: 100%; width: 0%; background: #fff; transition: width .25s ease; }
+  #loading .msg { text-align: center; font-size: 13px; opacity: .75; letter-spacing: .08em; text-transform: uppercase; }
+  #loading .ridge { position: absolute; left: 0; right: 0; bottom: 0; height: 34vh; pointer-events: none; }
+
+  /* ---------- menu ---------- */
+  #menu { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; justify-content: space-between; padding: clamp(18px, 4vw, 54px); background: linear-gradient(90deg, rgba(8,10,18,.72) 0%, rgba(8,10,18,.35) 42%, rgba(8,10,18,0) 70%); }
+  #menu .brand { font-family: 'Barlow Condensed'; font-weight: 800; font-style: italic; font-size: clamp(64px, 10vw, 150px); line-height: .82; letter-spacing: .01em; }
+  #menu .brand span { background: linear-gradient(95deg, #fff 30%, var(--sun2) 70%, var(--sun) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  #menu .tag { margin-top: 14px; max-width: 460px; font-size: clamp(14px, 1.4vw, 17px); line-height: 1.5; color: rgba(255,255,255,.82); }
+  .modes { display: flex; flex-direction: column; gap: 12px; width: min(440px, 100%); }
+  .mode { position: relative; display: flex; align-items: center; gap: 18px; padding: 18px 22px; border-radius: 16px; background: var(--glass); border: 1px solid var(--line); backdrop-filter: blur(14px) saturate(1.3); -webkit-backdrop-filter: blur(14px) saturate(1.3); cursor: pointer; text-align: left; color: #fff; font: inherit; transition: transform .18s ease, background .18s ease, border-color .18s ease; }
+  .mode:hover, .mode:focus-visible { transform: translateX(6px); background: rgba(255,255,255,.14); border-color: rgba(255,255,255,.4); outline: none; }
+  .mode .k { font-family: 'Barlow Condensed'; font-weight: 800; font-style: italic; font-size: 34px; line-height: 1; letter-spacing: .01em; }
+  .mode .d { font-size: 13px; color: rgba(255,255,255,.72); margin-top: 4px; line-height: 1.4; }
+  .mode .go { margin-left: auto; width: 40px; height: 40px; flex: none; border-radius: 50%; display: grid; place-items: center; background: #fff; color: var(--ink); font-weight: 700; }
+  .mode.primary { background: linear-gradient(100deg, rgba(255,138,61,.92), rgba(229,72,104,.86)); border-color: rgba(255,255,255,.3); }
+  .mode.primary:hover { background: linear-gradient(100deg, rgba(255,150,75,1), rgba(240,85,115,.95)); }
+  .opts { display: flex; flex-wrap: wrap; gap: 22px; align-items: flex-end; margin-top: 22px; }
+  .opt label { display: block; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,.6); margin-bottom: 8px; }
+  .seg { display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: var(--glass); border: 1px solid var(--line); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); flex-wrap: wrap; }
+  .seg button { border: 0; background: transparent; color: rgba(255,255,255,.75); font: 600 13px Inter; padding: 8px 12px; border-radius: 9px; cursor: pointer; }
+  .seg button.on { background: #fff; color: var(--ink); }
+  .swatches { display: flex; gap: 8px; }
+  .swatches button { width: 30px; height: 30px; border-radius: 50%; border: 2px solid rgba(255,255,255,.25); cursor: pointer; }
+  .swatches button.on { border-color: #fff; box-shadow: 0 0 0 3px rgba(255,255,255,.25); }
+  .menu-bottom { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; flex-wrap: wrap; }
+  .keys { font-size: 12px; line-height: 1.9; color: rgba(255,255,255,.72); background: var(--glass); border: 1px solid var(--line); border-radius: 14px; padding: 14px 18px; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+  .keys b { display: inline-block; min-width: 22px; padding: 1px 6px; margin-right: 6px; border-radius: 5px; background: rgba(255,255,255,.16); color: #fff; font-weight: 600; text-align: center; font-size: 11px; }
+
+  /* ---------- HUD ---------- */
+  #hud { position: fixed; inset: 0; z-index: 10; pointer-events: none; }
+  .tl { position: absolute; top: max(16px, env(safe-area-inset-top)); left: 18px; }
+  .tr { position: absolute; top: max(16px, env(safe-area-inset-top)); right: 18px; text-align: right; }
+  .tc { position: absolute; top: max(14px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); text-align: center; }
+  .chip { display: inline-flex; align-items: center; gap: 10px; padding: 8px 14px; border-radius: 12px; background: var(--glass); border: 1px solid var(--line); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+  #sec { font-family: 'Barlow Condensed'; font-weight: 700; font-size: 20px; letter-spacing: .04em; text-transform: uppercase; }
+  #sec small { font-family: Inter; font-weight: 500; font-size: 11px; letter-spacing: .1em; opacity: .7; margin-left: 6px; }
+  #timer { font-size: 46px; font-weight: 700; line-height: 1; text-shadow: 0 2px 18px rgba(0,0,0,.35); }
+  #timer.pen { color: #ff8080; }
+  #sub { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; opacity: .8; margin-top: 4px; }
+  #pos { font-size: 54px; font-weight: 800; font-style: italic; line-height: .9; }
+  #pos sup { font-size: 22px; margin-left: 2px; }
+  #pos small { font-size: 20px; opacity: .6; font-style: normal; }
+  #gates { font-size: 13px; letter-spacing: .12em; text-transform: uppercase; opacity: .8; margin-top: 4px; }
+  .speed { position: absolute; bottom: max(22px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); text-align: center; }
+  #spd { font-size: 74px; font-weight: 800; font-style: italic; line-height: .85; text-shadow: 0 3px 24px rgba(0,0,0,.35); }
+  #spdu { font-size: 12px; letter-spacing: .24em; opacity: .75; }
+  #prog { position: absolute; left: 18px; bottom: max(26px, env(safe-area-inset-bottom)); width: min(300px, 38vw); }
+  #prog .track { position: relative; height: 4px; border-radius: 4px; background: rgba(255,255,255,.22); }
+  #prog .track i { position: absolute; top: 50%; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 50%; background: rgba(255,255,255,.7); box-shadow: 0 0 0 1.5px rgba(0,0,0,.25); }
+  #prog .track i.me { width: 14px; height: 14px; margin: -7px 0 0 -7px; background: var(--sun); box-shadow: 0 0 0 2px #fff; z-index: 2; }
+  #prog .lbl { display: flex; justify-content: space-between; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; opacity: .6; margin-top: 8px; }
+  #score { font-size: 46px; font-weight: 800; font-style: italic; line-height: 1; }
+  #pop { position: absolute; top: 28%; left: 50%; transform: translateX(-50%); text-align: center; pointer-events: none; }
+  .popi { font-family: 'Barlow Condensed'; font-weight: 800; font-style: italic; font-size: clamp(28px, 4vw, 48px); line-height: 1.05; text-shadow: 0 4px 30px rgba(0,0,0,.45); animation: pop 1.9s cubic-bezier(.2,.9,.2,1) forwards; white-space: nowrap; }
+  .popi small { display: block; font-size: .5em; letter-spacing: .12em; font-style: normal; opacity: .9; }
+  .popi.bad { color: #ff7b7b; }
+  .popi.gold { color: var(--sun2); }
+  @keyframes pop { 0% { opacity: 0; transform: translateY(18px) scale(.8); } 12% { opacity: 1; transform: translateY(0) scale(1.06); } 22% { transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translateY(-26px); } }
+  #count { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); font-family: 'Barlow Condensed'; font-weight: 800; font-style: italic; font-size: clamp(90px, 16vw, 200px); text-shadow: 0 8px 60px rgba(0,0,0,.4); }
+  #hint { position: absolute; bottom: 120px; left: 50%; transform: translateX(-50%); font-size: 14px; padding: 9px 16px; border-radius: 10px; background: var(--glass-strong); }
+  #camlbl { position: absolute; right: 18px; bottom: max(26px, env(safe-area-inset-bottom)); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; opacity: .6; }
+
+  /* ---------- panels ---------- */
+  .panel { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; background: rgba(6,8,14,.48); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); padding: 16px; }
+  .card { width: min(560px, 100%); max-height: 92vh; overflow: auto; padding: 28px; border-radius: 22px; background: var(--glass-strong); border: 1px solid var(--line); box-shadow: 0 30px 80px rgba(0,0,0,.4); }
+  .card h2 { font-family: 'Barlow Condensed'; font-weight: 800; font-style: italic; font-size: 52px; line-height: .95; }
+  .card .lead { color: rgba(255,255,255,.75); margin: 8px 0 18px; font-size: 14px; }
+  table.res { width: 100%; border-collapse: collapse; font-size: 15px; }
+  table.res td { padding: 9px 6px; border-top: 1px solid rgba(255,255,255,.09); }
+  table.res td:first-child { width: 34px; font-family: 'Barlow Condensed'; font-weight: 800; font-size: 20px; font-style: italic; }
+  table.res td.t { text-align: right; font-family: 'Barlow Condensed'; font-weight: 600; font-size: 19px; }
+  table.res tr.me td { color: var(--sun2); }
+  table.res .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 8px; }
+  .row { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+  .btn { flex: 1; min-width: 130px; border: 1px solid var(--line); background: rgba(255,255,255,.1); color: #fff; font: 600 15px Inter; padding: 13px 16px; border-radius: 12px; cursor: pointer; }
+  .btn:hover { background: rgba(255,255,255,.2); }
+  .btn.p { background: #fff; color: var(--ink); border-color: #fff; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 4px; }
+  .stat { padding: 12px; border-radius: 12px; background: rgba(255,255,255,.07); }
+  .stat b { display: block; font-family: 'Barlow Condensed'; font-size: 30px; font-weight: 800; font-style: italic; }
+  .stat span { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; opacity: .65; }
+
+  /* ---------- touch ---------- */
+  #touch { position: fixed; inset: auto 0 0 0; z-index: 12; display: none; justify-content: space-between; padding: 0 14px max(14px, env(safe-area-inset-bottom)); pointer-events: none; }
+  body.touch #touch { display: flex; }
+  #touch .grp { display: flex; gap: 10px; pointer-events: auto; align-items: flex-end; }
+  #touch button { width: 74px; height: 74px; border-radius: 50%; border: 1px solid rgba(255,255,255,.35); background: rgba(10,14,22,.35); color: #fff; font: 700 13px Inter; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); touch-action: none; }
+  #touch button.on { background: rgba(255,255,255,.4); }
+  #touch .sm { width: 58px; height: 58px; font-size: 11px; }
+  body.touch .speed { bottom: 110px; }
+  body.touch #prog, body.touch #camlbl { display: none; }
+  body.touch #tc-cam { position: fixed; top: max(80px, env(safe-area-inset-top)); right: 14px; width: 46px; height: 46px; }
+
+  @media (max-width: 720px) {
+    #menu { background: linear-gradient(180deg, rgba(8,10,18,.55), rgba(8,10,18,.25) 40%, rgba(8,10,18,.75)); }
+    .menu-bottom .keys { display: none; }
+    #timer { font-size: 36px; } #pos { font-size: 40px; } #spd { font-size: 58px; }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<div id="loading">
+  <div>
+    <div class="t">ALPENGLOW</div>
+    <div class="bar"><i id="loadbar"></i></div>
+    <div class="msg" id="loadmsg">Shaping the mountain…</div>
+  </div>
+  <svg class="ridge" viewBox="0 0 1000 300" preserveAspectRatio="none"><path d="M0 300 L0 210 L90 150 L160 190 L260 90 L330 150 L420 60 L520 170 L600 120 L690 200 L780 110 L860 170 L940 130 L1000 160 L1000 300Z" fill="rgba(11,14,22,.85)"/><path d="M0 300 L0 250 L120 210 L230 245 L360 190 L470 240 L600 200 L720 250 L850 215 L1000 240 L1000 300Z" fill="#0b0e16"/></svg>
+</div>
+
+<div id="menu" class="hidden">
+  <div>
+    <div class="brand"><span>ALPENGLOW</span></div>
+    <p class="tag">One big mountain, 3.4 km from summit to village and close to a kilometre of vertical. Race seven rivals through the gates or free ride a hill full of skiers.</p>
+  </div>
+  <div>
+    <div class="modes">
+      <button class="mode primary" id="b-race"><div><div class="k">RACE THE CUP</div><div class="d">Mass-start downhill against 7 AI racers. Miss a gate, lose 2 seconds.</div></div><div class="go">▶</div></button>
+      <button class="mode" id="b-free"><div><div class="k">FREE RIDE</div><div class="d">Open mountain, 30 skiers, terrain park with four kickers. Spin, flip, grab.</div></div><div class="go">▶</div></button>
+    </div>
+    <div class="opts">
+      <div class="opt"><label>Conditions</label><div class="seg" id="tod"></div></div>
+      <div class="opt"><label>Jacket</label><div class="swatches" id="jackets"></div></div>
+      <div class="opt"><label>Graphics</label><div class="seg" id="qual"></div></div>
+    </div>
+  </div>
+  <div class="menu-bottom">
+    <div class="keys">
+      <div><b>A</b><b>D</b> or <b>←</b><b>→</b> carve · in the air: spin</div>
+      <div><b>W</b> tuck / skate · in the air: front flip</div>
+      <div><b>S</b> hockey stop · in the air: backflip</div>
+      <div><b>Space</b> hold and release to pop · <b>Shift</b> grab</div>
+      <div><b>C</b> camera · <b>R</b> reset · <b>Esc</b> pause · <b>M</b> mute · gamepad works too</div>
+    </div>
+  </div>
+</div>
+
+<div id="hud" class="hidden">
+  <div class="tl"><div class="chip" id="sec">Summit</div></div>
+  <div class="tc">
+    <div id="timer" class="num">0:00.00</div>
+    <div id="sub"></div>
+  </div>
+  <div class="tr">
+    <div id="pos" class="num"></div>
+    <div id="gates"></div>
+    <div id="score" class="num hidden">0</div>
+  </div>
+  <div id="pop"></div>
+  <div id="count" class="hidden"></div>
+  <div id="hint" class="hidden"></div>
+  <div class="speed"><div id="spd" class="num">0</div><div id="spdu">KM/H</div></div>
+  <div id="prog"><div class="track" id="progtrack"></div><div class="lbl"><span>Summit</span><span>Village</span></div></div>
+  <div id="camlbl">Chase cam · C</div>
+</div>
+
+<div id="touch">
+  <div class="grp"><button id="tc-left">◀</button><button id="tc-right">▶</button></div>
+  <div class="grp"><button class="sm" id="tc-grab">GRAB</button><button class="sm" id="tc-brake">STOP</button><button class="sm" id="tc-tuck">TUCK</button><button id="tc-jump">JUMP</button></div>
+</div>
+<button id="tc-cam" class="hidden" style="z-index:13;border-radius:50%;border:1px solid rgba(255,255,255,.35);background:rgba(10,14,22,.35);color:#fff;font:700 11px Inter">CAM</button>
+
+<div id="results" class="panel hidden"><div class="card" id="rescard"></div></div>
+<div id="pause" class="panel hidden"><div class="card">
+  <h2>PAUSED</h2>
+  <p class="lead">Take a breath. The mountain will wait.</p>
+  <div class="row"><button class="btn p" id="p-resume">Resume</button><button class="btn" id="p-restart">Restart</button><button class="btn" id="p-menu">Main menu</button></div>
+</div></div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
