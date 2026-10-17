@@ -323,6 +323,7 @@ class Game {
       this.freeStats = { score: 0, best: { pts: 0, name: '—' }, top: 0, crashes: 0, t: 0, nearT: 0 };
       $('score').classList.remove('hidden');
       $('pos').classList.add('hidden');
+      $('board').innerHTML = '';
       $('gates').textContent = 'Trick score';
       $('sub').textContent = 'Free Ride';
       this.popup('FREE RIDE<small>terrain park ~1 km down · spin with ←/→ in the air</small>');
@@ -568,6 +569,21 @@ class Game {
     else if (this.player) this.rig.update(dt, this.player);
     if (window.__freeCam) { const f = window.__freeCam; cam.position.set(...f.pos); cam.lookAt(...f.look); cam.fov = f.fov ?? 55; cam.updateProjectionMatrix(); }
     for (const s of this.skiers) s.updateVisual(dt, cam.position);
+    // never let another skier block the view of the player
+    if (this.player && this.state !== 'menu' && this.rig.mode !== 'tv') {
+      const P = this.player.pos, C = cam.position;
+      const dPC = C.distanceTo(P);
+      for (const s of this.skiers) {
+        if (s === this.player || !s.model.group.visible) continue;
+        const dC = C.distanceTo(s.pos);
+        const between = dC < dPC + 0.5 && s.pos.distanceTo(P) < dPC + 0.5;
+        if (dC < 2.5 || (between && dC < dPC)) {
+          const t = new THREE.Vector3().subVectors(s.pos, C).dot(new THREE.Vector3().subVectors(P, C).normalize());
+          const closest = new THREE.Vector3().subVectors(P, C).normalize().multiplyScalar(t).add(C);
+          if (dC < 2.5 || closest.distanceTo(s.pos) < 1.6) s.model.group.visible = false;
+        }
+      }
+    }
     if (!this.paused) {
       this.spray(dt);
       this.particles.update(dt, this.sunLit);
@@ -599,7 +615,8 @@ class Game {
       // adaptive resolution
       if (params.get('fixdpr') !== '1') {
         const prev = this.dprScale;
-        if (this.fps < 48) this.dprScale = Math.max(0.55, this.dprScale - 0.1);
+        // ignore throttled/background tabs (a few fps) - that's the browser, not the GPU
+        if (this.fps < 48 && this.fps > 15) this.dprScale = Math.max(0.55, this.dprScale - 0.1);
         else if (this.fps > 58 && this.dprScale < 1) this.dprScale = Math.min(1, this.dprScale + 0.05);
         if (prev !== this.dprScale) {
           const r = this.maxDpr * this.dprScale;
@@ -627,6 +644,12 @@ class Game {
       $('pos').innerHTML = `${me}<sup>${ord(me)}</sup> <small>/ ${rs.length}</small>`;
       const r = this.racers.find((x) => x.s === p);
       $('gates').textContent = `Gate ${Math.min(r.gate + 1, GATES.length)} / ${GATES.length}`;
+      this.boardT = (this.boardT ?? 0) - dt;
+      if (this.boardT <= 0) {
+        this.boardT = 0.25;
+        const show = rs.map((x, i) => [x, i]).filter(([x, i]) => i < 3 || x.s === p);
+        $('board').innerHTML = show.map(([x, i]) => `<div class="${x.s === p ? 'me' : ''}"><i style="background:${hex(x.color)}"></i>${x.s.name}<b>${i + 1}</b></div>`).join('');
+      }
       const t = r.finish ?? this.raceTime + r.pen;
       $('timer').textContent = fmt(t);
       this.penFlash = Math.max(0, (this.penFlash ?? 0) - dt);

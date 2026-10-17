@@ -210,7 +210,7 @@ const LINE_K = new Float32Array(LINE_N);
   const pts = [{ z: -40, x: centerX(-40) }, { z: START_Z, x: centerX(START_Z) }];
   GATES.forEach((g, i) => {
     const nx = GATES[i + 1] ? GATES[i + 1].x : centerX(FINISH_Z);
-    pts.push({ z: g.z, x: g.x + clamp((nx - g.x) * 0.1, -2.6, 2.6) });
+    pts.push({ z: g.z, x: g.x + clamp((nx - g.x) * 0.1, -1.6, 1.6) });
   });
   pts.push({ z: FINISH_Z, x: centerX(FINISH_Z) }, { z: FINISH_Z + 200, x: centerX(FINISH_Z + 200) });
   let k = 0;

@@ -173,8 +173,10 @@ export class SkierModel {
     if (bib) {
       const bm = new THREE.MeshStandardMaterial({ map: bibTexture(bib, outfit.jacket), roughness: 0.8, side: THREE.DoubleSide });
       this.parts.bib = add(g.bib, bm, false);
+      this.parts.bibBack = add(g.bib, bm, false);
     }
-    this.small = ['goggles', 'strap', 'gripL', 'gripR', 'basketL', 'basketR', 'collar'];
+    this.small = ['goggles', 'strap', 'gripL', 'gripR', 'basketL', 'basketR', 'collar'].filter((k) => this.parts[k]);
+    if (this.parts.bib) this.small.push('bib', 'bibBack');
     // joint scratch
     this.j = {};
     for (const k of ['hipL', 'hipR', 'kneeL', 'kneeR', 'ankL', 'ankR', 'pelvis', 'chest', 'neck', 'head', 'shL', 'shR', 'elL', 'elR', 'hdL', 'hdR', 'tipL', 'tipR', 'spine', 'side', 'fwd'])
@@ -259,6 +261,8 @@ export class SkierModel {
       const m = new THREE.Matrix4().makeBasis(j.side.clone().negate(), j.spine, j.fwd.clone().negate());
       P.bib.quaternion.setFromRotationMatrix(m);
       P.bib.rotateY(Math.PI);
+      P.bibBack.position.copy(j.pelvis).addScaledVector(j.spine, 0.3).addScaledVector(j.fwd, -0.158);
+      P.bibBack.quaternion.setFromRotationMatrix(m);
     }
 
     // arms

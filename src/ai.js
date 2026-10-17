@@ -39,6 +39,8 @@ export class AIController {
     this.restTimer = 0;
     this.lastZ = skier.pos.z;
     this.wobble = rnd() * 10;
+    this.lineBias = (rnd() - 0.5) * 4; // racers each hold their own line through the gates
+    this.ampBoost = 1;
   }
 
   laneAt(z) {
@@ -135,7 +137,7 @@ export class AIController {
     if (this.style === 'racer' && this.world.race && z < FINISH_Z) {
       const za = z + speed * 0.28;
       const slope = (lineX(za + 1.5) - lineX(za - 1.5)) / 3;
-      const e = lineX(z + 0.5) + Math.sin(this.wobble * 0.9) * (1 - this.skill) * 2 - x;
+      const e = lineX(z + 0.5) + this.lineBias * smoothstep(START_Z, START_Z + 120, z) + Math.sin(this.wobble * 0.9) * (1 - this.skill) * 2 - x;
       want = Math.atan(slope) + Math.atan((1.6 * e) / (speed + 3));
     }
     const err = wrapAngle(want - s.heading);
