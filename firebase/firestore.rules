@@ -1,0 +1,41 @@
+rules_version = '2';
+// Alpenglow: every rider writes only their own things; boards and replays are public to read.
+service cloud.firestore {
+  match /databases/{db}/documents {
+    function me(uid) { return request.auth != null && request.auth.uid == uid; }
+
+    // the cloud save of a rider's profile
+    match /users/{uid} {
+      allow read, delete: if me(uid);
+      allow write: if me(uid) && request.resource.data.keys().size() < 40;
+    }
+
+    // rider names: first come, first served
+    match /names/{key} {
+      allow read: if true;
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid
+        && key.size() >= 2 && key.size() <= 20 && request.resource.data.name is string && request.resource.data.name.size() <= 20;
+      allow update: if false;
+      allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+
+    // one best per rider per board
+    match /boards/{board}/scores/{uid} {
+      allow read: if true;
+      allow write: if me(uid) && request.resource.data.uid == uid
+        && request.resource.data.name is string && request.resource.data.name.size() <= 24
+        && (
+          (request.resource.data.score is number && request.resource.data.score >= 0 && request.resource.data.score < 3000000)
+          || (request.resource.data.time is number && request.resource.data.time > 10 && request.resource.data.time < 1800)
+        );
+    }
+
+    // the run behind a board entry
+    match /replays/{id} {
+      allow read: if true;
+      allow write: if request.auth != null && request.resource.data.uid == request.auth.uid
+        && id.matches('.*_' + request.auth.uid);
+      allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+  }
+}

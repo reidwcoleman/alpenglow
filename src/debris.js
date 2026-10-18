@@ -34,8 +34,9 @@ export class Debris {
       });
       part.visible = false;
     }
-    if (['gripL', 'basketL'].length && lose.includes('poleL')) { m.parts.gripL.visible = false; m.parts.basketL.visible = false; }
-    if (lose.includes('poleR')) { m.parts.gripR.visible = false; m.parts.basketR.visible = false; }
+    // (a binding goes with its ski)
+    if (lose.includes('skiL') && m.parts.sbindL) m.parts.sbindL.visible = false;
+    if (lose.includes('skiR') && m.parts.sbindR) m.parts.sbindR.visible = false;
   }
 
   clear(skier) {
@@ -45,7 +46,7 @@ export class Debris {
       return false;
     });
     const P = skier.model.parts;
-    for (const k of [...GEAR, 'gripL', 'gripR', 'basketL', 'basketR']) if (P[k]) P[k].visible = true;
+    for (const k of [...GEAR, 'sbindL', 'sbindR']) if (P[k]) P[k].visible = true;
     skier.model.lod = -1; // re-apply detail visibility next frame
   }
 

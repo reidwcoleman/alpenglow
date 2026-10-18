@@ -1,17 +1,26 @@
 # Alpenglow
 
-A freeski park game in the browser, built around the feel of the indie game Cork7: corks, flips, grabs, rails and butters scored by rotation, with lines that build a multiplier until you land or bail. One 3.4 km run from the summit to the village (~1 km of vertical) lined with kickers and rail zones, a terrain park, a downhill race, and a mountain full of AI skiers, under photographed skies with scanned snow and rock and real people on the skis.
+A freeski park game in the browser, with accounts, global leaderboards and multiplayer servers, built around the feel of the indie game Cork7: corks, flips, grabs, rails and butters scored by rotation, with lines that build a multiplier until you land or bail. One 3.4 km run from the summit to the village (~1 km of vertical) lined with kickers and rail zones, a terrain park, a downhill race, and a mountain full of AI skiers, under photographed skies with scanned snow and rock and real people on the skis.
 
 **Play:** https://reidwcoleman.github.io/alpenglow/
 
 ## The front page
-Built like the front page of a live-service indie game: tabs for **Ride**, **Leaderboard**, **Locker**, **Shop**, **Pass**, **Replays**, **Tricks** and **Updates** over a painted background, with your rider as a sticker standing on a lift pass (type your name on it).
-- **Flakes and XP**: every finished run (and every park session, and every race) pays XP and flakes. XP fills a 100-tier **Season Pass**: three tiers a day at full rate, a quarter after that; tiers pay flakes and every fifth one unlocks an exclusive item.
-- **Shop and Locker**: jackets (solid, chest band, camo, tartan, colour-block, fade), pants, helmets and beanies, goggles, skis, snowboards and gloves in rare, epic and legendary tiers. The Locker shows your rider on a turntable (drag to turn).
+Built like the front page of a live-service indie game: tabs for **Ride**, **Events**, **Leaderboard**, **Locker**, **Shop**, **Pass**, **Replays**, **Trick School** and **Updates** over a painted background, with your rider as a sticker standing on a lift pass (type your name on it).
+- **Flakes and XP**: every finished run (and every park session, race and event) pays XP and flakes. XP fills a 100-tier **Season Pass**: three tiers a day at full rate, a quarter after that; tiers pay flakes and every fifth one unlocks an exclusive item.
+- **Shop and Locker**: about 245 things: jackets and pants in 16 prints (camo, tartan, stripes, chevron, pixel camo, quilted puffer...), helmets (gloss, matte, chrome, racing stripes) and beanies, goggles with mirrored lenses, skis and snowboards with printed top sheets (flames, tiger, galaxy, wood, checkers...), gloves and poles, plus your choice of rider. **Today's deals** (six items, 20% off, new every day) and **outfit sets** (a whole look for 30% less). The Locker shows your rider on a turntable (drag to turn).
+- **Events**: the Alpine Cup (8-racer downhill), the Express Sprint (6 racers, the fast bottom third), a Gate Trial against medal times, and four trick contests (Yard Jam, Slopestyle Open, Forest Freeride, Big Air Showdown) against a field of computer scores. Each at Am, Pro and Legend, with medals, prizes, and Champion kit for a Pro win.
+- **Trick School**: 31 lessons from a first grab to a double cork 1080. Each has the keys step by step, your rider doing the trick on a loop, a Try it button that drops you on the right park line with the steps on screen, and flakes the first time you land it. Any of them can go on keys 1-4 as a quick trick.
 - **Daily challenge**: one trick a day for 150 flakes.
-- **Leaderboard**: your best runs on each park against a ladder of local (computer) riders, with Watch buttons.
+- **Leaderboard**: global boards for every park, Park Laps, the Alpine Cup and the Express Sprint, all time and this week, plus your own runs. Every best run is on the server: press Watch on anyone's.
 - **Replays**: your last five runs are saved in the browser (IndexedDB); keep the ones you want for good.
-Everything is stored in this browser only: there are no accounts.
+
+## Accounts and the server
+The game runs on its own Firebase project (`alpenglow-ski-reid`, config in `src/cloud.js`):
+- **Accounts**: everyone gets a guest account on first visit (Firebase anonymous auth). The account chip (top right) turns it into a real account with an email and password, keeping everything earned as a guest; signing in on another device brings the same rider. Rider names are unique (first come, first served).
+- **Cloud save** (Firestore `users/{uid}`): wallet, XP, items, kit, medals, lessons, quick tricks, trick book and best runs, written a moment after anything changes. The browser keeps a copy, so it plays offline too.
+- **Leaderboards** (`boards/{board}/scores/{uid}`, all time and `-w<week>`) with the run itself in `replays/{board}_{uid}`: 15 frames a second, positions as floats and the rest as 16-bit steps, gzipped (~100-200 KB).
+- **Servers** (Realtime Database `rooms/{server}` and `lobby`): two or three public servers per park plus private room codes. The menu shows who's on each. Anyone on a Yard server can **race everyone on it**: the start time goes through the server, all riders count down together and the results come in live.
+- Rules are in `firebase/` (`firebase deploy --only firestore:rules,database`). If Firebase can't be reached, multiplayer falls back to public MQTT relays and progress stays on the device.
 
 ## Skis or snowboard
 Pick SKIS or SNOWBOARD on the Ride tab. Snowboarders stand sideways on a twin-tip board (left foot forward) with a tighter 7.5 m sidecut, float better in powder, can't tuck as small, and ride switch after landing a half turn. Spins are called by side (FS 360, BS 540, Half Cab, Cab 720, Switch BS), rolls are wildcats and tamedogs, and the grabs are indy, melon, method, stalefish, nose and tail. About a third of the riders on the mountain are snowboarders.
@@ -27,7 +36,8 @@ Pick one on the illustrated map (Ride > the park card), by day or by night. Each
 - **The Run**: top to bottom with a timer, score, minimap and a results card. Hold R for 2 s to restart.
 - **Ski Park** (The Yard): laps of the terrain park. Keys 1-4 jump to a line, and holding R takes you to the top of yours.
 - **Race the Cup** (The Yard): mass-start downhill against 7 AI racers through 39 gates, with realistic physics.
-- **Multiplayer**: pick Multiplayer before you ride. Same park and same room means the same slope. You get name tags, Tab for the room list, T to chat, a live trick feed, and invite links (`?park=forest&room=abc`). It runs over public MQTT relays: the game connects to all three at once and de-duplicates messages, so there is no server of our own.
+- **Multiplayer**: pick Multiplayer and a server (or type a private room code) before you ride. Same park and same server means the same slope. You get name tags, Tab for the room list, T to chat, a live trick feed, server races, and invite links (`?park=forest&room=abc`).
+- **Events**: see the Events tab above. Races and the trial run on The Yard, contests on every park.
 - **Replays**: V replays your last trick, and the results card plays the whole run. You get chase, TV, GoPro, orbit and drone cameras, 1/4 to 1x speed, scrubbing, and "Save clip" (records the canvas to a .webm).
 
 Five conditions: Bluebird Morning, Golden Hour, Alpenglow Dusk, Night Session (a moonlit sky with floodlight towers, the nearest ones real spot lights with shadows) and Powder Day (snowfall).
@@ -49,9 +59,12 @@ Five conditions: Bluebird Morning, Golden Hour, Alpenglow Dusk, Night Session (a
 | Restart (hold) | R | View |
 | Replay | V | |
 | Room list / chat (multiplayer) | Tab / T | |
+| Quick tricks (in the air: now; on the snow: armed for the next kicker, popped for you at the lip) | 1 / 2 / 3 / 4 | |
 | Pause / mute | Esc / M | Menu |
 
 On a rail, A/D swap the slide a quarter turn and Space pops off. Touch controls appear on phones and tablets.
+
+Quick tricks: put any Trick School trick on keys 1-4. The rider flies it for you, planned on takeoff as the biggest version that fits the air (a double cork off a medium kicker becomes a cork 720), and lands it. In the park, keys 1-4 on the snow still pick a line.
 
 Landing assist: about 0.45 s before touchdown the rider finishes whatever rotation is closest to a clean landing (the nearest half turn of spin, the nearest whole flip, carrying on if well into it). Way off still bails. The Tricks tab is a trick book that ticks off each family the first time you land it; new tricks call out "NEW TRICK" and count on the results card.
 
@@ -71,7 +84,9 @@ Landing assist: about 0.45 s before touchdown the rider finishes whatever rotati
 - `src/ai.js`: AI skiers drive the same physics through the same controls. Racers track the racing line (Stanley controller) with curvature-based speed checks, and everyone else follows pursuit lines with speed control, avoidance and park tricks.
 - `src/terrain.js`: chunked LOD terrain + mid/far rings, snow shader (wind ripples, corduroy, rock on steep faces, sun glints).
 - `src/park.js` (+ the park section of `course.js`): table jumps, rollers, halfpipe and rail ramps are part of the shared height function; a fine surface mesh draws them over the coarser terrain, which `meshHeightAt` sinks underneath. Grinds (`Skier.stepGrind`) follow the rail with gravity and friction (and in the race physics, a balance you steer to keep); the pipe turns the skis to follow the speed on the walls and sends lip airs straight up and back in.
-- `src/avatar.js`: Rocketbox avatars driven from the skier's procedural pose: spine and head from its frames, arms and legs re-solved with the avatar's own bone lengths, clothes re-dyed into jacket, pants and gloves.
+- `src/avatar.js`: Rocketbox avatars driven from the skier's procedural pose: spine and head from its frames, arms and legs re-solved with the avatar's own bone lengths. The clothes are re-dyed and re-made in the shader: prints, a zip, chest pocket, hem and cuffs, quilting, cargo pockets and roomy pants that flare over the boots; hair is tucked inside the helmet or beanie and the feet inside the boots. The player is always one of the lads (Rider in the Locker).
+- `src/gear.js`: the kit built in code: helmet shells fitted to the avatars' heads (stripe and vents drawn in the shader), knitted beanies with cuffs and poms, goggles with a mirrored bulging lens and a strap, lofted ski and snowboard boots, skis and boards with sidecut, rocker and printed top sheets (17 designs painted on a canvas), bindings and poles.
+- `src/cloud.js`, `src/events.js`, `src/school.js`: the server (accounts, saves, boards, replays, servers), the events and their fields, the Trick School lessons and quick-trick specs.
 - `src/sky.js`: HDRI sky dome, image-based light from it, and a sun placed where the photo's sun is.
 - `src/spruce.js`, `src/trees.js`: snow-laden spruces from a painted needle bough with snow settling on the upper faces, three instanced LODs.
 - `src/props.js`: chairlift with moving chairs, gates, start house, finish arena + crowd, village, blue course nets, rocks.
@@ -99,8 +114,13 @@ node tools/tour.mjs shots/tour free golden   # screenshots around the mountain
 node tools/trick.mjs shots/cork KeyD,KeyS Large   # ride a table with real keys and film the trick
 node tools/rail.mjs shots/rail "Long Tube" 2      # ride a rail, swap twice
 node tools/ui2.mjs shots/ui2     # park picker, two browsers in one multiplayer room, replay
+node tools/cloudtest.mjs bigair  # guest run -> global board -> watch it off the server -> cloud save
+node tools/srvrace.mjs           # two browsers on one server race each other
+node tools/eventtest.mjs sprint 1 yard   # an event on autopilot to its results
+node tools/quick.mjs cork Large  # a quick trick off a park kicker
+node tools/portrait.mjs out.jpg 4 1.6 1.66 20   # rider portraits (OUTFITS='[{"head":"hx-racer"}]')
 PARK=forest node tools/sim.mjs free 150   # any park headless
 ```
-URL flags: `?park=yard|slope|forest|bigair&room=name&menu=0&mode=race|run|park&line=jumps|rails|pipe&auto=1&tod=bluebird|golden|alpenglow|night|storm&z=1200&cam=chase|action|helmet|tv&q=low|high|ultra`.
+URL flags: `?park=yard|slope|forest|bigair&room=name&event=cup|sprint|trial|jam|slopestyle|freeride|bigair&tier=0|1|2&cwatch=<replay id>&menu=0&mode=race|run|park&line=jumps|rails|pipe&auto=1&tod=bluebird|golden|alpenglow|night|storm&z=1200&cam=chase|action|helmet|tv&q=low|high|ultra`.
 
 Pushing `main` deploys to GitHub Pages.

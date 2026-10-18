@@ -2,6 +2,9 @@
 // Local frame: +Z = ski tips, +Y = up, +X = skier's left.
 import * as THREE from 'three';
 import { avatarKits, AvatarRig } from './avatar.js';
+import { ITEMS } from './meta.js';
+import { helmetGeometry, helmetMaterial, beanieGeometry, goggleGeometry, lensGeometry, strapGeometry, skiBootGeometry, boardBootGeometry,
+  skiGeometry, boardGeometry, skiBindingGeometry, boardBindingGeometry, poleGeometry, designTexture } from './gear.js';
 
 const THIGH = 0.44, SHIN = 0.45, UPPER = 0.29, FORE = 0.28, POLE = 1.18;
 
@@ -16,113 +19,21 @@ function geos() {
     torso: new THREE.CapsuleGeometry(0.155, 0.3, 6, 14),
     hips: new THREE.CapsuleGeometry(0.118, 0.1, 4, 12).rotateZ(Math.PI / 2),
     face: new THREE.SphereGeometry(0.098, 16, 12),
-    helmet: new THREE.SphereGeometry(0.122, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.56),
-    goggles: new THREE.CylinderGeometry(0.118, 0.118, 0.062, 20, 1, true, -Math.PI * 0.42, Math.PI * 0.84),
-    strap: new THREE.CylinderGeometry(0.121, 0.121, 0.03, 20, 1, true, Math.PI * 0.58, Math.PI * 0.84),
+    goggles: goggleGeometry(),
+    lens: lensGeometry(),
     hand: new THREE.SphereGeometry(0.055, 10, 8).scale(1, 1.1, 1.25),
-    boot: new THREE.BoxGeometry(0.105, 0.11, 0.3, 1, 1, 1).translate(0, 0.07, 0.01),
+    boot: skiBootGeometry(),
+    bboot: boardBootGeometry(),
     cuff: new THREE.CylinderGeometry(0.066, 0.06, 0.2, 10).translate(0, 0.17, -0.02),
-    pole: new THREE.CylinderGeometry(0.0085, 0.0065, POLE, 6).translate(0, -POLE / 2, 0),
-    grip: new THREE.CylinderGeometry(0.017, 0.015, 0.14, 8).translate(0, -0.05, 0),
-    basket: new THREE.CylinderGeometry(0.045, 0.045, 0.008, 10).translate(0, -POLE + 0.09, 0),
+    pole: poleGeometry(POLE),
     ski: skiGeometry(),
+    skiBind: skiBindingGeometry(),
     collar: new THREE.TorusGeometry(0.085, 0.035, 8, 14).rotateX(Math.PI / 2),
     bib: new THREE.PlaneGeometry(0.22, 0.2),
     board: boardGeometry(),
-    binding: bindingGeometry(),
-    beanie: new THREE.SphereGeometry(0.121, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.6).scale(1, 1.18, 1.04),
-    cuffB: new THREE.CylinderGeometry(0.124, 0.126, 0.05, 20, 1, true).translate(0, 0.03, 0),
-    pom: new THREE.SphereGeometry(0.035, 10, 8).translate(0, 0.15, 0),
+    binding: boardBindingGeometry(),
   };
   return G;
-}
-
-// a twin-tip snowboard, 1.56 m, waist 25 cm, rockered nose and tail; built nose along +X
-function boardGeometry() {
-  const L = 1.56, segs = 56, T = 0.016;
-  const pos = [], col = [], idx = [];
-  const top = new THREE.Color(1, 1, 1), dark = new THREE.Color(0.05, 0.05, 0.06), band = new THREE.Color(0.16, 0.16, 0.18), light = new THREE.Color(0.85, 0.85, 0.82);
-  for (let i = 0; i <= segs; i++) {
-    const t = i / segs;
-    const z = -L / 2 + t * L;
-    const u = Math.abs(t - 0.5) * 2; // 0 at the waist, 1 at the tips
-    let w = 0.124 + 0.02 * Math.pow(Math.min(u / 0.74, 1), 2);
-    if (u > 0.8) w *= 0.3 + 0.7 * Math.sqrt(Math.max(0, 1 - ((u - 0.8) / 0.2) ** 2));
-    const y = 0.006 + (u > 0.72 ? ((u - 0.72) / 0.28) ** 2 * 0.075 : 0);
-    const graphic = u > 0.6 && u < 0.7 ? band : Math.abs(u - 0.18) < 0.03 ? light : u < 0.1 ? band : top;
-    pos.push(w, y + T, z, -w, y + T, z, w, y, z, -w, y, z);
-    for (const c of [graphic, graphic, dark, dark]) col.push(c.r, c.g, c.b);
-  }
-  for (let i = 0; i < segs; i++) {
-    const a = i * 4, b = a + 4;
-    idx.push(a, b, a + 1, a + 1, b, b + 1);
-    idx.push(a + 2, a + 3, b + 2, a + 3, b + 3, b + 2);
-    idx.push(a, a + 2, b, a + 2, b + 2, b);
-    idx.push(a + 1, b + 1, a + 3, a + 3, b + 1, b + 3);
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  g.setIndex(idx);
-  g.rotateY(Math.PI / 2);
-  g.computeVertexNormals();
-  return g;
-}
-
-// base plate, heel cup and highback, toes along +Z
-function bindingGeometry() {
-  const parts = [
-    new THREE.BoxGeometry(0.13, 0.018, 0.27).translate(0, 0.009, 0.04),
-    new THREE.BoxGeometry(0.13, 0.06, 0.014).translate(0, 0.04, -0.075),
-    new THREE.BoxGeometry(0.11, 0.15, 0.012).translate(0, 0.075, 0).rotateX(-0.25).translate(0, 0.06, -0.075),
-    new THREE.BoxGeometry(0.135, 0.022, 0.04).translate(0, 0.085, 0.11),
-  ];
-  const pos = [], idx = [];
-  let o = 0;
-  for (const p of parts) {
-    const ng = p.toNonIndexed();
-    const a = ng.getAttribute('position');
-    for (let i = 0; i < a.count; i++) { pos.push(a.getX(i), a.getY(i), a.getZ(i)); idx.push(o + i); }
-    o += a.count;
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setIndex(idx);
-  g.computeVertexNormals();
-  return g;
-}
-
-function skiGeometry() {
-  // 1.72 m ski with sidecut, rocker tip and tail, coloured top sheet
-  const L = 1.72, segs = 40, T = 0.018;
-  const pos = [], col = [], idx = [];
-  const top = new THREE.Color(1, 1, 1), dark = new THREE.Color(0.05, 0.05, 0.06), accent = new THREE.Color(0.18, 0.18, 0.2);
-  for (let i = 0; i <= segs; i++) {
-    const t = i / segs; // 0 tail, 1 tip
-    const z = -L * 0.44 + t * L;
-    const sc = 1 - Math.sin(t * Math.PI) * 0.22; // sidecut
-    let w = 0.052 * sc * (t > 0.9 ? 1 - (t - 0.9) * 3.5 : 1) * (t < 0.04 ? 0.8 + t * 5 : 1);
-    let y = 0.012;
-    if (t > 0.86) y += Math.pow((t - 0.86) / 0.14, 2) * 0.075;
-    if (t < 0.06) y += Math.pow((0.06 - t) / 0.06, 2) * 0.03;
-    const graphic = (Math.abs(t - 0.62) < 0.07 || Math.abs(t - 0.3) < 0.025) ? accent : top;
-    // top-left, top-right, bottom-left, bottom-right
-    pos.push(w, y + T, z, -w, y + T, z, w, y, z, -w, y, z);
-    for (const c of [graphic, graphic, dark, dark]) col.push(c.r, c.g, c.b);
-  }
-  for (let i = 0; i < segs; i++) {
-    const a = i * 4, b = a + 4;
-    idx.push(a, b, a + 1, a + 1, b, b + 1); // top
-    idx.push(a + 2, a + 3, b + 2, a + 3, b + 3, b + 2); // base
-    idx.push(a, a + 2, b, a + 2, b + 2, b); // left side
-    idx.push(a + 1, b + 1, a + 3, a + 3, b + 1, b + 3); // right side
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  g.setIndex(idx);
-  g.computeVertexNormals();
-  return g;
 }
 
 const PALETTE = {
@@ -138,25 +49,31 @@ const PALETTE = {
 
 function pick(arr, rnd) { return arr[Math.floor(rnd() * arr.length)]; }
 
+// a rider for the mountain, dressed from the shop's catalogue
+const DESIGNS = ['logo', 'stripe', 'tip', 'chevron', 'flames', 'checker', 'wood', 'tiger', 'galaxy', 'bolt', 'peaks', 'fade', 'camo', 'stars', 'dots', 'split', 'pixel'];
 export function randomOutfit(rnd, racer = false) {
-  const jacket = pick(PALETTE.jackets, rnd);
-  return {
-    jacket,
-    pants: racer ? jacket : pick(PALETTE.pants, rnd),
-    helmet: racer ? pick([0xf4f4f4, 0x15161a, jacket], rnd) : pick(PALETTE.helmets, rnd),
-    goggles: pick(PALETTE.goggles, rnd),
-    skis: pick(PALETTE.skis, rnd),
-    boots: pick([0x15161a, 0xf0f0f0, 0x2a2d35, 0xd8342c], rnd),
-    gloves: pick([0x15161a, 0x2a2d35, 0x5a3a28, jacket], rnd),
+  const of = (cat) => { const l = ITEMS.filter((it) => it.cat === cat && it.r !== 'event'); return l[Math.floor(rnd() * l.length)]; };
+  const j = of('jacket'), p = of('pants'), h = of('head'), g = of('goggles'), sk = of('skis'), dk = of('deck'), gl = of('gloves');
+  const jacket = racer ? pick(PALETTE.jackets, rnd) : j.c;
+  const o = {
+    jacket, jacket2: racer ? jacket : j.c2 ?? j.c, jpat: racer ? 0 : j.pat,
+    pants: racer ? jacket : p.c, pants2: racer ? jacket : p.c2 ?? p.c, ppat: racer ? 0 : p.pat,
+    helmet: racer ? pick([0xf4f4f4, 0x15161a, jacket], rnd) : h.helmet ? h.c : pick(PALETTE.helmets, rnd),
+    helmet2: !racer && h.helmet ? h.c2 : null, helmetFin: !racer && h.helmet ? h.fin ?? 0 : 0,
+    goggles: g.c, goggles2: g.c2 ?? 0x16171c,
+    skis: sk.c, skis2: sk.c2 ?? 0xffffff, skiDesign: racer ? pick(['logo', 'stripe', 'tip'], rnd) : sk.design ?? pick(DESIGNS, rnd),
+    boots: pick([0x15161a, 0xf0f0f0, 0x2a2d35, 0xd8342c, 0x1f4fd1], rnd),
+    gloves: gl.c, gloves2: gl.c2 ?? gl.c,
+    poles: pick([0x9ea5b0, 0x15161a, 0xd8342c, 0xd9a520], rnd),
     skin: pick(PALETTE.skin, rnd),
     avatar: rnd(),
     racer,
-    // freeriders: some wear a beanie over the goggles, park kids ride baggier
-    beanie: !racer && rnd() < 0.3 ? pick(PALETTE.beanies, rnd) : 0,
-    pom: rnd() < 0.5,
+    beanie: !racer && h.beanie ? h.c : 0,
+    pom: !!h.pom,
     board: false,
-    deck: pick(PALETTE.boards, rnd),
+    deck: dk.c, deck2: dk.c2 ?? 0x15161a, deckDesign: dk.design ?? pick(DESIGNS, rnd),
   };
+  return o;
 }
 
 const Y = new THREE.Vector3(0, 1, 0);
@@ -223,15 +140,19 @@ export class SkierModel {
     this.board = !!outfit.board;
     const jacketM = M(outfit.jacket, outfit.racer ? 0.35 : 0.72);
     const pantsM = M(outfit.pants, outfit.racer ? 0.35 : 0.8);
-    const helmetM = outfit.beanie ? M(outfit.beanie, 0.95) : M(outfit.helmet, 0.28, 0.05);
-    const goggleM = M(outfit.goggles, 0.18, 0.75, { envMapIntensity: 1.1 });
-    const strapM = M(0x16171c, 0.8);
+    // helmets: gloss, matte or chrome, maybe a stripe; a beanie is soft knit
+    const fin = outfit.helmetFin ?? 0;
+    const helmetM = outfit.beanie ? M(outfit.beanie, 0.95, 0, { vertexColors: true }) : helmetMaterial(outfit.helmet, outfit.helmet2, fin);
+    const frameM = M(outfit.goggles2 ?? 0x16171c, 0.45, 0.1, { vertexColors: true });
+    const lensM = new THREE.MeshStandardMaterial({ color: outfit.goggles, metalness: 0.85, roughness: 0.1, envMapIntensity: 1.8, emissive: new THREE.Color(outfit.goggles).multiplyScalar(0.16) });
+    const strapM = M(outfit.goggles2 ?? 0x16171c, 0.8, 0, { vertexColors: true, side: THREE.DoubleSide });
     const skinM = M(outfit.skin, 0.6);
     const gloveM = M(outfit.gloves, 0.75);
-    const bootM = M(outfit.boots, 0.35);
-    const skiM = new THREE.MeshStandardMaterial({ color: this.board ? outfit.deck ?? 0xffffff : outfit.skis, vertexColors: true, roughness: 0.3, metalness: 0.1 });
-    const poleM = M(0x9ea5b0, 0.3, 0.8);
+    const bootM = M(outfit.boots, this.board ? 0.8 : 0.3, 0.04, { vertexColors: true });
+    const skiM = new THREE.MeshStandardMaterial({ map: this.board ? designTexture(outfit.deckDesign ?? 'logo', outfit.deck ?? 0xffffff, outfit.deck2 ?? 0x15161a, true) : designTexture(outfit.skiDesign ?? 'logo', outfit.skis, outfit.skis2 ?? 0xffffff), roughness: 0.28, metalness: 0.05 });
+    const poleM = M(outfit.poles ?? 0x9ea5b0, 0.3, 0.8, { vertexColors: true });
     const darkM = M(0x111215, 0.6);
+    const bindM = M(this.board ? outfit.deck2 ?? 0xffffff : 0xd9dde3, 0.45, 0.2, { vertexColors: true });
 
     this.group = new THREE.Group();
     this.tilt = new THREE.Group();
@@ -249,8 +170,9 @@ export class SkierModel {
       this.frame.add(m);
       return m;
     };
+    const bootG = this.board ? g.bboot : g.boot;
     this.parts = {
-      bootL: add(g.boot, bootM), bootR: add(g.boot, bootM),
+      bootL: add(bootG, bootM), bootR: add(bootG, bootM),
       cuffL: add(g.cuff, bootM), cuffR: add(g.cuff, bootM),
       shinL: add(g.shin, pantsM), shinR: add(g.shin, pantsM),
       thighL: add(g.thigh, pantsM), thighR: add(g.thigh, pantsM),
@@ -258,39 +180,35 @@ export class SkierModel {
       torso: add(g.torso, jacketM),
       collar: add(g.collar, outfit.racer ? jacketM : darkM),
       face: add(g.face, skinM),
-      helmet: add(outfit.beanie ? g.beanie : g.helmet, helmetM),
-      goggles: add(g.goggles, goggleM, false),
-      strap: add(g.strap, strapM, false),
+      helmet: add(outfit.beanie ? beanieGeometry(!!outfit.pom) : helmetGeometry(), helmetM),
+      goggles: add(g.goggles, frameM, false),
+      lens: add(g.lens, lensM, false),
+      strap: add(strapGeometry(!!outfit.beanie), strapM, false),
       upperL: add(g.upper, jacketM), upperR: add(g.upper, jacketM),
       foreL: add(g.fore, jacketM), foreR: add(g.fore, jacketM),
       handL: add(g.hand, gloveM), handR: add(g.hand, gloveM),
     };
     const P = this.parts;
+    // the right boot is the left one mirrored (buckles on the outside)
+    P.bootR.scale.x = -1;
+    for (const k of ['cuffL', 'cuffR']) P[k].scale.setScalar(0.001);
     if (this.board) {
       P.deck = add(g.board, skiM);
-      const bm = M(0x1b1c20, 0.45, 0.2);
-      P.bindL = add(g.binding, bm); P.bindR = add(g.binding, bm);
-      for (const k of ['cuffL', 'cuffR']) P[k].scale.set(1.25, 1, 1.25);
-      for (const k of ['bootL', 'bootR']) P[k].scale.set(1.15, 1.2, 1.05);
+      P.bindL = add(g.binding, bindM); P.bindR = add(g.binding, bindM);
     } else {
       Object.assign(P, {
         skiL: add(g.ski, skiM), skiR: add(g.ski, skiM),
+        sbindL: add(g.skiBind, bindM), sbindR: add(g.skiBind, bindM),
         poleL: add(g.pole, poleM), poleR: add(g.pole, poleM),
-        gripL: add(g.grip, darkM, false), gripR: add(g.grip, darkM, false),
-        basketL: add(g.basket, darkM, false), basketR: add(g.basket, darkM, false),
       });
-    }
-    if (outfit.beanie) {
-      P.cuffB = add(g.cuffB, helmetM, false);
-      if (outfit.pom) P.pom = add(g.pom, helmetM, false);
     }
     if (bib) {
       const bm = new THREE.MeshStandardMaterial({ map: bibTexture(bib, outfit.jacket), roughness: 0.8, side: THREE.DoubleSide });
       P.bib = add(g.bib, bm, false);
       P.bibBack = add(g.bib, bm, false);
     }
-    this.headGear = ['helmet', 'goggles', 'strap', 'cuffB', 'pom'].filter((k) => P[k]);
-    this.small = ['goggles', 'strap', 'gripL', 'gripR', 'basketL', 'basketR', 'collar', 'cuffB', 'pom', 'bindL', 'bindR'].filter((k) => P[k]);
+    this.headGear = ['helmet', 'goggles', 'lens', 'strap'].filter((k) => P[k]);
+    this.small = ['goggles', 'lens', 'strap', 'collar', 'bindL', 'bindR', 'sbindL', 'sbindR'].filter((k) => P[k]);
     if (P.bib) this.small.push('bib', 'bibBack');
     // joint scratch
     this.j = {};
@@ -304,14 +222,12 @@ export class SkierModel {
     this.lod = 0;
     // a real body when the avatars are loaded (browser only); the capsules stay for far away
     if (avatarKits.length) {
-      const kit = avatarKits[Math.floor((outfit.avatar ?? Math.random()) * avatarKits.length) % avatarKits.length];
+      // the player's rider is one of the lads, picked by index; everyone else is random
+      const lads = avatarKits.filter((k) => !/Female/.test(k.name));
+      const kit = outfit.male ? lads[(outfit.avatar | 0) % lads.length] : avatarKits[Math.floor((outfit.avatar ?? Math.random()) * avatarKits.length) % avatarKits.length];
       this.rig = new AvatarRig(kit, outfit);
       this.frame.add(this.rig.root);
       this.body = ['shinL', 'shinR', 'thighL', 'thighR', 'hips', 'torso', 'collar', 'face', 'upperL', 'upperR', 'foreL', 'foreR', 'handL', 'handR'].map((k) => P[k]);
-      // the body wears its own (dyed) boots: what's left of the capsule boot is the binding
-      for (const k of ['cuffL', 'cuffR']) P[k].scale.setScalar(0.001);
-      if (this.board) for (const k of ['bootL', 'bootR']) P[k].scale.setScalar(0.001);
-      else for (const k of ['bootL', 'bootR']) { P[k].scale.set(0.95, 0.45, 1.05); P[k].material = new THREE.MeshStandardMaterial({ color: 0x2b2e35, roughness: 0.4, metalness: 0.5 }); }
       this.f = {
         pelvis: new THREE.Vector3(), hipSide: new THREE.Vector3(), pelvisUp: new THREE.Vector3(), side: null, spine: null, fwd: null,
         headQ: new THREE.Quaternion(), ank: [new THREE.Vector3(), new THREE.Vector3()], hand: [new THREE.Vector3(), new THREE.Vector3()],
@@ -341,7 +257,7 @@ export class SkierModel {
     const lod = near ? 0 : 1;
     if (lod === this.lod) return;
     this.lod = lod;
-    for (const k of this.small) if (!(this.gearOff && /grip|basket/.test(k)) && !(this.real && this.body?.includes(this.parts[k])) && !(this.headHidden && this.headGear.includes(k))) this.parts[k].visible = near;
+    for (const k of this.small) if (!(this.gearOff && /sbind/.test(k)) && !(this.real && this.body?.includes(this.parts[k])) && !(this.headHidden && this.headGear.includes(k))) this.parts[k].visible = near;
     for (const k in this.parts) this.parts[k].castShadow = near && !this.small.includes(k);
   }
 
@@ -434,11 +350,12 @@ export class SkierModel {
     const plowYaw = p.plow * 0.32;
     // skis roll further onto edge than the body leans when edging at low speed
     const extraEdge = clamp((p.edge || 0) * 0.75 - p.lean, -0.45, 0.45) * (Math.abs(p.edge || 0) > Math.abs(p.lean) ? 1 : 0);
-    for (const [s, ank, ski, boot, cuff, yaw] of [[1, j.ankL, P.skiL, P.bootL, P.cuffL, -plowYaw + skate * 0.36 - cross], [-1, j.ankR, P.skiR, P.bootR, P.cuffR, plowYaw - skate * 0.36 + cross]]) {
+    for (const [s, ank, ski, boot, cuff, yaw, bind] of [[1, j.ankL, P.skiL, P.bootL, P.cuffL, -plowYaw + skate * 0.36 - cross, P.sbindL], [-1, j.ankR, P.skiR, P.bootR, P.cuffR, plowYaw - skate * 0.36 + cross, P.sbindR]]) {
       ski.position.set(ank.x, ank.y - 0.17, ank.z);
       ski.rotation.set(air * -0.12 + tipPitch - (s > 0 ? daffy : -daffy) * 0.35, yaw - shifty, extraEdge);
       boot.position.set(ank.x, ank.y - 0.17, ank.z);
       boot.rotation.copy(ski.rotation);
+      bind.position.copy(ski.position); bind.rotation.copy(ski.rotation);
       cuff.position.copy(boot.position);
       cuff.rotation.set(0.25 + crouch * 0.2 + tuck * 0.3, yaw - shifty, 0);
     }
@@ -508,14 +425,14 @@ export class SkierModel {
     const extraEdge = clamp((p.edge || 0) * 0.75 - p.lean, -0.45, 0.45) * (Math.abs(p.edge || 0) > Math.abs(p.lean) ? 1 : 0);
     this.boardQ.setFromUnitVectors(tmpV2.set(1, 0, 0), dir).multiply(tmpQ.setFromAxisAngle(tmpV2.set(1, 0, 0), extraEdge + (G.roll ?? 0) * g));
     if (shifty) this.boardQ.premultiply(tmpQ.setFromAxisAngle(Y, -shifty));
-    const up = tmpV2.set(0, 1, 0).applyQuaternion(this.boardQ);
+    const up = (this._up ??= new THREE.Vector3()).set(0, 1, 0).applyQuaternion(this.boardQ);
     P.deck.position.addVectors(j.ankL, j.ankR).multiplyScalar(0.5).addScaledVector(up, -0.17);
     P.deck.quaternion.copy(this.boardQ);
     for (const [ank, boot, cuff, bind, duck] of [[j.ankL, P.bootL, P.cuffL, P.bindL, 0.26], [j.ankR, P.bootR, P.cuffR, P.bindR, -0.26]]) {
       const q = tmpQ.copy(this.boardQ).multiply(new THREE.Quaternion().setFromAxisAngle(Y, duck));
-      bind.position.copy(ank).addScaledVector(up, -0.155);
+      bind.position.copy(ank).addScaledVector(up, -0.165);
       bind.quaternion.copy(q);
-      boot.position.copy(ank).addScaledVector(up, -0.15);
+      boot.position.copy(ank).addScaledVector(up, -0.165);
       boot.quaternion.copy(q);
       cuff.position.copy(boot.position);
       cuff.quaternion.copy(q).multiply(new THREE.Quaternion().setFromAxisAngle(tmpV2.set(1, 0, 0), 0.3 + crouch * 0.3));
@@ -613,35 +530,28 @@ export class SkierModel {
     P.handL.quaternion.copy(P.foreL.quaternion); P.handR.quaternion.copy(P.foreR.quaternion);
 
     // gear on the real body: helmet on its head, bib on its chest, poles in its hands
-    const fw = tmpV2.set(0, 0, 1).applyQuaternion(hq);
     let skull = j.head;
     if (this.rig && this.real) {
       const r = this.rig;
       skull = r.skull;
-      for (const k of this.headGear) { P[k].position.copy(r.skull); P[k].scale.setScalar(1.06); }
       j.hdL.copy(r.palm[0]); j.hdR.copy(r.palm[1]);
       if (P.bib) {
         P.bib.position.copy(r.chestP).addScaledVector(j.spine, 0.05).addScaledVector(j.fwd, 0.17);
         P.bibBack.position.copy(r.chestP).addScaledVector(j.spine, 0.05).addScaledVector(j.fwd, -0.16);
       }
-    }
-    P.helmet.position.copy(skull).addScaledVector(headUp, P.cuffB ? 0.008 : 0.016);
-    P.goggles.position.copy(skull).addScaledVector(headUp, P.cuffB ? 0.03 : 0.014).addScaledVector(fw, 0.012);
-    P.strap.position.copy(P.goggles.position);
-    if (P.cuffB) P.cuffB.position.copy(skull).addScaledVector(headUp, 0.02);
-    if (P.pom) P.pom.position.copy(skull).addScaledVector(headUp, 0.012);
+    } else skull = tmpV2.copy(j.head).addScaledVector(headUp, -0.02);
+    // (all the head gear is built round the skull point, in the head's frame)
+    for (const k of this.headGear) P[k].position.copy(skull);
     if (this.board) return;
     // poles: tip trails behind near the snow; planted tip is ahead
     const air = this.airS;
-    for (const [s, hd, pole, grip, basket] of [[1, j.hdL, P.poleL, P.gripL, P.basketL], [-1, j.hdR, P.poleR, P.gripR, P.basketR]]) {
+    for (const [s, hd, pole] of [[1, j.hdL, P.poleL], [-1, j.hdR, P.poleR]]) {
       const tip = tmpV.set(hd.x + s * 0.12, 0.06, hd.z - 0.62);
       tip.lerp(tmpV2.set(hd.x + s * 0.06, hd.y + 0.12, hd.z - 1.15), Math.max(tuck, air * 0.7));
       if (p.polePlant > 0 && s === p.poleSide) tip.lerp(tmpV2.set(hd.x + s * 0.18, 0.0, hd.z + 0.45), p.polePlant);
       const dir = tip.sub(hd).normalize();
       pole.position.copy(hd);
       pole.quaternion.setFromUnitVectors(Y, dir.negate());
-      grip.position.copy(hd); grip.quaternion.copy(pole.quaternion);
-      basket.position.copy(hd); basket.quaternion.copy(pole.quaternion);
     }
   }
 }

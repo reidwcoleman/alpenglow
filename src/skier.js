@@ -269,10 +269,11 @@ export class Skier {
     if (c.jump) this.jumpCharge = Math.min(1, this.jumpCharge + dt * 2.5);
     let pop = 0;
     if (!c.jump && this.jumpCharge > 0) {
-      pop = (this.world.arcade ? 2.6 : 2.2) + this.jumpCharge * (this.world.arcade ? 2.9 : 2.6);
+      // a real ollie is a metre or so: legs can add ~2-4 m/s, a little more timed off a lip
+      pop = (this.world.arcade ? 2.2 : 2.0) + this.jumpCharge * (this.world.arcade ? 2.3 : 2.2);
       this.jumpCharge = 0;
-      // timed at the lip, the legs' extension adds to the kicker's: a much bigger pop
-      if (this.world.arcade && this.lipAhead(-0.5, 2.6)) { pop *= 1.35; this.perfectPop = true; this.emit('pop', { perfect: true }); }
+      // timed at the lip, the legs' extension adds to the kicker's: a bigger pop
+      if (this.world.arcade && this.lipAhead(-0.5, 2.6)) { pop *= 1.28; this.perfectPop = true; this.emit('pop', { perfect: true }); }
     }
     if (this.butterPop) { pop = Math.max(pop, this.butterPop); this.butterPop = 0; }
 
@@ -287,6 +288,9 @@ export class Skier {
       this.grabTime = 0; this.maxAirY = this.pos.y - gy; this.takeoffZ = this.pos.z; this.popped = pop > 0;
       this.shiftyT = 0; this.daffyT = 0; this.assist = null; this.tLand = 9; this.landProbe = 0;
       this.offKicker = !!this.lipAhead(-1.6, 0.6);
+      // an armed quick trick goes on a real jump, not every little hop
+      this.auto = null;
+      if (this.autoArm && this.flightTime() > 0.55) { this.auto = this.autoArm; this.autoArm = null; }
       if (pop <= 0) this.perfectPop = false;
       // wound up on the way in: the spin starts already turning
       this.spinVel = this.world.arcade ? -c.steer * 7.4 * 0.7 * (Math.abs(c.steer) > 0.3 ? 1 : 0) : 0;
@@ -353,13 +357,18 @@ export class Skier {
     const sp = v.length();
     const k = (0.5 * RHO * (0.6 - 0.2 * c.tuck)) / this.mass;
     v.addScaledVector(v, -k * sp * dt);
+    // wind (a storm's gusts): drag toward the air's own velocity, felt most in the air
+    const W = this.world.wind;
+    if (W && W.s > 0) { v.x += W.x * W.s * k * 7 * dt; v.z += W.z * W.s * k * 7 * dt; }
+    // a quick trick flies itself (sized to the air there is)
+    if (this.auto && this.world.arcade && this.airTime > 0.05) this.autoTrick(dt, c);
     // spins (A/D) about the vertical; grabbing tucks you up and spins you faster
     const arc = this.world.arcade;
     let spinRate;
     if (arc) {
       // a late pop just off the lip still counts
       if (this.airTime < 0.22 && !this.popped && !c.jump && this.jumpCharge > 0) {
-        v.y += (2.2 + this.jumpCharge * 2.4) * (this.offKicker ? 1.2 : 0.85);
+        v.y += (1.9 + this.jumpCharge * 2.0) * (this.offKicker ? 1.18 : 0.85);
         this.popped = true;
         if (this.offKicker) { this.perfectPop = true; this.emit('pop', { perfect: true, late: true }); }
         this.jumpCharge = 0;
@@ -461,6 +470,7 @@ export class Skier {
   }
 
   land(gy) {
+    this.auto = null;
     const v = this.vel;
     const arc = this.world.arcade;
     this.pos.y = gy;
@@ -554,6 +564,60 @@ export class Skier {
       const dP = clamp((a.pitch - this.pitch) * k, -15 * dt, 15 * dt);
       this.pitch += dP; this.flipAcc += dP;
     }
+  }
+
+  // time to touchdown along the ballistic path from here
+  flightTime() {
+    const p = this.pos, v = this.vel;
+    let t = 0.04;
+    for (; t < 3.2; t += 0.04) {
+      const x = p.x + v.x * t, z = p.z + v.z * t, y = p.y + v.y * t - 0.5 * GRAV * t * t;
+      if (y <= heightAt(x, z)) break;
+    }
+    return t;
+  }
+
+  // a quick trick: { spin (deg), type, flips, dir, grab, shifty, daffy }. The first frame plans
+  // it (the biggest version that fits the air), then the rotation runs at the rate that
+  // finishes on touchdown; the landing assist holds the target for the last moment.
+  autoTrick(dt, c) {
+    const A = this.auto, v = this.vel;
+    const hor = Math.atan2(v.x, v.z);
+    if (!A.plan) {
+      const T = this.flightTime(), avail = Math.max(0.05, T - 0.3);
+      let spin = A.spin ?? 0, flips = A.flips ?? 0;
+      while (spin > 0 && (spin / 180) * Math.PI / avail > 13.5) spin -= 180;
+      while (flips > 0 && (flips * TAU) / avail > 12.5) flips--;
+      const sd = A.dir ?? 1;
+      const f0 = (this.heading - hor) / Math.PI;
+      let type = flips ? A.type : null;
+      // a cork with no spin left is just a flip
+      if (type && !spin && !['backflip', 'frontflip', 'sideflip'].includes(type)) type = TRICKS[type].back ? 'backflip' : 'frontflip';
+      const fDir = type ? (TRICKS[type].roll ? A.roll ?? 1 : TRICKS[type].back ? -1 : 1) : 0;
+      if (type) {
+        const Tt = TRICKS[type];
+        this.trickType = type; this.flipDir = fDir;
+        if (Tt.roll) this.flipAxis.set(0, 0, 1);
+        else this.flipAxis.set(Math.cos(Tt.a), 0, Math.sin(Tt.a) * sd * (fDir < 0 ? 1 : -1)).normalize();
+      }
+      A.plan = { spin, flips, T, end: this.airTime + T };
+      this.spinVel = 0;
+      this.assist = { spin: Math.round(f0) + sd * (spin / 180), pitch: type ? fDir * flips * TAU : null };
+    }
+    c.steer = 0; c.flip = 0; c.roll = 0;
+    const a = this.assist;
+    const tl = A.plan.end - this.airTime;
+    if (a && tl > 0.45 && this.tLand > 0.45) {
+      const left = Math.max(0.12, tl - 0.4);
+      const dS = clamp((a.spin * Math.PI + hor - this.heading) / left * dt, -14 * dt, 14 * dt);
+      this.heading += dS; this.spin += dS;
+      if (a.pitch != null) { const dP = clamp((a.pitch - this.pitch) / left * dt, -13 * dt, 13 * dt); this.pitch += dP; this.flipAcc += dP; }
+    }
+    // the grab (or the style) through the middle of the flight
+    const mid = this.airTime > 0.1 && tl > 0.22;
+    if (A.grab) { c.grab = mid; c.grabKind = A.grab; }
+    if (A.shifty && !A.plan.spin && !A.plan.flips) c.up = mid;
+    if (A.daffy && !A.plan.spin && !A.plan.flips) c.down = mid;
   }
 
   // a kicker whose lip is between a and b metres ahead of us (and we're on it)

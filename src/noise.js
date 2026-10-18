@@ -69,6 +69,20 @@ export function ridged(noise, x, y, oct = 5) {
   return s;
 }
 
+// Ridged, but with rounded crests and a gentler fall-off: big massifs, not needles.
+export function ridgedSoft(noise, x, y, oct = 4, gain = 0.45) {
+  let a = 0.5, f = 1, s = 0, w = 1;
+  for (let o = 0; o < oct; o++) {
+    const v = noise(x * f, y * f);
+    let n = 1 - Math.sqrt(v * v + 0.012);
+    n *= n; n *= w;
+    w = Math.min(1, Math.max(0, n * 1.6));
+    s += n * a;
+    a *= gain; f *= 2.05;
+  }
+  return s;
+}
+
 export const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 export const lerp = (a, b, t) => a + (b - a) * t;
 export const smoothstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };

@@ -1,0 +1,32 @@
+{
+  "rules": {
+    "lobby": {
+      ".read": "auth != null",
+      "$server": {
+        "$uid": {
+          ".write": "auth != null && auth.uid == $uid",
+          ".validate": "newData.hasChildren(['n']) && newData.child('n').isString() && newData.child('n').val().length <= 24"
+        }
+      }
+    },
+    "rooms": {
+      "$server": {
+        ".read": "auth != null",
+        "s": { "$uid": { ".write": "auth != null && auth.uid == $uid", ".validate": "newData.isString() && newData.val().length < 600" } },
+        "h": { "$uid": { ".write": "auth != null && auth.uid == $uid" } },
+        "e": {
+          ".indexOn": ["t"],
+          "$id": {
+            ".write": "auth != null && (newData.exists() ? newData.child('u').val() == auth.uid : data.child('u').val() == auth.uid)",
+            ".validate": "!newData.exists() || newData.child('t').isNumber()"
+          }
+        },
+        "race": {
+          ".write": "auth != null",
+          ".validate": "!newData.exists() || (newData.child('at').isNumber() && newData.child('u').val() == auth.uid)"
+        },
+        "results": { "$uid": { ".write": "auth != null && auth.uid == $uid" } }
+      }
+    }
+  }
+}

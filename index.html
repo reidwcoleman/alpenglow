@@ -59,7 +59,7 @@
   .mb kbd { background: rgba(255,255,255,.22); color: #fff; }
   .wallet { padding: 0 14px; font: 400 20px var(--disp); }
   .flake { width: 16px; height: 16px; color: #9fd8ff; flex: none; }
-  .tabs { display: flex; gap: clamp(14px, 2.2vw, 30px); margin: clamp(14px, 2.2vw, 26px) 0 clamp(16px, 2.4vw, 30px); border-bottom: 1px solid rgba(255,255,255,.14); max-width: 1000px; overflow-x: auto; scrollbar-width: none; min-height: 38px; flex: none; }
+  .tabs { display: flex; gap: clamp(12px, 1.8vw, 26px); margin: clamp(14px, 2.2vw, 26px) 0 clamp(16px, 2.4vw, 30px); border-bottom: 1px solid rgba(255,255,255,.14); max-width: 1180px; overflow-x: auto; scrollbar-width: none; min-height: 38px; flex: none; }
   .tabs button { position: relative; display: flex; align-items: center; gap: 7px; background: none; border: 0; color: rgba(255,255,255,.7); font: 400 18px/1 var(--disp); cursor: pointer; padding: 6px 0 11px; white-space: nowrap; }
   .tabs button svg { width: 15px; height: 15px; }
   .tabs button::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: #fff; transform: scaleX(0); transition: transform .18s ease; }
@@ -234,6 +234,111 @@
   .note p { font: 500 14px/1.55 Inter; color: rgba(255,255,255,.85); }
   .note .tags { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
   .note .tags span { font: 400 13px var(--disp); background: #fff; color: var(--ink); padding: 3px 8px 2px; border-radius: 5px; }
+  /* account chip and panel */
+  .acct { position: relative; height: 42px; display: flex; align-items: center; gap: 9px; padding: 0 14px 0 5px; border-radius: 11px; background: rgba(20,28,42,.62); border: 1px solid rgba(255,255,255,.18); color: #fff; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); cursor: pointer; max-width: 230px; }
+  .acct:hover { background: rgba(32,42,60,.8); }
+  .acct .av { width: 32px; height: 32px; flex: none; border-radius: 8px; display: grid; place-items: center; background: var(--cream); color: var(--ink); font: 400 18px/1 var(--disp); border: 2px solid var(--ink); }
+  .acct .tx { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+  .acct b { font: 400 16px/1 var(--disp); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
+  .acct small { font: 800 9px Inter; letter-spacing: .1em; opacity: .75; margin-top: 3px; white-space: nowrap; }
+  .acct .dot { position: absolute; top: 5px; left: 31px; width: 9px; height: 9px; border-radius: 50%; background: #8a93a3; border: 2px solid #1a2130; }
+  .acct .dot.on { background: #6fe3a8; }
+  .acc { width: min(440px, 100%); }
+  .acc .who2 { display: flex; align-items: center; gap: 14px; margin: 4px 0 16px; }
+  .acc .who2 .av { width: 54px; height: 54px; border-radius: 12px; display: grid; place-items: center; background: var(--cream); color: var(--ink); font: 400 30px/1 var(--disp); border: 3px solid var(--ink); box-shadow: 3px 3px 0 var(--ink); }
+  .acc .who2 b { display: block; font: 400 26px/1 var(--disp); }
+  .acc .who2 small { font: 600 12px Inter; color: rgba(255,255,255,.7); }
+  .acc .f { display: grid; gap: 9px; margin: 10px 0; }
+  .acc input { width: 100%; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--line); background: rgba(255,255,255,.08); color: #fff; font: 600 14px Inter; outline: none; user-select: text; -webkit-user-select: text; }
+  .acc input:focus { border-color: rgba(255,255,255,.5); }
+  .acc .msg { min-height: 18px; font: 600 12px Inter; color: #ffb4a8; }
+  .acc .msg.ok { color: #b9ff5a; }
+  .acc .lnk { background: none; border: 0; color: rgba(255,255,255,.8); font: 600 12px Inter; text-decoration: underline; cursor: pointer; padding: 0; }
+  .acc .note2 { font: 500 13px/1.5 Inter; color: rgba(255,255,255,.78); }
+  .acc .stat3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; }
+  .acc .stat3 div { padding: 10px; border-radius: 10px; background: rgba(255,255,255,.07); text-align: center; }
+  .acc .stat3 b { display: block; font: 400 22px/1 var(--disp); }
+  .acc .stat3 span { font: 700 9px Inter; letter-spacing: .1em; opacity: .7; }
+  /* servers */
+  .srv { display: grid; gap: 5px; }
+  .srv button { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 8px 11px; border-radius: 9px; border: 1px solid transparent; background: rgba(255,255,255,.07); color: #fff; font: 400 16px/1 var(--disp); cursor: pointer; text-align: left; }
+  .srv button.on { background: rgba(185,255,90,.16); border-color: rgba(185,255,90,.6); }
+  .srv button i { font: 700 11px Inter; font-style: normal; letter-spacing: .04em; color: rgba(255,255,255,.75); display: flex; align-items: center; gap: 5px; }
+  .srv button i::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #6fe3a8; }
+  .srv button i.z::before { background: #8a93a3; }
+  .srv .h { font: 700 10px Inter; letter-spacing: .14em; color: rgba(255,255,255,.6); margin: 2px 0 2px; }
+  .mp .row2 input { flex: 1; min-width: 0; }
+  .mprace { border: 2px solid var(--ink); background: #ffe14d; color: var(--ink); font: 400 15px/1 var(--disp); padding: 9px 10px; border-radius: 10px; cursor: pointer; box-shadow: 2px 2px 0 var(--ink); }
+  /* events */
+  .events { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; max-width: 1100px; }
+  .ev { position: relative; display: flex; flex-direction: column; min-height: 200px; padding: 0; border-radius: 16px; overflow: hidden; border: 0; color: #fff; text-align: left; cursor: pointer; box-shadow: 0 10px 26px rgba(0,0,0,.32); background: #1b2433 center / cover no-repeat; transition: transform .14s ease; }
+  .ev:hover { transform: translateY(-3px) rotate(-.3deg); }
+  .ev::before { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(10,14,24,.05) 20%, rgba(10,14,24,.88) 75%); }
+  .ev > * { position: relative; }
+  .ev .k { align-self: flex-start; margin: 12px 12px auto; }
+  .ev .bd { padding: 0 14px 14px; }
+  .ev .nm { font: 400 28px/1 var(--disp); text-transform: uppercase; text-shadow: 0 3px 0 rgba(0,0,0,.3); }
+  .ev .ds { font: 500 12px/1.4 Inter; color: rgba(255,255,255,.85); margin-top: 6px; }
+  .ev .md { display: flex; gap: 6px; margin-top: 10px; align-items: center; font: 700 10px Inter; letter-spacing: .08em; color: rgba(255,255,255,.75); }
+  .ev .md span { width: 18px; height: 18px; border-radius: 50%; background: rgba(255,255,255,.15); border: 2px solid rgba(255,255,255,.25); }
+  .ev .md span.m3 { background: #ffc93c; border-color: #fff3c4; } .ev .md span.m2 { background: #c9d2df; border-color: #fff; } .ev .md span.m1 { background: #e59a5c; border-color: #ffd9b8; }
+  .ev .pz { position: absolute; top: 12px; right: 12px; display: flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 8px; background: rgba(10,14,24,.75); font: 400 15px/1 var(--disp); }
+  #coach { position: absolute; top: calc(max(14px, env(safe-area-inset-top)) + 150px); right: clamp(18px, 3.4vw, 48px); width: min(320px, 70vw); padding: 12px 14px; border-radius: 14px; background: rgba(14,20,32,.72); border: 1px solid var(--line); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); pointer-events: auto; }
+  #coach .ct { display: flex; justify-content: space-between; align-items: center; font: 400 17px/1 var(--disp); text-transform: uppercase; margin-bottom: 8px; }
+  #coach .ct button { border: 0; background: rgba(255,255,255,.14); color: #fff; width: 24px; height: 24px; border-radius: 6px; cursor: pointer; font: 700 14px Inter; }
+  #coach ol { margin: 0; padding-left: 18px; display: grid; gap: 5px; font: 500 12.5px/1.4 Inter; }
+  #coach kbd { font-size: 10px; height: 19px; min-width: 19px; }
+  #quick { position: absolute; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; gap: 6px; }
+  #quick span { display: flex; align-items: center; gap: 6px; padding: 5px 10px 5px 6px; border-radius: 9px; background: rgba(14,20,32,.6); font: 400 14px/1 var(--disp); text-transform: uppercase; white-space: nowrap; opacity: .85; }
+  #quick span.on { background: #ffe14d; color: var(--ink); opacity: 1; }
+  #quick kbd { font-size: 10px; height: 18px; min-width: 18px; }
+  .touch #quick { display: none; }
+  #evtag { position: absolute; top: calc(max(26px, env(safe-area-inset-top)) + 36px); left: clamp(18px, 3.6vw, 46px); padding: 4px 10px 3px; border-radius: 6px; background: #ffe14d; color: var(--ink); font: 400 15px/1 var(--disp); text-transform: uppercase; transform: rotate(-2deg); }
+  .evline { display: inline-block; margin: 4px 0 8px; padding: 3px 10px 2px; border-radius: 6px; background: #ffe14d; color: var(--ink); font: 400 15px/1.2 var(--disp); text-transform: uppercase; }
+  /* trick school */
+  .t-school { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 40%); gap: 24px; }
+  .sc-r { position: sticky; top: 0; align-self: start; display: flex; flex-direction: column; gap: 12px; }
+  .demo { position: relative; height: clamp(190px, 30vh, 320px); border-radius: 16px; background: linear-gradient(180deg, rgba(160,200,240,.25), rgba(230,240,250,.18)); border: 1px solid var(--line); overflow: hidden; }
+  .demo .cap { position: absolute; left: 12px; bottom: 10px; font: 400 18px/1 var(--disp); text-transform: uppercase; text-shadow: 0 2px 0 rgba(0,0,0,.35); }
+  .howbox { padding: 16px; border-radius: 16px; background: rgba(14,20,32,.78); border: 1px solid var(--line); }
+  .howbox h3 { font: 400 30px/1 var(--disp); text-transform: uppercase; margin-bottom: 4px; }
+  .howbox .lv2 { font: 800 9px Inter; letter-spacing: .12em; color: rgba(255,255,255,.65); }
+  .howbox ol { margin: 12px 0 10px 0; padding: 0; list-style: none; counter-reset: st; display: grid; gap: 8px; }
+  .howbox li { counter-increment: st; display: grid; grid-template-columns: 24px 1fr; gap: 8px; font: 500 13px/1.45 Inter; color: rgba(255,255,255,.9); }
+  .howbox li::before { content: counter(st); width: 22px; height: 22px; border-radius: 50%; background: #fff; color: var(--ink); display: grid; place-items: center; font: 800 11px Inter; }
+  .howbox kbd { font-size: 10px; height: 20px; min-width: 20px; }
+  .howbox .tip { font: 500 12px/1.45 Inter; color: rgba(255,255,255,.7); padding: 8px 10px; border-radius: 10px; background: rgba(255,255,255,.06); }
+  .howbox .row { margin-top: 12px; }
+  .lessons { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; max-width: 900px; }
+  .lesson { position: relative; padding: 11px 12px 10px; border-radius: 12px; border: 2px solid transparent; background: rgba(14,20,32,.66); color: #fff; text-align: left; cursor: pointer; }
+  .lesson:hover { background: rgba(24,32,48,.8); }
+  .lesson.on { border-color: #fff; background: rgba(30,40,60,.9); }
+  .lesson b { display: block; font: 400 18px/1.05 var(--disp); text-transform: uppercase; }
+  .lesson small { display: block; font: 600 11px Inter; color: rgba(255,255,255,.65); margin-top: 3px; }
+  .lesson .st { position: absolute; top: 8px; right: 8px; font: 800 8px Inter; letter-spacing: .08em; padding: 2px 5px; border-radius: 4px; background: rgba(255,255,255,.14); }
+  .lesson.got .st { background: #b9ff5a; color: var(--ink); }
+  .lesson .lvl { display: inline-flex; gap: 2px; margin-top: 6px; }
+  .lesson .lvl i { width: 14px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.2); }
+  .lesson .lvl i.f { background: #ffe14d; }
+  /* shop extras */
+  .feat { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; max-width: 980px; }
+  .feat .item { aspect-ratio: .8; }
+  .item .off { position: absolute; top: 7px; right: 7px; padding: 3px 6px; border-radius: 6px; background: #ff4f8b; color: #fff; font: 800 9px Inter; letter-spacing: .06em; }
+  .item .pr s { opacity: .55; font-size: 11px; margin-right: 2px; }
+  .item.event { background: linear-gradient(160deg, #ffd34d, #c98a00); }
+  .item .ic img { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 4px 6px rgba(0,0,0,.35)); }
+  .sets { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; max-width: 980px; }
+  .set { position: relative; padding: 14px; border-radius: 14px; border: 0; color: #fff; text-align: left; cursor: pointer; background: linear-gradient(150deg, #263248, #141b29); box-shadow: 0 8px 20px rgba(0,0,0,.28); overflow: hidden; }
+  .set.own { opacity: .65; }
+  .set .nm { font: 400 24px/1 var(--disp); text-transform: uppercase; }
+  .set .row4 { display: flex; gap: 6px; margin: 10px 0; }
+  .set .row4 div { flex: 1; aspect-ratio: 1; border-radius: 8px; background: rgba(255,255,255,.08); padding: 4px; }
+  .set .row4 svg, .set .row4 img { width: 100%; height: 100%; object-fit: contain; }
+  .set .pr { display: inline-flex; align-items: center; gap: 5px; font: 400 18px/1 var(--disp); padding: 5px 10px; border-radius: 8px; background: #fff; color: var(--ink); }
+  .set .pr s { opacity: .5; font-size: 14px; }
+  .timer { font: 700 10px Inter; letter-spacing: .12em; color: rgba(255,255,255,.7); margin: -4px 0 10px; }
+  @media (max-width: 1000px) { .t-school { grid-template-columns: minmax(0, 1fr); } .sc-r { position: static; order: -1; } .demo { height: 220px; } }
+  @media (max-width: 760px) { .acct .tx { display: none; } .acct { padding: 0 5px; } }
   .opt { margin-bottom: 16px; }
   .opt label { display: block; font: 700 10px Inter; letter-spacing: .16em; text-transform: uppercase; color: rgba(255,255,255,.6); margin-bottom: 8px; }
   .seg { display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: rgba(255,255,255,.08); flex-wrap: wrap; }
@@ -311,7 +416,7 @@
   #course .alt { font: 400 20px var(--disp); margin-top: 10px; }
   #course .left { font: 400 12px var(--disp); opacity: .9; }
   #hint { position: absolute; left: 50%; bottom: 23%; transform: translateX(-50%); font: 400 15px var(--disp); text-transform: uppercase; white-space: nowrap; }
-  #tip { position: absolute; left: 50%; bottom: max(26px, env(safe-area-inset-bottom)); transform: translateX(-50%); font: 600 13px Inter; padding: 8px 14px; border-radius: 10px; background: rgba(24,31,44,.62); white-space: nowrap; }
+  #tip { position: absolute; left: 50%; bottom: calc(max(16px, env(safe-area-inset-bottom)) + 40px); transform: translateX(-50%); font: 600 13px Inter; padding: 8px 14px; border-radius: 10px; background: rgba(24,31,44,.62); white-space: nowrap; }
   #hold { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; font: 400 18px var(--disp); }
   #hold svg { width: 34px; height: 34px; transform: rotate(-90deg); }
   #botbar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255,255,255,.18); }
@@ -441,13 +546,14 @@
   <header class="m-top">
     <div class="logo">ALPENGLOW</div>
     <div class="m-icons">
+      <button class="acct" id="ib-acct" title="Your account"><span class="av" id="ac-av">R</span><span class="tx"><b id="ac-name">Rider</b><small id="ac-sub">GUEST</small></span><i class="dot" id="ac-dot"></i></button>
       <span class="wallet" title="Flakes: earned on every run, spent in the Shop"><svg class="flake" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 1v14M1.9 4.5l12.2 7M1.9 11.5l12.2-7M6 2.6 8 4.4l2-1.8M6 13.4l2-1.8 2 1.8"/></svg><b id="flakes">0</b></span>
       <button class="ib" id="ib-board" title="Leaderboard"><svg viewBox="0 0 16 16" fill="currentColor"><rect x="2" y="8" width="3" height="6" rx="1"/><rect x="6.5" y="3" width="3" height="11" rx="1"/><rect x="11" y="6" width="3" height="8" rx="1"/></svg></button>
       <button class="ib" id="ib-mp" title="Ride with friends"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6" cy="5.5" r="2.5"/><path d="M1.5 14c.4-3 2.3-4.5 4.5-4.5s4.1 1.5 4.5 4.5"/><circle cx="11.5" cy="5" r="2"/><path d="M11.5 9c1.7 0 3 1.2 3.2 3.5"/></svg></button>
       <button class="mb" id="ib-menu"><span class="bars"></span><span class="mt">MENU</span><kbd>ESC</kbd></button>
     </div>
   </header>
-  <nav class="tabs" id="tabs"><button data-tab="ride" class="on"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M1.5 13.5 6 5l3 5 2-3 3.5 6.5Z"/></svg><span>Ride</span></button><button data-tab="board"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M4.5 2.5h7v3a3.5 3.5 0 0 1-7 0Z"/><path d="M4.5 3.5H2.5a2 2 0 0 0 2 3M11.5 3.5h2a2 2 0 0 1-2 3M8 9v3M5.5 13.5h5"/></svg><span>Leaderboard</span></button><button data-tab="locker"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M5.5 2.5 2 4.5l1.2 3 1.3-.6V13.5h7V6.9l1.3.6 1.2-3-3.5-2a2.5 2.5 0 0 1-5 0Z"/></svg><span>Locker</span></button><button data-tab="shop"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M2.5 6.5h11v7h-11ZM2 6.5l1-4h10l1 4M6.5 13.5v-4h3v4"/></svg><span>Shop</span></button><button data-tab="pass"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M1.5 4.5h13v2.2a1.5 1.5 0 0 0 0 2.6v2.2h-13V9.3a1.5 1.5 0 0 0 0-2.6Z"/><path d="M10 4.5v7" stroke-dasharray="1.4 1.4"/></svg><span>Pass</span></button><button data-tab="replays"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M2 3h12v10H2ZM2 6h12M2 10h12M5 3v3M5 10v3M11 3v3M11 10v3"/></svg><span>Replays</span></button><button data-tab="tricks"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M8 1.8 9.8 6l4.4.4-3.3 2.9 1 4.3L8 11.3l-3.9 2.3 1-4.3L1.8 6.4 6.2 6Z"/></svg><span>Tricks</span></button><button data-tab="updates"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M3.5 1.5h6l3 3v10h-9ZM9.5 1.5v3h3M5.5 8h5M5.5 10.5h5"/></svg><span>Updates</span><i class="new">NEW</i></button></nav>
+  <nav class="tabs" id="tabs"><button data-tab="ride" class="on"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M1.5 13.5 6 5l3 5 2-3 3.5 6.5Z"/></svg><span>Ride</span></button><button data-tab="events"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M3 14.5V2M3 2.5h9l-2 3 2 3H3"/></svg><span>Events</span></button><button data-tab="board"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M4.5 2.5h7v3a3.5 3.5 0 0 1-7 0Z"/><path d="M4.5 3.5H2.5a2 2 0 0 0 2 3M11.5 3.5h2a2 2 0 0 1-2 3M8 9v3M5.5 13.5h5"/></svg><span>Leaderboard</span></button><button data-tab="locker"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M5.5 2.5 2 4.5l1.2 3 1.3-.6V13.5h7V6.9l1.3.6 1.2-3-3.5-2a2.5 2.5 0 0 1-5 0Z"/></svg><span>Locker</span></button><button data-tab="shop"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M2.5 6.5h11v7h-11ZM2 6.5l1-4h10l1 4M6.5 13.5v-4h3v4"/></svg><span>Shop</span></button><button data-tab="pass"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M1.5 4.5h13v2.2a1.5 1.5 0 0 0 0 2.6v2.2h-13V9.3a1.5 1.5 0 0 0 0-2.6Z"/><path d="M10 4.5v7" stroke-dasharray="1.4 1.4"/></svg><span>Pass</span></button><button data-tab="replays"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M2 3h12v10H2ZM2 6h12M2 10h12M5 3v3M5 10v3M11 3v3M11 10v3"/></svg><span>Replays</span></button><button data-tab="tricks"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M8 1.8 9.8 6l4.4.4-3.3 2.9 1 4.3L8 11.3l-3.9 2.3 1-4.3L1.8 6.4 6.2 6Z"/></svg><span>Trick School</span></button><button data-tab="updates"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M3.5 1.5h6l3 3v10h-9ZM9.5 1.5v3h3M5.5 8h5M5.5 10.5h5"/></svg><span>Updates</span><i class="new">NEW</i></button></nav>
 
   <section class="tab t-ride" id="tab-ride">
     <div class="m-left">
@@ -473,17 +579,26 @@
         <button class="multi" data-who="multi"><span class="picked">✓ PICKED</span><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="1.6"/><path d="M4.8 4.8a4.5 4.5 0 0 0 0 6.4M11.2 4.8a4.5 4.5 0 0 1 0 6.4M2.6 2.6a7.6 7.6 0 0 0 0 10.8M13.4 2.6a7.6 7.6 0 0 1 0 10.8"/></svg><div class="t">MULTIPLAYER</div><div class="d" id="mp-count">Live rooms, free</div></button>
       </div>
       <div class="mp hidden" id="mp-panel">
-        <div><label>Room</label><input id="mp-room" maxlength="12" placeholder="public" /></div>
-        <div class="row2"><span>Same park + same room = same slope</span><button id="mp-copy">Copy invite</button></div>
+        <div class="srv" id="mp-servers"></div>
+        <div class="row2"><input id="mp-room" maxlength="12" placeholder="Private room code" spellcheck="false" /><button id="mp-copy">Copy invite</button></div>
+        <button class="mprace hidden" id="mp-race">RACE EVERYONE ON THIS SERVER ↗</button>
       </div>
       <button class="ride" id="b-ride"><span id="ridelbl">RIDE</span><span class="r"><kbd>ENTER</kbd><span class="arr">↗</span></span></button>
     </div>
   </section>
 
+  <section class="tab t-wide hidden" id="tab-events">
+    <div class="eyebrow">RACES · TIME TRIAL · CONTESTS</div>
+    <h1>EVENTS</h1>
+    <div class="chips" id="ev-tiers"></div>
+    <div class="events" id="events"></div>
+  </section>
+
   <section class="tab t-wide hidden" id="tab-board">
-    <div class="eyebrow" id="lb-eye">YOUR RUNS · LOCAL RIDERS TO CHASE</div>
+    <div class="eyebrow" id="lb-eye">EVERY RIDER ON THE SERVER</div>
     <h1>LEADERBOARD</h1>
-    <div class="chips" id="lb-parks"></div>
+    <div class="chips" id="lb-scope"></div>
+    <div class="chips sm" id="lb-parks"></div>
     <div class="podium" id="lb-pod"></div>
     <div class="lbl-list" id="lb-list"></div>
   </section>
@@ -516,9 +631,17 @@
     <div class="reps" id="reps"></div>
   </section>
 
-  <section class="tab t-wide hidden" id="tab-tricks">
-    <h1>TRICK BOOK <span id="book-n"></span></h1>
-    <div class="book" id="book"></div>
+  <section class="tab t-wide t-school hidden" id="tab-tricks">
+    <div class="sc-l">
+      <div class="eyebrow">LEARN IT · TRY IT · LAND IT</div>
+      <h1>TRICK SCHOOL <span id="book-n"></span></h1>
+      <div class="chips sm" id="sc-fams"></div>
+      <div class="lessons" id="lessons"></div>
+    </div>
+    <div class="sc-r" id="sc-r">
+      <div class="demo" id="demo"></div>
+      <div class="howbox" id="howbox"></div>
+    </div>
   </section>
 
   <section class="tab t-wide hidden" id="tab-updates">
@@ -531,6 +654,12 @@
     <button id="f-how">How to play</button><button id="f-updates">Updates</button><button id="f-credits">Credits</button>
   </footer>
 </div>
+
+<div id="account" class="panel hidden"><div class="card acc">
+  <h2 id="acc-h">ACCOUNT</h2>
+  <div id="acc-body"></div>
+  <div class="row"><button class="btn" id="acc-close">Close</button></div>
+</div></div>
 
 <div id="settings" class="panel hidden"><div class="card">
   <h2>MENU</h2>
@@ -552,6 +681,7 @@
     <span><kbd>↑</kbd> / <kbd>↓</kbd></span><span>On their own in the air: shifty / daffy (board: boned)</span>
     <span><kbd>B</kbd></span><span>Butter (add S for the tail) · hold A/D to pivot 180, 360, 540</span>
     <span><kbd>W</kbd> <kbd>S</kbd> on a rail</span><span>Nose / tail press · A/D swap the slide</span>
+    <span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd></span><span>Quick tricks: in the air the rider does the trick for you, sized to the jump; on the snow it waits for the next kicker and pops at the lip. Pick them in Trick School (in the park, on the snow, 1-4 pick a line)</span>
     <span><kbd>R</kbd></span><span>Hold to restart · <kbd>C</kbd> camera · <kbd>ESC</kbd> pause</span>
     <span><kbd>V</kbd></span><span>Replay the last trick</span>
     <span><kbd>TAB</kbd> <kbd>T</kbd></span><span>Multiplayer: riders in the room · chat</span>
@@ -578,6 +708,9 @@
 
 <div id="hud" class="hidden">
   <div id="zone" class="shadow">Drop In</div>
+  <div id="evtag" class="hidden"></div>
+  <div id="coach" class="hidden"></div>
+  <div id="quick" class="hidden"></div>
   <button id="menubtn"><span class="bars"></span>MENU <kbd>ESC</kbd></button>
   <div id="scorebox" class="shadow"><div class="lbl">Score</div><div id="score" class="disp">0</div><div id="combo"></div></div>
   <div id="racebox" class="shadow hidden"><div id="pos" class="disp"></div><div id="gates" class="lbl"></div><div id="board"></div></div>

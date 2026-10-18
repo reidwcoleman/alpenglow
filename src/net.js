@@ -1,11 +1,14 @@
-// Multiplayer over a public MQTT broker (no server of our own). Everyone in a room publishes
-// their skier's snapshot ~12 times a second plus a hello (name, outfit, score) every few
-// seconds; everyone subscribes to the room and draws the others with interpolation.
+// Multiplayer servers. Everyone on a server publishes their skier's snapshot ~12 times a
+// second plus a hello (name, outfit, score) every few seconds; everyone listens to the
+// server and draws the others with interpolation. The servers live on our Firebase
+// Realtime Database (rooms/<server>/{s,h,e}, see cloud.js); if that can't be reached the
+// same messages go over public MQTT brokers instead.
 //   topics: alpenglow/v2/<park>/<room>/{s|h|e}/<id>
 import * as THREE from 'three';
 import { Skier } from './skier.js';
 import { snap, applySnap, SNAP_N } from './snap.js';
 import { patchTree } from './atmos.js';
+import { toB64, fromB64 } from './cloud.js';
 
 const BROKERS = ['wss://broker.emqx.io:8084/mqtt', 'wss://broker.hivemq.com:8884/mqtt', 'wss://test.mosquitto.org:8081/mqtt'];
 const enc = new TextEncoder(), dec = new TextDecoder();
@@ -71,6 +74,56 @@ class Mqtt {
   close() { try { this.send(packet(0xe0, [])); this.ws?.close(); } catch { /* gone */ } this.ws = null; clearInterval(this.ping); }
 }
 
+// the same three kinds of message over the Realtime Database
+class FireLink {
+  constructor(room, cloud) { this.room = room; this.c = cloud; this.live = false; this.offs = []; }
+
+  async start() {
+    const c = this.c, D = c.D, R = this.room, uid = R.me.id;
+    const base = `rooms/${R.key}`;
+    this.paths = { s: `${base}/s/${uid}`, h: `${base}/h/${uid}`, lobby: `lobby/${R.key}/${uid}` };
+    for (const p of Object.values(this.paths)) D.onDisconnect(c.ref(p)).remove();
+    const sRef = c.ref(`${base}/s`), hRef = c.ref(`${base}/h`);
+    const onS = (snap) => { if (snap.key !== uid && typeof snap.val() === 'string') R.recv('s', snap.key, new Float32Array(fromB64(snap.val()).buffer)); };
+    const onH = (snap) => { if (snap.key !== uid && snap.val()) R.recv('h', snap.key, snap.val()); };
+    this.offs.push(D.onChildAdded(sRef, onS), D.onChildChanged(sRef, onS), D.onChildAdded(hRef, onH), D.onChildChanged(hRef, onH),
+      D.onChildRemoved(hRef, (snap) => R.recv('e', snap.key, { type: 'bye' })));
+    // only events from now on
+    const eq = D.query(c.ref(`${base}/e`), D.orderByChild('t'), D.startAt(c.now() - 2000));
+    this.offs.push(D.onChildAdded(eq, (snap) => { const e = snap.val(); if (e?.u && e.u !== uid) R.recv('e', e.u, e); }));
+    // a shared race start: everyone on the server gets the same moment
+    this.offs.push(D.onValue(c.ref(`${base}/race`), (snap) => R.emit('raceCall', snap.val())));
+    const conn = D.onValue(c.ref('.info/connected'), (s) => { this.live = !!s.val(); R.refresh(); if (this.live) { R.hello(); this.presence(); } });
+    this.offs.push(conn);
+    this.lobbyT = setInterval(() => this.presence(), 60000);
+  }
+
+  presence() { if (this.live) this.c.D.set(this.c.ref(this.paths.lobby), { n: this.room.me.name, t: this.c.D.serverTimestamp() }).catch(() => {}); }
+
+  send(kind, data) {
+    if (!this.live) return;
+    const D = this.c.D;
+    // (the database refuses undefined values)
+    if (kind !== 's') data = JSON.parse(JSON.stringify(data));
+    if (kind === 's') D.set(this.c.ref(this.paths.s), toB64(new Uint8Array(data.buffer, data.byteOffset, data.byteLength))).catch(() => {});
+    else if (kind === 'h') D.set(this.c.ref(this.paths.h), data).catch(() => {});
+    else if (kind === 'e') {
+      const r = D.push(this.c.ref(`rooms/${this.room.key}/e`), { ...data, u: this.room.me.id, t: D.serverTimestamp() });
+      // events are fire and forget: clear our own after a while
+      setTimeout(() => D.remove(r).catch(() => {}), 15000);
+    }
+  }
+
+  callRace(at) { if (this.live) return this.c.D.set(this.c.ref(`rooms/${this.room.key}/race`), { at, by: this.room.me.name, u: this.room.me.id }); }
+
+  close() {
+    clearInterval(this.lobbyT);
+    for (const off of this.offs) off();
+    const D = this.c.D;
+    for (const p of Object.values(this.paths ?? {})) D.remove(this.c.ref(p)).catch(() => {});
+  }
+}
+
 // a name tag that keeps the same size on screen
 function nameTag(name, color) {
   const c = document.createElement('canvas'); c.width = 512; c.height = 96;
@@ -91,14 +144,19 @@ function nameTag(name, color) {
 }
 
 export class Room {
-  constructor(game, park, room, me) {
+  // room: a server's name ('Yard 1') or a private code; cloud: the Firebase link when it's up
+  constructor(game, park, room, me, cloud = null) {
     this.g = game;
-    this.park = park; this.room = (room || 'public').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12) || 'public';
+    this.park = park; this.room = (room || 'public').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 16) || 'public';
+    this.label = room || 'public';
+    this.key = `${park}-${this.room}`;
     this.me = me; // { id, name, outfit }
     this.base = `alpenglow/v2/${park}/${this.room}`;
     this.peers = new Map();
+    this.fire = cloud && cloud.status === 'online' && cloud.uid ? new FireLink(this, cloud) : null;
+    if (this.fire) this.me.id = cloud.uid;
     // every relay at once: whichever ones two riders share links them; messages are de-duplicated
-    this.links = BROKERS.map((url) => ({ url, mq: new Mqtt(), live: false }));
+    this.links = this.fire ? [] : BROKERS.map((url) => ({ url, mq: new Mqtt(), live: false }));
     this.seen = new Map();
     this.sendT = 0; this.helloT = 0;
     this.status = 'connecting';
@@ -110,6 +168,13 @@ export class Room {
   emit(e, d) { for (const f of this.listeners[e] ?? []) f(d); }
 
   connect() {
+    if (this.fire) {
+      return this.fire.start().then(() => new Promise((res) => {
+        const t0 = performance.now();
+        const wait = () => (this.fire.live || performance.now() - t0 > 8000 ? res(this.status === 'live') : setTimeout(wait, 100));
+        wait();
+      }));
+    }
     return new Promise((res) => {
       let done = false;
       const finish = () => { if (!done) { done = true; res(this.status === 'live'); } };
@@ -137,27 +202,41 @@ export class Room {
   }
 
   refresh() {
-    const st = this.links.some((L) => L.live) ? 'live' : 'offline';
+    const st = this.links.some((L) => L.live) || this.fire?.live ? 'live' : 'offline';
     if (st !== this.status) { this.status = st; this.emit('status', st); }
-    this.url = this.links.filter((L) => L.live).map((L) => L.url.split('/')[2]).join(', ');
+    this.url = this.fire ? 'alpenglow server' : this.links.filter((L) => L.live).map((L) => L.url.split('/')[2]).join(', ');
   }
 
-  pub(topic, payload) { for (const L of this.links) if (L.live) L.mq.publish(topic, payload); }
+  // kind: 's' snapshot (Float32Array), 'h' hello (object), 'e' event (object)
+  send(kind, data) {
+    if (this.fire) { this.fire.send(kind, data); return; }
+    const payload = kind === 's' ? new Uint8Array(data.buffer.slice(0)) : JSON.stringify(data);
+    for (const L of this.links) if (L.live) L.mq.publish(`${this.base}/${kind}/${this.me.id}`, payload);
+  }
 
   hello() {
     const s = this.g.sc;
-    this.pub(`${this.base}/h/${this.me.id}`, JSON.stringify({ name: this.me.name, outfit: this.me.outfit, score: s?.score ?? 0, mode: this.g.mode, t: Date.now() }));
+    this.send('h', { name: this.me.name, outfit: this.me.outfit, score: s?.score ?? 0, mode: this.g.mode ?? 'menu', lv: this.me.level ?? 1, t: Date.now() });
+    this.fire?.presence();
   }
 
-  event(e) { this.pub(`${this.base}/e/${this.me.id}`, JSON.stringify({ ...e, n: Math.random().toString(36).slice(2, 9) })); }
+  event(e) { this.send('e', { ...e, n: Math.random().toString(36).slice(2, 9) }); }
+
+  // everyone on the server races from the same moment (Firebase servers only)
+  callRace(at) { return this.fire?.callRace(at); }
 
   message(topic, payload) {
     const parts = topic.split('/');
     const kind = parts[4], id = parts[5];
     if (!id || id === this.me.id) return;
+    if (kind === 's') this.recv('s', id, new Float32Array(payload.buffer.slice(payload.byteOffset, payload.byteOffset + (SNAP_N + 1) * 4)));
+    else this.recv(kind, id, JSON.parse(dec.decode(payload)));
+  }
+
+  recv(kind, id, data) {
     let p = this.peers.get(id);
     if (kind === 'h') {
-      const h = JSON.parse(dec.decode(payload));
+      const h = data;
       if (!p) { p = this.addPeer(id, h); this.emit('join', p); }
       else if (!!h.outfit?.board !== p.skier.board) {
         // switched between skis and a board: a new stand-in
@@ -167,7 +246,8 @@ export class Room {
       }
       p.score = h.score; p.mode = h.mode; p.seen = performance.now();
     } else if (kind === 's' && p) {
-      const f = new Float32Array(payload.buffer.slice(payload.byteOffset, payload.byteOffset + (SNAP_N + 1) * 4));
+      const f = data;
+      if (f.length < SNAP_N + 1) return;
       // the same frame through another relay
       if (p.lastT != null && f[SNAP_N] <= p.lastT) return;
       p.lastT = f[SNAP_N];
@@ -179,7 +259,7 @@ export class Room {
       if (p.frames.length > 40) p.frames.shift();
       p.seen = now;
     } else if (kind === 'e') {
-      const e = JSON.parse(dec.decode(payload));
+      const e = data;
       if (e.n) { if (this.seen.has(e.n)) return; this.seen.set(e.n, 1); if (this.seen.size > 200) this.seen.delete(this.seen.keys().next().value); }
       if (e.type === 'bye') { if (p) this.dropPeer(id); return; }
       if (p) this.emit(e.type, { peer: p, ...e });
@@ -215,7 +295,7 @@ export class Room {
       this.sendT = 1 / 12;
       snap(player, this.buf);
       this.buf[SNAP_N] = performance.now();
-      this.pub(`${this.base}/s/${this.me.id}`, new Uint8Array(this.buf.buffer.slice(0)));
+      this.send('s', this.buf);
     }
     if (this.helloT <= 0) { this.helloT = 3; this.hello(); }
     const now = performance.now(), rt = now - 140;
@@ -236,8 +316,9 @@ export class Room {
 
   close() {
     this.closed = true;
-    this.event({ type: 'bye' });
+    if (!this.fire) this.event({ type: 'bye' });
     for (const id of [...this.peers.keys()]) this.dropPeer(id);
+    this.fire?.close();
     setTimeout(() => { for (const L of this.links) L.mq.close(); }, 100);
   }
 }

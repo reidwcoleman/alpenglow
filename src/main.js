@@ -20,6 +20,10 @@ import { Floodlights } from './night.js';
 import { Replay } from './replay.js';
 import { Room, myId } from './net.js';
 import { Meta } from './meta.js';
+import { Cloud, SERVERS, packReplay, errText } from './cloud.js';
+import { SNAP_N } from './snap.js';
+import { EVENT, TIERS, field, prize, MEDAL } from './events.js';
+import { LESSONS, LESSON, QUICK0, quickSpec } from './school.js';
 import { Menu, FLAKE } from './menu.js';
 import { saveRun, getRun } from './vault.js';
 import { MAPS, MAP_IDS } from './maps.js';
@@ -61,8 +65,12 @@ class Game {
     if (!PRESETS[this.tod]) this.tod = 'golden';
     this.quality = params.get('q') ?? store.get('quality', 'high');
     if (!QUALITY[this.quality]) this.quality = 'high';
-    // the wallet, the pass, the kit
+    // the wallet, the pass, the kit; the shared server keeps a copy of it all
     this.meta = new Meta();
+    this.cloud = new Cloud();
+    this.meta.onSave = () => this.cloudSave();
+    this.cloud.on('user', (u) => this.onCloudUser(u));
+    this.cloud.on('status', () => this.menu?.account());
     // skis or a snowboard
     this.gear = params.get('gear') ?? store.get('gear', 'ski');
     if (!['ski', 'board'].includes(this.gear)) this.gear = 'ski';
@@ -75,7 +83,7 @@ class Game {
     // multiplayer: who you are, which room
     this.id = myId();
     this.who = params.get('room') ? 'multi' : store.get('who', 'solo');
-    this.roomName = params.get('room') ?? store.get('room', '');
+    this.roomName = params.get('room') ?? store.get('room.' + PARK_ID, SERVERS[PARK_ID]?.[0] ?? 'public');
     this.nick = store.get('name', '') || 'Rider ' + this.id.slice(0, 3).toUpperCase();
     // the same rider every time on this browser (the jacket comes from the locker)
     let h = 0;
@@ -159,8 +167,11 @@ class Game {
     this.renderer.setAnimationLoop(() => this.frame());
     setTimeout(() => { $('loading').style.opacity = 0; setTimeout(() => $('loading').classList.add('hidden'), 800); }, 150);
     const mode = params.get('mode');
-    if (params.get('menu') === '0' && mode) this.start(mode === 'race' ? 'race' : mode === 'park' ? 'park' : 'run');
+    if (params.get('event') && EVENT[params.get('event')]) this.startEvent(params.get('event'), Math.max(0, Math.min(2, Number(params.get('tier') ?? 1))));
+    else if (params.get('menu') === '0' && mode) this.start(mode === 'race' ? 'race' : mode === 'park' ? 'park' : 'run');
     else this.showMenu();
+    // ?cwatch=<replay id>: a run from the global leaderboard
+    if (params.get('cwatch')) this.menu.watchCloud(params.get('cwatch'), PARK_ID);
     // ?watch=<id>: a saved run from the Replays tab
     if (params.get('watch')) getRun(params.get('watch')).then((run) => { if (run) { this.menu.setTab('replays'); this.replay.reset(); this.replay.load(run); this.replay.open('all'); } });
     window.__game = this;
@@ -184,6 +195,8 @@ class Game {
     this.env.apply(this.tod);
     this.shade?.compute(this.env.sunDir);
     const night = !!PRESETS[this.tod].night;
+    // a storm blows: gusty wind across the run
+    this.world && (this.world.wind = PRESETS[this.tod].snow ? { x: 0.8, z: 0.6, s: 0, base: 6 } : null);
     this.lights?.setActive(night);
     AG.uAgDirect.value = night ? 0 : 1;
     const dusk = { bluebird: 0.05, golden: 0.45, alpenglow: 1, storm: 0.35, night: 1 }[this.tod] ?? 0;
@@ -239,8 +252,9 @@ class Game {
     for (const b of whos) b.onclick = () => this.setWho(b.dataset.who);
     $('mp-name').value = this.nick;
     $('mp-room').value = this.roomName;
-    $('mp-name').onchange = () => { this.nick = $('mp-name').value.trim().slice(0, 16) || this.nick; $('mp-name').value = this.nick; store.set('name', this.nick); if (this.room) { this.room.me.name = this.nick; this.room.hello(); } };
-    $('mp-room').onchange = () => { this.roomName = $('mp-room').value.trim(); store.set('room', this.roomName); if (this.room) { this.leaveRoom(); this.joinRoom(); } };
+    $('mp-name').onchange = () => this.rename($('mp-name').value);
+    $('mp-room').onchange = () => { const v = $('mp-room').value.trim(); if (v) this.pickServer(v); };
+    $('mp-race').onclick = () => this.callRace();
     $('mp-copy').onclick = () => {
       const url = `${location.origin}${location.pathname}?park=${this.selPark}&room=${encodeURIComponent(this.roomName || 'public')}`;
       navigator.clipboard?.writeText(url).then(() => { $('mp-copy').textContent = 'Copied'; setTimeout(() => ($('mp-copy').textContent = 'Copy invite'), 1500); });
@@ -264,6 +278,73 @@ class Game {
   setGear(g) {
     this.gear = g; store.set('gear', g);
     this.kitChanged();
+    this.cloudSave();
+  }
+
+  // ---------------- accounts and the shared server ----------------
+  saveBook() { store.set('book', JSON.stringify([...this.book].slice(-400))); this.cloudSave(); }
+
+  // the profile goes up a moment after anything changes
+  cloudSave() {
+    if (this.cloud.status !== 'online' || !this.cloudReady) return;
+    this.cloud.saveProfile({ ...this.meta.export(), name: this.nick, gear: this.gear, book: [...this.book].slice(-400) });
+  }
+
+  // signed in (a guest on first visit): take the cloud save, or send ours up
+  async onCloudUser(u) {
+    const prev = store.get('cloudUid', '');
+    const doc = await this.cloud.loadProfile();
+    if (this.cloud.uid !== u.uid) return;
+    if (doc && prev === u.uid) {
+      if ((doc.rev ?? 0) > this.meta.rev) this.applyProfile(doc, false);
+    } else if (doc) this.applyProfile(doc, true);
+    store.set('cloudUid', u.uid);
+    this.cloudReady = true;
+    this.cloudSave();
+    this.menu?.account();
+    this.menu?.refresh();
+  }
+
+  applyProfile(d, merge) {
+    this.meta.import(d, merge);
+    if (Array.isArray(d.book)) { if (!merge) this.book = new Set(); for (const n of d.book) this.book.add(n); store.set('book', JSON.stringify([...this.book].slice(-400))); }
+    if (d.name && (!merge || /^Rider [A-Z0-9]{3}$/.test(this.nick))) { this.nick = d.name; store.set('name', this.nick); $('mp-name').value = this.nick; }
+    if (d.gear && !merge) { this.gear = d.gear; store.set('gear', this.gear); }
+    this.kitChanged();
+  }
+
+  // a new rider name: claimed on the server so nobody else has it
+  async rename(v) {
+    const name = v.trim().replace(/\s+/g, ' ').slice(0, 16);
+    if (!name || name === this.nick) { $('mp-name').value = this.nick; return; }
+    if (this.cloud.status === 'online') {
+      try { await this.cloud.claimName(name, this.nick); } catch (e) { this.toast(esc(errText(e))); $('mp-name').value = this.nick; return; }
+    }
+    this.nick = name; $('mp-name').value = name; store.set('name', name);
+    if (this.room) { this.room.me.name = name; this.room.hello(); }
+    this.cloudSave();
+    this.menu?.account();
+  }
+
+  async signOut() {
+    await this.cloud.flush();
+    store.set('cloudUid', '');
+    this.cloudReady = false;
+    this.meta.reset();
+    this.book = new Set(); store.set('book', '[]');
+    this.nick = 'Rider ' + Math.random().toString(36).slice(2, 5).toUpperCase(); store.set('name', this.nick); $('mp-name').value = this.nick;
+    await this.cloud.signOut();
+    this.kitChanged();
+  }
+
+  // a finished run on the global boards (and its replay for anyone to watch)
+  submit(board, entry, pk) {
+    if (this.cloud.status !== 'online') return;
+    const o = this.outfit();
+    const e = { name: this.nick, gear: this.gear, level: this.meta.level, park: PARK_ID, jacket: o.jacket, outfit: o, ...entry };
+    this.cloud.submit(board, e, pk && pk.times.length > 30 ? () => packReplay(pk, SNAP_N) : null).then((r) => {
+      if (r?.allTime) this.toast(`New personal best on the ${esc(MAPS[PARK_ID].name)} board`, 3000);
+    });
   }
 
   // the kit or the gear changed: the menu, the sticker and the room all see it
@@ -405,25 +486,62 @@ class Game {
   // ---------------- multiplayer ----------------
   async joinRoom() {
     if (this.room) return;
-    const room = (this.room = new Room(this, PARK_ID, this.roomName || 'public', { id: this.id, name: this.nick, outfit: this.outfit() }));
+    if (this.cloud.status === 'loading') await Promise.race([this.cloud.ready, new Promise((r) => setTimeout(r, 6000))]);
+    if (this.room) return;
+    const room = (this.room = new Room(this, PARK_ID, this.roomName || 'public', { id: this.id, name: this.nick, outfit: this.outfit(), level: this.meta.level }, this.cloud));
     room.on('status', (st) => this.mpStatus());
     room.on('join', (p) => { this.feed(`<b style="color:${p.color}">${esc(p.name)}</b> dropped in`); this.mpStatus(); });
     room.on('leave', (p) => { this.feed(`<b style="color:${p.color}">${esc(p.name)}</b> left`); this.mpStatus(); });
     room.on('chat', (e) => this.feed(`<b style="color:${e.peer.color}">${esc(e.peer.name)}</b> ${esc(e.text)}`, 7000));
     room.on('trick', (e) => this.feed(`<b style="color:${e.peer.color}">${esc(e.peer.name)}</b> ${esc(e.name)} <b>+${Number(e.pts).toLocaleString()}</b>`));
+    room.on('raceDone', (e) => this.feed(`<b style="color:${e.peer.color}">${esc(e.peer.name)}</b> finished the race · <b>${fmt(e.time)}</b>`, 7000));
+    room.on('raceCall', (v) => this.onRaceCall(v));
     await room.connect();
     this.mpStatus();
   }
 
   leaveRoom() { if (this.room) { this.room.close(); this.room = null; } this.mpStatus(); }
 
+  // a server from the list, or a private code
+  pickServer(name) {
+    this.roomName = name.slice(0, 16);
+    store.set('room.' + PARK_ID, this.roomName);
+    $('mp-room').value = SERVERS[PARK_ID]?.includes(this.roomName) ? '' : this.roomName;
+    if (this.room) { this.leaveRoom(); this.joinRoom(); }
+    this.menu?.servers();
+  }
+
   mpStatus() {
     const r = this.room;
     const n = r ? r.peers.size + 1 : 0;
-    $('mp-count').textContent = !r ? 'Live rooms, free' : r.status === 'live' ? `${n} riding · ${MAP.name} · ${r.room}` : r.status === 'offline' ? 'Offline, retrying' : 'Connecting…';
+    $('mp-count').textContent = !r ? (this.cloud.status === 'online' ? 'Live servers' : 'Live rooms, free') : r.status === 'live' ? `${n} riding · ${r.label}` : r.status === 'offline' ? 'Offline, retrying' : 'Connecting…';
     $('live').classList.toggle('hidden', !r);
     $('live').classList.toggle('off', r?.status !== 'live');
-    $('livelbl').textContent = r ? (r.status === 'live' ? `Live · ${r.room} · ${n} rider${n > 1 ? 's' : ''}` : 'Reconnecting') : '';
+    $('livelbl').textContent = r ? (r.status === 'live' ? `Live · ${r.label} · ${n} rider${n > 1 ? 's' : ''}` : 'Reconnecting') : '';
+    $('mp-race').classList.toggle('hidden', !(r?.fire && PARK_ID === 'yard'));
+    this.menu?.servers();
+  }
+
+  // everyone on this server races the Alpine Cup course from the same moment
+  callRace() {
+    if (!this.room?.fire) return;
+    if (this.state !== 'menu' && this.mode === 'race') return;
+    this.room.callRace(this.cloud.now() + 15000)?.catch(() => this.toast('Could not reach the server'));
+  }
+
+  onRaceCall(v) {
+    if (!v || !v.at || v.at < this.cloud.now() - 3000 || v.at === this.raceAt) return;
+    this.raceAt = v.at;
+    const left = Math.round((v.at - this.cloud.now()) / 1000);
+    this.feed(`<b>${esc(v.by ?? 'Someone')}</b> called a race · starts in ${left}s`, 6000);
+    this.toast(`RACE ON ${esc(this.room?.label ?? 'THIS SERVER').toUpperCase()} IN ${left}S`, 4000);
+    clearTimeout(this.raceCallT);
+    // line up four seconds before the gun
+    this.raceCallT = setTimeout(() => {
+      if (!this.room || PARK_ID !== 'yard' || this.replay?.on) return;
+      this.event = null;
+      this.start('race', { online: v.at });
+    }, Math.max(0, v.at - this.cloud.now() - 4500));
   }
 
   feed(html, ms = 5000) {
@@ -449,6 +567,10 @@ class Game {
     if (this.mode === 'park' && this.sc) { const pay = this.reward('park'); if (pay) this.toast(`Park session ${pay}`, 3800); }
     this.state = 'menu';
     this.mode = null;
+    this.event = null; this.online = null; this.coach = null;
+    this.showCoach();
+    // on a server, stay on it in the menu (its race calls still reach you)
+    if (this.who === 'multi') this.joinRoom();
     $('menu').classList.remove('hidden');
     $('hud').classList.add('hidden');
     $('results').classList.add('hidden');
@@ -569,26 +691,34 @@ class Game {
     s.parkLine = line;
   }
 
-  populateRace() {
+  // from: start further down the course; n: racers in the gate (1: a trial); tier: how quick they are
+  populateRace({ from = null, n = 8, tier = 1 } = {}) {
     this.clearSkiers();
     this.world.race = true; this.world.raceStarted = false;
     this.props.setRaceMode(true);
-    const lanes = [-10.5, -7.5, -4.5, -1.5, 1.5, 4.5, 7.5, 10.5];
-    const playerLane = 3 + Math.floor(this.rnd() * 2);
+    const z0 = from ?? START_Z;
+    this.raceZ0 = z0;
+    this.gate0 = GATES.findIndex((g) => g.z > z0 + 4);
+    const all = [-10.5, -7.5, -4.5, -1.5, 1.5, 4.5, 7.5, 10.5];
+    const lanes = all.slice((8 - n) >> 1, ((8 - n) >> 1) + n);
+    const playerLane = n === 1 ? 0 : Math.floor(n / 2) - 1 + Math.floor(this.rnd() * 2);
     const names = [...NAMES].sort(() => this.rnd() - 0.5);
     let bib = 1;
     this.racers = [];
     lanes.forEach((off, i) => {
       const isP = i === playerLane;
-      const outfit = randomOutfit(this.rnd, true);
-      if (isP) { outfit.jacket = this.outfit().jacket; outfit.pants = outfit.jacket; outfit.jpat = 0; outfit.ppat = 0; }
+      let outfit = randomOutfit(this.rnd, true);
+      // you race in your own kit, as a speed suit
+      if (isP) { const o = this.outfit(); outfit = { ...o, racer: true, pants: o.jacket, pants2: o.jacket2, ppat: o.jpat, beanie: 0, helmet: o.helmet ?? 0xf4f4f4 }; }
       const s = this.addSkier({ outfit, name: isP ? 'You' : names[i], isPlayer: isP, bib: bib++, grip: isP ? 1.75 : undefined, sidecut: 24 }, isP ? null : 'racer');
-      s.place(centerX(START_Z) + off, START_Z, null, 0);
+      s.place(centerX(z0) + off, z0, null, 0);
+      if (s.ai) s.ai.lastZ = z0;
       if (isP) { this.player = s; this.hookPlayer(s); }
-      this.racers.push({ s, gate: 0, pen: 0, missed: 0, finish: null, color: outfit.jacket });
+      this.racers.push({ s, gate: this.gate0, pen: 0, missed: 0, finish: null, color: outfit.jacket });
     });
-    // skill spread: a couple of rivals are genuinely quick
-    this.ais.forEach((ai, i) => { ai.skill = 0.78 + (i / this.ais.length) * 0.2 + this.rnd() * 0.04; ai.s.grip = 1.6 + ai.skill * 0.22; });
+    // skill spread by level: a couple of rivals are genuinely quick
+    const [lo, hi] = TIERS[tier].skill;
+    this.ais.forEach((ai, i) => { ai.skill = lo + (i / Math.max(1, this.ais.length - 1)) * (hi - lo) + this.rnd() * 0.02; ai.s.grip = 1.6 + ai.skill * 0.22; ai.gate = this.gate0; });
   }
 
   hookPlayer(p) {
@@ -681,9 +811,10 @@ class Game {
     const title = name || (sketchy ? 'SKETCHY LANDING' : stomp ? 'STOMPED' : 'CLEAN LANDING');
     // a trick never landed before on this browser goes in the book
     const fresh = [...sc.names, name].filter((n) => n && !this.book.has(n));
+    if (!sketchy) this.checkLessons([...sc.names, name].filter(Boolean));
     if (fresh.length && !sketchy) {
       for (const n of fresh) this.book.add(n);
-      store.set('book', JSON.stringify([...this.book].slice(-400)));
+      this.saveBook();
       sc.fresh = (sc.fresh ?? 0) + fresh.length;
     }
     if (total > sc.best.pts && name) sc.best = { pts: total, name };
@@ -723,7 +854,8 @@ class Game {
     if (!sc) return;
     const name = `${b.tail ? 'Tail' : 'Nose'} Butter${b.spin ? ' ' + b.spin : ''}`;
     const pts = Math.round((150 + (b.spin / 180) * 230) * this.repeat(name));
-    if (!this.book.has(name)) { this.book.add(name); store.set('book', JSON.stringify([...this.book].slice(-400))); sc.fresh = (sc.fresh ?? 0) + 1; this.status('NEW TRICK'); }
+    this.checkLessons([name]);
+    if (!this.book.has(name)) { this.book.add(name); this.saveBook(); sc.fresh = (sc.fresh ?? 0) + 1; this.status('NEW TRICK'); }
     sc.score += pts;
     this.say(name, `+${pts}`, '', '', 1500);
   }
@@ -757,9 +889,13 @@ class Game {
   }
 
   // ---------------- modes ----------------
-  start(mode) {
+  // opts: { online: race start time (server clock) }; this.event: { ev, tier } for an event
+  start(mode, opts = {}) {
     if (mode === 'free') mode = 'run';
+    if (mode === 'trial' || mode === 'contest') mode = mode === 'trial' ? 'race' : 'run';
     if (mode !== 'run' && PARK_ID !== 'yard') mode = 'run';
+    this.online = opts.online ?? null;
+    if (this.online) this.event = null;
     this.replay?.close();
     this.replay?.reset();
     if (this.who === 'multi') { this.joinRoom(); if (this.room) this.room.me.outfit = this.outfit(); }
@@ -779,10 +915,20 @@ class Game {
     $('racebox').classList.toggle('hidden', mode !== 'race');
     $('course').classList.toggle('hidden', mode === 'park');
     $('botbar').classList.toggle('hidden', mode === 'park');
+    $('evtag').classList.toggle('hidden', !this.event && !this.online);
+    $('quick').classList.toggle('hidden', mode === 'race');
+    this.quickShown = null;
+    setTimeout(() => this.quickHud(), 0);
+    if (!this.coach) this.showCoach();
+    if (this.event) $('evtag').textContent = `${this.event.ev.name} · ${TIERS[this.event.tier].name}`;
+    if (this.online) $('evtag').textContent = `Server race · ${this.room?.label ?? ''}`;
     if (mode === 'race') {
-      this.populateRace();
+      const ev = this.event?.ev;
+      this.populateRace({ from: ev?.from, n: this.online || ev?.kind === 'trial' ? 1 : ev?.racers ?? 8, tier: this.event?.tier ?? 1 });
+      // the full course (a race or the trial) shares one board; the sprint has its own
+      this.raceBoard = ev?.from ? `ev-${ev.id}` : `race-${PARK_ID}`;
       this.state = 'countdown';
-      this.countdown = 3.6;
+      this.countdown = this.online ? Math.max(1.5, (this.online - this.cloud.now()) / 1000) : 3.6;
       this.lastBeep = 4;
     } else if (mode === 'park') {
       this.populatePark();
@@ -793,7 +939,9 @@ class Game {
       this.populateFree(false);
       this.state = 'free';
       this.resetScore();
-      this.say('DROP IN', '', 'summit to village · hold R to restart', '', 3000);
+      const ev = this.event?.ev;
+      if (ev) this.say(ev.name.toUpperCase(), '', `score to beat · ${field(ev, this.event.tier, NAMES)[0].score.toLocaleString()}`, 'gold', 3400);
+      else this.say('DROP IN', '', 'summit to village · hold R to restart', '', 3000);
     }
     if (params.get('auto') === '1') {
       this.player.ai = new AIController(this.player, mode === 'race' ? 'racer' : 'park', this.rnd, this.world); this.player.ai.skill = 0.95;
@@ -834,25 +982,155 @@ class Game {
     const rs = this.standings();
     const winner = rs[0];
     const me = rs.findIndex((r) => r.s === this.player) + 1;
+    const mineR = this.racers.find((r) => r.s === this.player);
+    const mine = mineR.finish;
+    const ev = this.event?.ev, tier = this.event?.tier ?? 1;
     const rows = rs.map((r, i) => {
       const t = r.finish ?? null;
       const gap = i === 0 || t == null || winner.finish == null ? (t == null ? 'DNF' : fmt(t)) : '+' + (t - winner.finish).toFixed(2);
       return `<tr class="${r.s === this.player ? 'me' : ''}"><td>${i + 1}</td><td><span class="sw" style="background:${hex(r.color)}"></span>${r.s.name}${r.missed ? ` <small style="opacity:.6">(${r.missed} missed)</small>` : ''}</td><td class="t">${i === 0 ? fmt(t) : gap}</td></tr>`;
     }).join('');
-    const title = me === 1 ? 'VICTORY' : me <= 3 ? 'PODIUM' : 'FINISHED';
-    // the race pays by finishing place
-    this.sc = { score: Math.max(2000, 26000 - (me - 1) * 3000), paid: false };
-    const pay = this.reward('race');
-    $('rescard').innerHTML = `<h2>${title}</h2><p class="lead">You finished ${me}${ord(me)} of ${rs.length}${this.racers.find((r) => r.s === this.player).missed ? ', with ' + this.racers.find((r) => r.s === this.player).missed + ' missed gates' : ''}.</p>
-      <table class="res">${rows}</table>${pay}
-      <div class="row"><button class="btn p" id="r-again">Race again</button><button class="btn" id="r-replay">Watch replay</button><button class="btn" id="r-menu">Menu</button></div>`;
+    let title = me === 1 ? 'VICTORY' : me <= 3 ? 'PODIUM' : 'FINISHED', lead = `You finished ${me}${ord(me)} of ${rs.length}`, table = `<table class="res">${rows}</table>`;
+    // a trial: the clock against the medal times
+    let place = me;
+    if (ev?.kind === 'trial' || this.online) {
+      const T = TIERS[tier].trial;
+      place = mine == null ? 4 : T.findIndex((t) => mine <= t) + 1 || 4;
+      title = this.online ? 'SERVER RACE' : place <= 3 ? MEDAL[4 - place] : 'FINISHED';
+      lead = mine == null ? 'Did not finish' : `${fmt(mine)}`;
+      table = this.online ? '<table class="res" id="srvres"><tr><td colspan="3">Waiting for the others…</td></tr></table>'
+        : `<table class="res">${T.map((t, i) => `<tr class="${place === i + 1 ? 'me' : ''}"><td>${MEDAL[3 - i]}</td><td>${TIERS[tier].name}</td><td class="t">${fmt(t)}</td></tr>`).join('')}</table>`;
+    }
+    if (mineR.missed) lead += `, with ${mineR.missed} missed gate${mineR.missed > 1 ? 's' : ''}`;
+    // the race pays by finishing place; an event adds its prize and a medal
+    this.sc = { score: Math.max(2000, 26000 - (place - 1) * 3000), paid: false };
+    let pay = this.reward('race');
+    if (ev && mine != null) pay += this.eventPrize(ev, tier, place);
+    $('rescard').innerHTML = `<h2>${title}</h2>${ev ? `<div class="evline">${esc(ev.name)} · ${TIERS[tier].name}</div>` : ''}<p class="lead">${lead}.</p>
+      ${table}${pay}
+      <div class="row"><button class="btn p" id="r-again">${this.online ? 'Call another race' : 'Race again'}</button><button class="btn" id="r-replay">Watch replay</button><button class="btn" id="r-menu">Menu</button></div>`;
     $('results').classList.remove('hidden');
-    $('r-again').onclick = () => this.start('race');
+    $('r-again').onclick = () => { if (this.online) { this.showMenu(); this.callRace(); } else this.start('race'); };
     $('r-replay').onclick = () => { if (this.replay.open('all')) $('results').classList.add('hidden'); };
     $('r-menu').onclick = () => this.showMenu();
     const best = Number(store.get('best', '0'));
-    const mine = this.racers.find((r) => r.s === this.player).finish;
-    if (mine && (!best || mine < best)) store.set('best', mine);
+    if (mine && !ev && !this.online && (!best || mine < best)) store.set('best', mine);
+    if (mine && !this.online) this.submit(this.raceBoard ?? `race-${PARK_ID}`, { time: Math.round(mine * 100) / 100, place: me }, this.replay.pack());
+    if (this.online) this.serverResults(mine);
+  }
+
+  // a server race: post our time, show everyone's as they come in
+  serverResults(mine) {
+    const at = this.online, room = this.room;
+    if (!room?.fire) return;
+    const c = this.cloud, D = c.D;
+    const ref = c.ref(`rooms/${room.key}/results`);
+    if (mine != null) { D.set(c.ref(`rooms/${room.key}/results/${c.uid}`), { name: this.nick, time: mine, at }).catch(() => {}); room.event({ type: 'raceDone', time: mine }); }
+    const off = D.onValue(ref, (snap) => {
+      const el = $('srvres');
+      if (!el) { off(); return; }
+      const list = Object.entries(snap.val() ?? {}).map(([u, r]) => ({ ...r, me: u === c.uid })).filter((r) => r.at === at).sort((a, b) => a.time - b.time);
+      el.innerHTML = list.map((r, i) => `<tr class="${r.me ? 'me' : ''}"><td>${i + 1}</td><td>${esc(r.name)}</td><td class="t">${i ? '+' + (r.time - list[0].time).toFixed(2) : fmt(r.time)}</td></tr>`).join('') || '<tr><td colspan="3">No finishers yet</td></tr>';
+    });
+    setTimeout(() => off(), 120000);
+  }
+
+  // an event's prize and medal
+  eventPrize(ev, tier, place) {
+    const flakes = place <= 3 ? prize(tier, place) : 0;
+    if (flakes) { this.meta.flakes += flakes; this.meta.save(); this.meta.changed(); }
+    const m = this.meta.medal(ev.id, tier, place);
+    const gifts = m.gifts.map((g) => g.name).join(', ');
+    return flakes || gifts ? `<div class="payout">${place <= 3 ? `<span class="hi">${MEDAL[4 - place]} MEDAL</span>` : ''}${flakes ? `<span>${FLAKE}+${flakes} PRIZE</span>` : ''}${gifts ? `<span class="hi">UNLOCKED ${esc(gifts)}</span>` : ''}</div>` : '';
+  }
+
+  // ---------------- trick school ----------------
+  quickSlots() {
+    const q = this.meta.quick?.[this.gear];
+    return Array.isArray(q) && q.length === 4 ? q : QUICK0[this.gear];
+  }
+
+  setQuick(i, id) {
+    const q = (this.meta.quick ??= {});
+    q[this.gear] = [...this.quickSlots()];
+    q[this.gear][i] = id;
+    this.meta.save();
+    this.quickHud();
+  }
+
+  quickHud() {
+    const el = $('quick');
+    if (!el) return;
+    const B = this.gear === 'board', p = this.player;
+    el.innerHTML = this.quickSlots().map((id, i) => {
+      const l = LESSON[id];
+      const on = p && (p.autoArm?.id === id || p.auto?.id === id);
+      return `<span class="${on ? 'on' : ''}"><kbd>${i + 1}</kbd>${l ? esc(B ? l.board : l.name) : '—'}</span>`;
+    }).join('');
+  }
+
+  // keys 1-4: in the air the trick starts now; on the snow it waits for the next kicker
+  quickKey(i) {
+    const p = this.player;
+    const id = this.quickSlots()[i];
+    const spec = quickSpec(id);
+    if (!p || !spec || p.crash > 0) return;
+    const q = { ...spec, id };
+    if (!p.onGround && !p.grind && p.airTime < 0.45 && !p.trickType) { p.auto = q; p.autoArm = null; }
+    else { p.autoArm = p.autoArm?.id === id ? null : q; if (p.autoArm) this.status('READY · ' + (this.gear === 'board' ? LESSON[id].board : LESSON[id].name).toUpperCase()); }
+    this.quickHud();
+  }
+
+  // Try it: to the right line of the park with the lesson on screen
+  tryLesson(id) {
+    const l = LESSON[id];
+    if (!l) return;
+    this.coach = l;
+    this.event = null;
+    if (PARK_ID === 'yard' && l.where !== 'any') {
+      this.start('park');
+      this.parkSpawn(this.player, l.where === 'rails' ? 'rails' : 'jumps');
+      this.rig.snap = true;
+    } else this.start('run');
+    this.showCoach();
+  }
+
+  showCoach() {
+    const el = $('coach'), l = this.coach;
+    if (!el) return;
+    el.classList.toggle('hidden', !l);
+    if (!l) return;
+    const B = this.gear === 'board';
+    el.innerHTML = `<div class="ct">TRICK SCHOOL · ${esc(B ? l.board : l.name)}<button id="coach-x">×</button></div><ol>${l.steps.map((s2) => `<li>${s2}</li>`).join('')}</ol>`;
+    $('coach-x').onclick = () => { this.coach = null; this.showCoach(); };
+  }
+
+  // a new trick in the book: lessons it passes pay out once
+  checkLessons(names) {
+    for (const l of LESSONS) {
+      if (this.meta.lessons.has(l.id) || !names.some((n) => l.re.test(n))) continue;
+      this.meta.lessons.add(l.id);
+      this.meta.flakes += l.reward;
+      this.meta.save(); this.meta.changed();
+      const B = this.gear === 'board';
+      this.toast(`LESSON PASSED · ${esc(B ? l.board : l.name)} · ${FLAKE} +${l.reward}`, 3500);
+      if (this.coach?.id === l.id) { this.coach = null; this.showCoach(); }
+    }
+  }
+
+  // the menu starts an event: its park loads if it isn't this one
+  startEvent(id, tier) {
+    const ev = EVENT[id];
+    if (!ev) return;
+    store.set('evTier', tier);
+    if (ev.park !== PARK_ID) {
+      store.set('park', ev.park);
+      location.search = new URLSearchParams({ park: ev.park, menu: '0', event: id, tier, tod: this.tod }).toString();
+      return;
+    }
+    this.event = { ev, tier };
+    this.leaveRoom();
+    this.start(ev.kind === 'race' || ev.kind === 'trial' ? 'race' : 'run');
   }
 
   finishRun() {
@@ -861,8 +1139,18 @@ class Game {
     const prev = Number(store.get('best.run.' + PARK_ID, '0'));
     const isBest = sc.score > prev;
     if (isBest) store.set('best.run.' + PARK_ID, sc.score);
-    const pay = this.reward('run');
-    $('rescard').innerHTML = `<h2>RUN COMPLETE</h2>
+    let pay = this.reward('run');
+    // a contest: where the run puts you among the field
+    const ev = this.event?.ev, tier = this.event?.tier ?? 1;
+    let board = '', title = 'RUN COMPLETE';
+    if (ev) {
+      const rows = [...field(ev, tier, NAMES), { name: this.nick, score: sc.score, me: true }].sort((a, b) => b.score - a.score);
+      const place = rows.findIndex((r) => r.me) + 1;
+      title = place === 1 ? 'CHAMPION' : place <= 3 ? MEDAL[4 - place] + ' MEDAL' : `${place}${ord(place)} PLACE`;
+      pay += this.eventPrize(ev, tier, place);
+      board = `<div class="evline">${esc(ev.name)} · ${TIERS[tier].name}</div><table class="res">${rows.slice(0, 6).map((r, i) => `<tr class="${r.me ? 'me' : ''}"><td>${i + 1}</td><td>${esc(r.name)}${r.cpu ? ' <small style="opacity:.55">CPU</small>' : ''}</td><td class="t">${r.score.toLocaleString()}</td></tr>`).join('')}${place > 6 ? `<tr class="me"><td>${place}</td><td>${esc(this.nick)}</td><td class="t">${sc.score.toLocaleString()}</td></tr>` : ''}</table>`;
+    }
+    $('rescard').innerHTML = `<h2>${title}</h2>${board}
       <div class="bigscore">${sc.score.toLocaleString()}</div><p class="lead" style="margin-top:0">${isBest ? 'New best run.' : prev ? `Best ${prev.toLocaleString()}` : ''}</p>${pay}
       <div class="stats">
         <div class="stat"><b>${clock(sc.t)}</b><span>Time</span></div>
@@ -891,7 +1179,9 @@ class Game {
       const best = sc.best.name !== '—' ? sc.best.name : '';
       if (pk.times.length > 30) saveRun({ id: rid, park: PARK_ID, gear: this.gear, outfit: this.outfit(), score: sc.score, time: sc.t, date: Date.now(), best, keep: false, ...pk });
       this.meta.addRun(PARK_ID, { score: sc.score, time: sc.t, date: Date.now(), gear: this.gear, rid });
-    }
+      if (sc.score > 0) this.submit(`run-${PARK_ID}`, { score: sc.score, secs: Math.round(sc.t), best }, pk);
+    } else if (kind === 'park' && sc.score > 0) this.submit('park-yard', { score: sc.score, secs: Math.round(sc.t), best: sc.best?.name !== '—' ? sc.best?.name : '' }, null);
+    this.cloudSave();
     const gifts = r.gifts.map((g) => g.name).join(', ');
     return `<div class="payout"><span>+${r.xp.toLocaleString()} XP</span><span>${FLAKE}+${r.flakes.toLocaleString()}</span>${r.levels ? `<span class="hi">PASS TIER ${r.level}</span>` : ''}${gifts ? `<span class="hi">UNLOCKED ${esc(gifts)}</span>` : ''}</div>`;
   }
@@ -907,6 +1197,8 @@ class Game {
 
   // ---------------- simulation ----------------
   simulate(h) {
+    const W = this.world.wind;
+    if (W) W.s = Math.max(0, W.base * (0.55 + 0.35 * Math.sin(this.time * 0.6) + 0.25 * Math.sin(this.time * 1.7 + 1.3)));
     const racing = this.state === 'race' || this.state === 'countdown' || (this.state === 'results' && this.mode === 'race');
     for (const ai of this.ais) ai.update(h, this.skiers);
     if (this.player?.ai) this.player.ai.update(h, this.skiers);
@@ -1066,15 +1358,16 @@ class Game {
         if (e.key === 'Enter' || e.key === 'Escape') { box.classList.add('hidden'); el.blur(); }
       };
     }
+    const typing = document.activeElement?.tagName === 'INPUT';
     if (this.state === 'menu' && (inp.hit('Escape') || inp.padHit?.[9])) {
       // Esc on the front page: close whatever's open, or open the menu
-      const open = ['howto', 'credits', 'settings', 'parks'].find((id) => !$(id).classList.contains('hidden'));
+      const open = ['account', 'howto', 'credits', 'settings', 'parks'].find((id) => !$(id).classList.contains('hidden'));
       if (open === 'parks') this.closeParks(); else if (open) $(open).classList.add('hidden'); else $('settings').classList.remove('hidden');
     } else if (inp.hit('Escape') || inp.hit('KeyP') || inp.padHit?.[9]) this.setPaused(!this.paused);
     if (inp.hit('KeyM')) { this.setMuted(!this.audio.muted); this.menu?.sound(); }
     if (inp.hit('KeyC') || inp.padHit?.[12]) this.cycleCam();
     if (inp.hit('Enter') || inp.padHit?.[0]) {
-      if (this.state === 'menu' && $('settings').classList.contains('hidden') && $('howto').classList.contains('hidden')) this.go();
+      if (this.state === 'menu' && !typing && ['settings', 'howto', 'account', 'credits'].every((id) => $(id).classList.contains('hidden'))) this.go();
       else if (this.state === 'results' && !$('results').classList.contains('hidden')) this.start(this.mode);
     }
 
@@ -1092,11 +1385,18 @@ class Game {
           const need = this.mode === 'park' ? 0.7 : 2;
           if (this.holdR >= need) { this.holdR = -99; this.restart(); }
         }
-        if (this.mode === 'park') {
-          const keys = { Digit1: 'jumps', Digit2: 'rails', Digit3: 'pipe', Digit4: 'rollers' };
-          const names = { jumps: 'JUMP LINE', rails: 'RAIL GARDEN', pipe: 'HALFPIPE', rollers: 'ROLLERS' };
-          for (const [k, line] of Object.entries(keys)) if (inp.hit(k)) { this.parkSpawn(this.player, line); this.rig.snap = true; this.say(names[line], '', '', '', 1200); }
-        }
+        // 1-4: in the park on the snow they pick a line; otherwise they're the quick tricks
+        const P = this.player;
+        const keys = { Digit1: 'jumps', Digit2: 'rails', Digit3: 'pipe', Digit4: 'rollers' };
+        const names = { jumps: 'JUMP LINE', rails: 'RAIL GARDEN', pipe: 'HALFPIPE', rollers: 'ROLLERS' };
+        Object.entries(keys).forEach(([k, line], i) => {
+          if (!inp.hit(k) || this.state === 'countdown') return;
+          if (this.mode === 'park' && P.onGround && !P.grind) { this.parkSpawn(P, line); this.rig.snap = true; this.say(names[line], '', '', '', 1200); }
+          else if (this.mode !== 'race') this.quickKey(i);
+        });
+        // an armed quick trick pops for you at the lip
+        if (P.autoArm && P.onGround && !P.grind && P.lipAhead(-0.4, 9)) P.controls.jump = !P.lipAhead(-0.4, 1.6);
+        if ((P.auto || P.autoArm) !== this.quickShown) { this.quickShown = P.auto || P.autoArm; this.quickHud(); }
       }
       if (this.state === 'countdown') {
         this.countdown -= dt;
@@ -1237,7 +1537,7 @@ class Game {
       const me = rs.findIndex((r) => r.s === p) + 1;
       $('pos').innerHTML = `${me}<sup>${ord(me)}</sup> <small>/ ${rs.length}</small>`;
       const r = this.racers.find((x) => x.s === p);
-      $('gates').textContent = `Gate ${Math.min(r.gate + 1, GATES.length)} / ${GATES.length}`;
+      $('gates').textContent = `Gate ${Math.min(r.gate - (this.gate0 ?? 0) + 1, GATES.length - (this.gate0 ?? 0))} / ${GATES.length - (this.gate0 ?? 0)}`;
       this.boardT = (this.boardT ?? 0) - dt;
       if (this.boardT <= 0) {
         this.boardT = 0.25;

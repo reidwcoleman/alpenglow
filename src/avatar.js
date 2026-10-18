@@ -6,6 +6,7 @@
 // on the poles. The clothes are re-dyed into a ski jacket, pants and gloves, puffed out a
 // little over the body.
 import * as THREE from 'three';
+import { HAIR, KNIT } from './gear.js';
 
 const BASE = (import.meta.env?.BASE_URL ?? '/') + 'people/';
 export const AVATARS = ['Sports_Male_02', 'Sports_Male_03', 'Sports_Male_04', 'Sports_Female_02', 'Male_Adult_05', 'Male_Adult_08', 'Female_Adult_01', 'Female_Adult_03'];
@@ -81,6 +82,9 @@ async function loadKit(name, loader, tl) {
   return {
     name, names, parents, local, boneInverses, bindP, bindQ, geo, map, normal, mask, I,
     waistY: bindP[I('Bip01_Pelvis')].y + 0.07,
+    skull: bindP[I('Bip01_Head')].clone().add(new THREE.Vector3(0, 0.083, -0.008)),
+    feet: ['Bip01_L_Foot', 'Bip01_R_Foot'].map((n) => bindP[I(n)].clone()),
+    hands: ['Bip01_L_Hand', 'Bip01_R_Hand'].map((n) => bindP[I(n)].clone()),
     neckY: bindP[I('Bip01_Neck')].y,
     leg: [len('Bip01_L_Thigh', 'Bip01_L_Calf'), len('Bip01_L_Calf', 'Bip01_L_Foot')],
     arm: [len('Bip01_L_UpperArm', 'Bip01_L_Forearm'), len('Bip01_L_Forearm', 'Bip01_L_Hand')],
@@ -111,28 +115,50 @@ function kitMaterial(kit, outfit) {
     uPat: { value: new THREE.Vector2(outfit.jpat ?? 0, outfit.ppat ?? 0) },
     uBoots: { value: c(outfit.boots) },
     uLm: { value: new THREE.Vector2(kit.waistY, kit.neckY) },
+    uLmV: { value: new THREE.Vector2(kit.waistY, kit.neckY) },
     // how far the jacket and pants stand off the body (a race suit is skin tight)
     uPuff: { value: racer ? 0.004 : 1 },
-    // snowboard boots are big soft things
-    uFoot: { value: outfit.board ? 0.024 : 0.0 },
+    // the hair tucked under the helmet or beanie
+    uSkull: { value: kit.skull },
+    uHatC: { value: new THREE.Vector3(...(outfit.beanie ? KNIT.c : HAIR.c)) },
+    uHatR: { value: new THREE.Vector3(...(outfit.beanie ? KNIT.r.map((r) => r * 0.93) : HAIR.r)) },
+    // the feet live inside the boots (gear.js)
+    uFootL: { value: kit.feet[0] }, uFootR: { value: kit.feet[1] },
+    uHandL: { value: kit.hands[0] }, uHandR: { value: kit.hands[1] },
   };
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, u);
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>
-attribute float aPart; varying float vPart; varying vec3 vRest; uniform float uPuff, uFoot;`)
+attribute float aPart; varying float vPart; varying vec3 vRest; uniform float uPuff; uniform vec2 uLmV; uniform vec3 uSkull, uHatC, uHatR, uFootL, uFootR;`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
 vPart = aPart; vRest = position;
 {
   float pp = floor( aPart + 0.5 );
-  float puff = pp == 2.0 ? 0.034 : pp == 3.0 ? 0.03 : pp == 4.0 ? 0.026 : pp == 6.0 ? 0.03 : pp == 7.0 ? 0.034 : pp == 1.0 ? 0.016 : pp == 5.0 ? 0.012 : pp == 8.0 ? uFoot : 0.0;
+  // ski pants: roomy, wider toward the hem, which sits on the boot cuff
+  float hem = 0.165;
+  float flare = smoothstep( 0.46, 0.2, position.y );
+  // the collar stands up round the neck to just under the chin (lower at the front, where it zips)
+  float cTop = uLmV.y + 0.06 - 0.025 * step( 0.03, position.z );
+  float collar = 1.0 - smoothstep( cTop - 0.012, cTop + 0.002, position.y );
+  float puff = pp == 2.0 ? 0.036 : pp == 3.0 ? 0.032 : pp == 4.0 ? 0.03 : pp == 6.0 ? 0.04 : pp == 7.0 ? 0.034 + 0.03 * flare : pp == 5.0 ? 0.012 : pp < 1.5 ? 0.022 * collar : 0.0;
+  if ( pp == 7.0 && uPuff > 0.5 ) transformed.y = max( transformed.y, hem );
   transformed += objectNormal * ( uPuff < 0.5 ? min( puff, uPuff ) : puff );
+  // feet shrink a little inside the boot shells
+  if ( pp == 8.0 ) { vec3 fc = ( position.x > 0.0 ? uFootL : uFootR ) + vec3( 0.0, -0.035, 0.03 ); transformed = fc + ( transformed - fc ) * 0.55; }
+  // hair: anything above the brow squeezed inside the helmet's liner
+  if ( pp == 0.0 && position.y > uSkull.y - 0.03 ) {
+    vec3 c = uSkull + uHatC;
+    vec3 d = ( transformed - c ) / uHatR;
+    float L = length( d );
+    if ( L > 0.9 ) { float k = 0.9 + 0.1 * ( 1.0 - exp( -( L - 0.9 ) / 0.1 ) ); transformed = c + ( transformed - c ) * ( k / L ); }
+  }
 }`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
-uniform sampler2D uMask; uniform vec3 uJacket, uPants, uGloves, uBoots, uJacket2, uPants2; uniform vec2 uLm, uPat;
+uniform sampler2D uMask; uniform vec3 uJacket, uPants, uGloves, uBoots, uJacket2, uPants2, uHandL, uHandR; uniform vec2 uLm, uPat;
 varying float vPart; varying vec3 vRest;
-float gRough; vec4 gNS;
+float gRough; vec4 gNS; float gH;
 float agH(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
 float agN(vec3 x) {
   vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
@@ -150,7 +176,17 @@ vec3 agPat(vec3 a, vec3 b, float pat, float part, vec3 p, vec2 lm) {
     return mix(mix(a, b, (sx + sy) * 0.42), vec3(0.95), max(tx, ty) * 0.35);
   }
   if (pat < 4.5) return part > 2.5 && part < 4.5 ? b : a;
-  return mix(b, a, smoothstep(lm.x - 0.75, lm.y, p.y));
+  if (pat < 5.5) return mix(b, a, smoothstep(lm.x - 0.75, lm.y, p.y));
+  if (pat < 6.5) return fract(p.y * 7.0) > 0.62 ? b : a;
+  if (pat < 7.5) { float v = fract(p.y * 5.0 + abs(p.x) * 5.0); return v > 0.5 && v < 0.78 ? b : a; }
+  if (pat < 8.5) return p.x > 0.0 ? a : b;
+  if (pat < 9.5) return (part < 2.5 && abs(p.x) < 0.035 && p.z > 0.0) || (part > 3.5 && part < 4.5) || (part > 5.5 && abs(abs(p.x) - 0.17) < 0.022) ? b : a;
+  if (pat < 10.5) { vec3 q = floor(p * 26.0); float n = agH(q) * 0.6 + agH(floor(p * 9.0)) * 0.4; return n > 0.62 ? b : n > 0.48 ? mix(a, b, 0.45) : a; }
+  if (pat < 11.5) return fract(p.x * 24.0 + p.z * 24.0) > 0.86 ? mix(a, b, 0.85) : a;
+  if (pat < 12.5) { vec2 g = vec2(p.x * 2.0 + p.z * 2.0, p.y) * 14.0; g.x += step(1.0, mod(g.y, 2.0)) * 0.5; return length(fract(g) - 0.5) < 0.24 ? b : a; }
+  if (pat < 13.5) return a;
+  if (pat < 14.5) { float d = p.y - lm.x - 0.12 + p.x * 1.1; return abs(d) < 0.07 ? b : a; }
+  { vec3 q = floor(p * 11.0); return mod(q.x + q.y + q.z, 2.0) > 0.5 ? b : a; }
 }`)
       .replace('#include <map_fragment>', `
 {
@@ -164,8 +200,9 @@ vec3 agPat(vec3 a, vec3 b, float pat, float part, vec3 p, vec2 lm) {
   gRough = mix( 0.85, 0.5, gNS.b );
   // keep the fabric's folds, lose its prints: a clamped ratio of two blur levels
   vec3 m3 = texture2D( map, uv, 3.0 ).rgb, m6 = texture2D( map, uv, 6.5 ).rgb;
-  float det = clamp( ( dot( m3, ${LUM} ) + 0.004 ) / ( dot( m6, ${LUM} ) + 0.004 ), 0.9, 1.08 );
-  float fine = clamp( ( dot( a.rgb, ${LUM} ) + 0.004 ) / ( dot( m3, ${LUM} ) + 0.004 ), 0.93, 1.06 );
+  float det = clamp( ( dot( m3, ${LUM} ) + 0.004 ) / ( dot( m6, ${LUM} ) + 0.004 ), 0.95, 1.04 );
+  float fine = clamp( ( dot( a.rgb, ${LUM} ) + 0.004 ) / ( dot( m3, ${LUM} ) + 0.004 ), 0.97, 1.03 );
+  gH = 0.0;
   vec3 dye = vec3( -1.0 );
   float rough = 0.6;
   if ( bodyHalf || part > 0.5 ) {
@@ -173,7 +210,40 @@ vec3 agPat(vec3 a, vec3 b, float pat, float part, vec3 p, vec2 lm) {
     else if ( part > 5.5 ) { dye = agPat( uPants, uPants2, uPat.y, part, vRest, uLm ); rough = 0.7; }
     else if ( part > 4.5 ) { dye = uGloves; rough = 0.75; }
     else if ( part > 1.5 ) { bool low = vRest.y < uLm.x - 0.03; dye = low ? agPat( uPants, uPants2, uPat.y, 6.0, vRest, uLm ) : agPat( uJacket, uJacket2, uPat.x, part, vRest, uLm ); rough = low ? 0.7 : 0.5; }
-    else if ( part > 0.5 ) { dye = uJacket * 0.55; rough = 0.8; }
+  }
+  // the collar: everything round the neck below the line, head or neck alike
+  if ( part < 1.5 && uLm.y > 0.0 ) {
+    float top = uLm.y + 0.06 - 0.025 * step( 0.03, vRest.z );
+    float c = 1.0 - smoothstep( top - 0.003, top + 0.003, vRest.y );
+    if ( c > 0.0 ) { dye = mix( a.rgb, agPat( uJacket, uJacket2, uPat.x, 2.0, vRest, uLm ) * 0.92, c ); rough = 0.6; }
+  }
+  // the garment's make: zip, hem and cuffs on the jacket, a cargo pocket and knee darts on the pants, quilting
+  if ( dye.r >= 0.0 && part > 1.5 && part < 7.5 && part != 5.0 ) {
+    vec3 p = vRest;
+    bool jacket = ( part > 1.5 && part < 4.5 ) && p.y > uLm.x - 0.03;
+    if ( jacket ) {
+      float zip = 1.0 - smoothstep( 0.004, 0.009, abs( p.x ) );
+      if ( p.z > 0.0 && p.y < uLm.y - 0.02 ) { dye = mix( dye, dye * 0.35, zip ); gH -= zip * 0.6; rough = mix( rough, 0.3, zip ); }
+      float hemB = 1.0 - smoothstep( 0.0, 0.012, abs( p.y - ( uLm.x + 0.01 ) ) - 0.02 );
+      gH += hemB * 0.5;
+      float cuff = 1.0 - smoothstep( 0.05, 0.065, min( distance( p, uHandL ), distance( p, uHandR ) ) );
+      if ( part > 3.5 ) { dye = mix( dye, dye * 0.55, cuff ); gH += cuff * 0.6; }
+      // chest pocket zip, left side
+      float pz = ( 1.0 - smoothstep( 0.003, 0.006, abs( p.y - ( uLm.y - 0.12 ) + ( p.x - 0.07 ) * 0.5 ) ) ) * step( 0.04, p.x ) * step( p.x, 0.12 ) * step( 0.0, p.z );
+      dye = mix( dye, dye * 0.4, pz ); gH -= pz * 0.4;
+      if ( uPat.x > 12.5 && uPat.x < 13.5 ) { float q = fract( p.y * 13.0 ); gH += ( 1.0 - pow( abs( q - 0.5 ) * 2.0, 2.0 ) ) * 1.6; dye *= 0.88 + 0.12 * smoothstep( 0.0, 0.12, min( q, 1.0 - q ) ); }
+    } else {
+      // pants: a cargo pocket on the outer thigh, knee darts
+      float side = abs( p.x );
+      float pk = step( 0.12, side ) * step( uLm.x - 0.42, p.y ) * step( p.y, uLm.x - 0.24 );
+      float edge = pk * ( 1.0 - smoothstep( 0.0, 0.008, min( min( p.y - ( uLm.x - 0.42 ), ( uLm.x - 0.24 ) - p.y ), 0.03 ) ) );
+      gH += pk * 0.5 - edge * 0.5;
+      float flap = step( 0.12, side ) * ( 1.0 - smoothstep( 0.0, 0.006, abs( p.y - ( uLm.x - 0.26 ) ) ) );
+      dye = mix( dye, dye * 0.6, flap );
+      float knee = ( 1.0 - smoothstep( 0.0, 0.006, abs( fract( p.y * 22.0 ) - 0.5 ) * 0.08 ) ) * step( 0.42, p.y ) * step( p.y, 0.56 ) * step( 0.0, p.z );
+      gH -= knee * 0.3;
+      if ( uPat.y > 12.5 && uPat.y < 13.5 ) { float q = fract( p.y * 11.0 ); gH += ( 1.0 - pow( abs( q - 0.5 ) * 2.0, 2.0 ) ) * 1.4; }
+    }
   }
   if ( dye.r >= 0.0 ) {
     col = min( dye * det * fine, vec3( 0.82 ) );
@@ -185,7 +255,17 @@ vec3 agPat(vec3 a, vec3 b, float pat, float part, vec3 p, vec2 lm) {
       .replace('#include <normal_fragment_maps>', THREE.ShaderChunk.normal_fragment_maps.replace(
         'vec3 mapN = texture2D( normalMap, vNormalMapUv ).xyz * 2.0 - 1.0;',
         `vec3 mapN = vec3( gNS.xy * 2.0 - 1.0, 0.0 );
-mapN.z = sqrt( max( 0.0, 1.0 - dot( mapN.xy, mapN.xy ) ) );`));
+mapN.z = sqrt( max( 0.0, 1.0 - dot( mapN.xy, mapN.xy ) ) );`) + `
+// the garment's seams and quilting, as a bump on top
+{
+  float hh = gH * 0.004;
+  vec3 dpx = dFdx( -vViewPosition ), dpy = dFdy( -vViewPosition );
+  float hx = dFdx( hh ), hy = dFdy( hh );
+  vec3 r1 = cross( dpy, normal ), r2 = cross( normal, dpx );
+  float dt = dot( dpx, r1 );
+  vec3 grad = sign( dt ) * ( hx * r1 + hy * r2 );
+  normal = normalize( abs( dt ) * normal - grad );
+}`);
   };
   m.customProgramCacheKey = () => 'ag-skier-kit';
   return m;
@@ -257,6 +337,8 @@ export class AvatarRig {
     this.palm = [new THREE.Vector3(), new THREE.Vector3()];
     this.skull = new THREE.Vector3();
     this.chestP = new THREE.Vector3();
+    this.neckP = new THREE.Vector3();
+    this.chestQ = new THREE.Quaternion();
   }
 
   // world (rig-local) transforms down the hierarchy; key bones take D * bind, the rest keep their bind offsets
@@ -347,5 +429,7 @@ export class AvatarRig {
     }
     this.skull.set(0, 0.083, -0.008).applyQuaternion(q.head).add(this.wp[ix.head]);
     this.chestP.copy(this.wp[ix.spine2]);
+    this.neckP.copy(this.wp[ix.neck]);
+    this.chestQ.copy(q.chest);
   }
 }

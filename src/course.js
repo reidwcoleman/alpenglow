@@ -2,7 +2,7 @@
 // physics, trees, props and AI all share. Downhill is +Z. The run starts at
 // z ~ 30 near the summit and finishes at the base area. Which park it is
 // (src/maps.js) is fixed for the page: picking another one reloads.
-import { makeSimplex, fbm, ridged, clamp, smoothstep, mulberry32 } from './noise.js';
+import { makeSimplex, fbm, ridged, ridgedSoft, clamp, smoothstep, mulberry32 } from './noise.js';
 import { MAPS, resolveParkId } from './maps.js';
 
 export const PARK_ID = resolveParkId();
@@ -262,9 +262,11 @@ export function heightAt(x, z) {
   if (far > 0) {
     // domain-warped ridges: broad massifs with sharp crests rather than rows of teeth
     const wx = fbm(N3, x / 2600, z / 2600, 3) * 900, wz = fbm(N2, x / 2600 + 7, z / 2600, 3) * 900;
-    const r = ridged(N, (x + wx) / 2300, (z + wz) / 2300, 6);
+    // (four octaves: the finer ones only made needles that no glacier would leave standing)
+    const r = ridgedSoft(N, (x + wx) / 3000, (z + wz) / 3000, 4);
     const base = fbm(N2, x / 4000, z / 4000, 3);
-    y += Math.min(far, 1.4) * (r * 950 + base * 320 - 90);
+    const rough = fbm(N3, x / 420, z / 420, 3);
+    y += Math.min(far, 1.4) * (r * 1250 + base * 320 + rough * 38 - 120);
   }
 
   // groomed piste vs natural snow
