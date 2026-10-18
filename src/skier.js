@@ -180,7 +180,14 @@ export class Skier {
   stepGround(dt, c) {
     const v = this.vel, n = normalAt(this.pos.x, this.pos.z, this.normal);
     const speed = v.length();
-    const { powder, ice } = surfaceAt(this.pos.x, this.pos.z, this.surf);
+    let { powder, ice } = surfaceAt(this.pos.x, this.pos.z, this.surf);
+    // the day's snow: fresh powder on the piste, hard ice, sticky spring slush
+    const W = this.world.snow;
+    if (W) {
+      powder = Math.min(1, powder + W.powder * (1 - powder * 0.5));
+      ice = Math.min(1, ice + W.ice * (1 - powder));
+      this.surf.powder = powder; this.surf.ice = ice;
+    }
 
     // --- edging: skis roll onto edge progressively, release quicker ---
     const edgeT = clamp(c.steer, -1, 1) * EDGE_MAX * (1 - c.brake * 0.5);
@@ -209,7 +216,7 @@ export class Skier {
     const N = GRAV * Math.max(n.y, 0.2);
     if (speed > 0.05) {
       // groomed ~0.045, ice glides, powder bogs down until the skis plane
-      const mu = 0.045 * (1 - ice * 0.45) + powder * (0.11 - 0.055 * smoothstep(8, 22, speed)) * (this.board ? 0.7 : 1);
+      const mu = (0.045 * (1 - ice * 0.45) + powder * (0.11 - 0.055 * smoothstep(8, 22, speed)) * (this.board ? 0.7 : 1)) * (W?.mu ?? 1);
       _a.addScaledVector(v, -(mu * N) / speed);
       this.updateDraft(dt);
       // a snowboarder can't tuck as small as a skier: standing sideways is more frontal area
@@ -236,7 +243,7 @@ export class Skier {
     // --- edge grip: bend velocity toward the ski, skid when it can't ---
     const vLat = v.dot(side);
     const edgeHold = 0.3 + 0.7 * smoothstep(0.03, 0.55, e); // flat skis drift
-    let maxGrip = this.grip * N * edgeHold * (1 - ice * 0.55) * (1 - powder * 0.2) * (1 - c.brake * 0.6);
+    let maxGrip = this.grip * N * edgeHold * (1 - ice * 0.55) * (1 - powder * 0.2) * (1 - c.brake * 0.6) * (W?.grip ?? 1);
     // a board holds a little less on its heel edge (regular stance: steering left)
     if (this.board && this.edge < 0) maxGrip *= 0.93;
     if (onWall) {

@@ -1,7 +1,7 @@
 // The forest: snow-laden spruces (src/spruce.js), placed by the course's tree density.
 // Also the spatial hash every collider on the mountain lives in.
 import * as THREE from 'three';
-import { heightAt, treeDensity, slopeAt, LIFT, centerX, halfWidth, MAP } from './course.js';
+import { heightAt, treeDensity, slopeAt, LIFT, centerX, halfWidth, MAP, EXTENT_Z } from './course.js';
 import { mulberry32, makeSimplex } from './noise.js';
 
 const SPRUCE_H = 16;
@@ -39,7 +39,7 @@ export class Forest {
   }
 
   place(rnd) {
-    const X = 880, ZA = -600, ZB = 4400, step = 8.5;
+    const X = 880, ZA = -600, ZB = EXTENT_Z - 80, step = 8.5;
     const noise = makeSimplex(77);
     const liftDx = LIFT.x1 - LIFT.x0, liftDz = LIFT.z1 - LIFT.z0;
     const liftLen = Math.hypot(liftDx, liftDz);

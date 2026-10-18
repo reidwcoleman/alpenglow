@@ -288,11 +288,14 @@
   #coach .ct button { border: 0; background: rgba(255,255,255,.14); color: #fff; width: 24px; height: 24px; border-radius: 6px; cursor: pointer; font: 700 14px Inter; }
   #coach ol { margin: 0; padding-left: 18px; display: grid; gap: 5px; font: 500 12.5px/1.4 Inter; }
   #coach kbd { font-size: 10px; height: 19px; min-width: 19px; }
-  #quick { position: absolute; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; gap: 6px; }
-  #quick span { display: flex; align-items: center; gap: 6px; padding: 5px 10px 5px 6px; border-radius: 9px; background: rgba(14,20,32,.6); font: 400 14px/1 var(--disp); text-transform: uppercase; white-space: nowrap; opacity: .85; }
+  #quick { position: absolute; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; gap: 4px; max-width: calc(100vw - 420px); flex-wrap: nowrap; }
+  @media (max-width: 1100px) { #quick span { max-width: 74px; } }
+  #quick span { display: flex; align-items: center; gap: 5px; padding: 4px 8px 4px 5px; border-radius: 8px; background: rgba(14,20,32,.6); font: 400 12.5px/1 var(--disp); max-width: 118px; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; opacity: .85; }
   #quick span.on { background: #ffe14d; color: var(--ink); opacity: 1; }
   #quick kbd { font-size: 10px; height: 18px; min-width: 18px; }
   .touch #quick { display: none; }
+  #wxtag { position: absolute; top: calc(max(26px, env(safe-area-inset-top)) + 38px); left: clamp(18px, 3.6vw, 46px); font: 700 10px Inter; letter-spacing: .12em; text-transform: uppercase; opacity: .85; text-shadow: 0 1px 3px rgba(0,0,0,.5); }
+  #evtag:not(.hidden) ~ #wxtag, #evtag:not(.hidden) + #wxtag { top: calc(max(26px, env(safe-area-inset-top)) + 66px); }
   #evtag { position: absolute; top: calc(max(26px, env(safe-area-inset-top)) + 36px); left: clamp(18px, 3.6vw, 46px); padding: 4px 10px 3px; border-radius: 6px; background: #ffe14d; color: var(--ink); font: 400 15px/1 var(--disp); text-transform: uppercase; transform: rotate(-2deg); }
   .evline { display: inline-block; margin: 4px 0 8px; padding: 3px 10px 2px; border-radius: 6px; background: #ffe14d; color: var(--ink); font: 400 15px/1.2 var(--disp); text-transform: uppercase; }
   /* trick school */
@@ -309,6 +312,11 @@
   .howbox kbd { font-size: 10px; height: 20px; min-width: 20px; }
   .howbox .tip { font: 500 12px/1.45 Inter; color: rgba(255,255,255,.7); padding: 8px 10px; border-radius: 10px; background: rgba(255,255,255,.06); }
   .howbox .row { margin-top: 12px; }
+  .keyrow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-top: 6px; }
+  .keyrow button { display: flex; align-items: center; gap: 7px; padding: 6px 8px; border-radius: 9px; border: 1px solid var(--line); background: rgba(255,255,255,.06); color: #fff; cursor: pointer; text-align: left; min-width: 0; }
+  .keyrow button.on { background: #ffe14d; color: var(--ink); border-color: #ffe14d; }
+  .keyrow b { font: 400 17px/1 var(--disp); }
+  .keyrow small { font: 600 10.5px Inter; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: .85; }
   .lessons { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; max-width: 900px; }
   .lesson { position: relative; padding: 11px 12px 10px; border-radius: 12px; border: 2px solid transparent; background: rgba(14,20,32,.66); color: #fff; text-align: left; cursor: pointer; }
   .lesson:hover { background: rgba(24,32,48,.8); }
@@ -518,7 +526,7 @@
 <script>
   // the park being loaded paints the loading screen
   (function () {
-    var names = { yard: 'The Yard', slope: 'Trick Zone', forest: 'Forest Line', bigair: 'Big Air' };
+    var names = { yard: 'The Yard', slope: 'Trick Zone', forest: 'Forest Line', bigair: 'Big Air', timber: 'Timberline', grand: 'Grand Descent', mega: 'Mega Park' };
     var id = null;
     try { id = new URLSearchParams(location.search).get('park') || localStorage.getItem('alpenglow.park'); } catch (e) {}
     if (!names[id]) id = 'yard';
@@ -664,6 +672,8 @@
 <div id="settings" class="panel hidden"><div class="card">
   <h2>MENU</h2>
   <div class="opt"><label>Conditions</label><div class="seg" id="tod"></div></div>
+  <div class="opt"><label>Controls</label><div class="seg" id="ctrl"></div></div>
+  <div class="opt"><label>Weather</label><div class="seg" id="wx"></div></div>
   <div class="opt"><label>Graphics</label><div class="seg" id="qual"></div></div>
   <div class="opt"><label>Sound</label><div class="seg" id="snd"><button data-m="0">On</button><button data-m="1">Off</button></div></div>
   <div class="row"><button class="btn" id="s-how">How to play</button><button class="btn p" id="s-close">Done</button></div>
@@ -672,23 +682,22 @@
 <div id="howto" class="panel hidden"><div class="card wide">
   <h2>HOW TO PLAY</h2>
   <div class="keys2">
-    <span><kbd>A</kbd><kbd>D</kbd></span><span>Carve · in the air: spin</span>
-    <span><kbd>W</kbd></span><span>Tuck · in the air: front flip</span>
-    <span><kbd>S</kbd></span><span>Brake · in the air: backflip</span>
-    <span><kbd>←</kbd><kbd>→</kbd></span><span>Air roll: sideflip (board: wildcat, tamedog), with a spin a flatspin</span>
-    <span><kbd>SPACE</kbd></span><span>Hold to load, release to pop (right at the lip: perfect pop)</span>
-    <span><kbd>SHIFT</kbd><kbd>Q</kbd><kbd>E</kbd><kbd>F</kbd><kbd>X</kbd><kbd>Z</kbd></span><span>Six grabs. Switch keys mid-air to chain them, hold one a second to tweak it</span>
-    <span><kbd>↑</kbd> / <kbd>↓</kbd></span><span>On their own in the air: shifty / daffy (board: boned)</span>
-    <span><kbd>B</kbd></span><span>Butter (add S for the tail) · hold A/D to pivot 180, 360, 540</span>
-    <span><kbd>W</kbd> <kbd>S</kbd> on a rail</span><span>Nose / tail press · A/D swap the slide</span>
-    <span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd></span><span>Quick tricks: in the air the rider does the trick for you, sized to the jump; on the snow it waits for the next kicker and pops at the lip. Pick them in Trick School (in the park, on the snow, 1-4 pick a line)</span>
-    <span><kbd>R</kbd></span><span>Hold to restart · <kbd>C</kbd> camera · <kbd>ESC</kbd> pause</span>
+    <span><kbd>←</kbd><kbd>→</kbd></span><span>Carve · in the air: spin</span>
+    <span><kbd>↑</kbd></span><span>Tuck · in the air: front flip</span>
+    <span><kbd>↓</kbd></span><span>Brake · in the air: backflip</span>
+    <span><kbd>1</kbd>…<kbd>9</kbd></span><span>Trick keys (number row or keypad). Hold one on the way up a kicker, let go right at the lip: a perfect pop and that trick. Early and it shrinks to fit the air; in the air it starts when you let go, too near the snow and it's too late. Pick what's on each key in Trick School</span>
+    <span><kbd>SPACE</kbd></span><span>Hold to load, release to pop (no trick)</span>
+    <span><kbd>SHIFT</kbd><kbd>Q</kbd><kbd>E</kbd><kbd>F</kbd><kbd>X</kbd><kbd>Z</kbd></span><span>Six grabs by hand. Switch keys mid-air to chain them, hold one a second to tweak it</span>
+    <span><kbd>B</kbd></span><span>Butter (add ↓ for the tail) · hold ← → to pivot 180, 360, 540</span>
+    <span><kbd>↑</kbd> <kbd>↓</kbd> on a rail</span><span>Nose / tail press · ← → swap the slide</span>
+    <span><kbd>R</kbd></span><span>Hold to restart · <kbd>C</kbd> camera · <kbd>ESC</kbd> pause · <kbd>L</kbd> next park line</span>
     <span><kbd>V</kbd></span><span>Replay the last trick</span>
     <span><kbd>TAB</kbd> <kbd>T</kbd></span><span>Multiplayer: riders in the room · chat</span>
+    <span>Classic keys</span><span>Menu › Controls › Classic: WASD to ride, the arrows roll (sideflips, wildcats), ↑ shifty, ↓ daffy, ↑ + spin + flip for rodeos and mistys. A/D and W/S work in either</span>
     <div class="h">Corks and co.</div>
-    <span>spin + <kbd>S</kbd></span><span>Cork (lean back)</span>
-    <span>spin + <kbd>W</kbd></span><span>Bio (board: misty)</span>
-    <span><kbd>↑</kbd> + spin + flip</span><span>Rodeo (S) or misty (W)</span>
+    <span>spin + <kbd>↓</kbd></span><span>Cork (lean back while spinning)</span>
+    <span>spin + <kbd>↑</kbd></span><span>Bio (board: misty)</span>
+    <span>Rodeos, flatspins</span><span>On a trick key (7 is a rodeo), or by hand with the classic keys</span>
     <span>Landing</span><span>Let go near the snow: the rider finishes the closest clean rotation</span>
     <div class="h">Scoring</div>
     <span>720</span><span>four times a 360 · flips count as turns</span>
@@ -709,6 +718,7 @@
 <div id="hud" class="hidden">
   <div id="zone" class="shadow">Drop In</div>
   <div id="evtag" class="hidden"></div>
+  <div id="wxtag"></div>
   <div id="coach" class="hidden"></div>
   <div id="quick" class="hidden"></div>
   <button id="menubtn"><span class="bars"></span>MENU <kbd>ESC</kbd></button>

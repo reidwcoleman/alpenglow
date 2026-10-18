@@ -127,16 +127,24 @@ export class Snowfall {
     this.t = 0;
   }
 
+  // how hard it's snowing (0.45 showers, 1 a powder day, 1.6 a whiteout)
+  setAmount(k) {
+    this.k = k;
+    this.points.geometry.setDrawRange(0, Math.round(this.n * Math.min(1, Math.max(0.15, k))));
+    this.mat.uniforms.uScale.value = 600 * (k > 1.2 ? 1.15 : 1);
+  }
+
   update(dt, cam, vel) {
     if (!this.points.visible) return;
+    const fall = 1 + Math.max(0, (this.k ?? 1) - 1) * 0.8, drift = 1.2 * (this.k > 1.2 ? 3.5 : 1);
     this.t += dt;
     const p = this.points.geometry.attributes.position;
     const arr = p.array, B = this.box, H = 40;
     const cx = cam.x, cy = cam.y - 15, cz = cam.z;
     for (let i = 0; i < this.n; i++) {
       const k = i * 3;
-      arr[k + 1] -= (1.1 + (i % 7) * 0.12) * dt;
-      arr[k] += Math.sin(this.t * 0.7 + i) * 0.4 * dt + 1.2 * dt;
+      arr[k + 1] -= (1.1 + (i % 7) * 0.12) * fall * dt;
+      arr[k] += Math.sin(this.t * 0.7 + i) * 0.4 * dt + drift * dt;
       // wrap into the box around the camera
       let x = arr[k] - cx, y = arr[k + 1] - cy, z = arr[k + 2] - cz;
       x = ((x + B / 2) % B + B) % B - B / 2;

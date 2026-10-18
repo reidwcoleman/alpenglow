@@ -1,14 +1,16 @@
 // Trick School: every trick with how to do it, a demo the rider performs on the menu, and
-// a one-key version (a quick trick) for keys 1-4. A lesson is passed the first time the
+// a one-key version (a trick key, 1-9). A lesson is passed the first time the
 // trick lands for real (it goes in the trick book) and pays flakes once.
 //   demo / quick: { spin (deg), dir, type, flips, roll, grab, shifty, daffy, butter, rail }
 const K = (k) => `<kbd>${k}</kbd>`;
-const L = (id, fam, lvl, name, board, re, steps, tip, demo, where = 'jumps') => ({ id, fam, lvl, name, board: board ?? name, re, steps, tip, demo, where, reward: 40 + lvl * 35 });
+// steps: doing it by hand (the number-key way is the same for every air trick, see numSteps)
+const L = (id, fam, lvl, name, board, re, steps, tip, demo, where = 'jumps') => ({ id, fam, lvl, name, board: board ?? name, re, steps, tip, demo, where, reward: 40 + lvl * 35,
+  classic: steps.some((t) => /[←→↑↓]/.test(t)) });
 
 export const FAMS = [['basics', 'First air'], ['grabs', 'Grabs'], ['spins', 'Spins'], ['flips', 'Flips'], ['offaxis', 'Corks & co'], ['rails', 'Rails & butters']];
 
 export const LESSONS = [
-  L('mute', 'basics', 1, 'Mute Grab', 'Indy', /Mute|Indy/, [`Ride at any kicker (park line ${K('1')} has four)`, `Hold ${K('SPACE')} on the way up, let go at the lip: a perfect pop`, `In the air hold ${K('SHIFT')}`, 'Let go of it before you touch down'], 'Grabs look best held long: a second or more makes it Tweaked.', { grab: 'mute' }),
+  L('mute', 'basics', 1, 'Mute Grab', 'Indy', /Mute|Indy/, ['Ride at any kicker', `Hold ${K('SPACE')} on the way up, let go at the lip: a perfect pop`, `In the air hold ${K('SHIFT')}`, 'Let go of it before you touch down'], 'Grabs look best held long: a second or more makes it Tweaked.', { grab: 'mute' }),
   L('shifty', 'basics', 1, 'Shifty', null, /Shifty/, ['Pop off a kicker or a roller', `In the air tap ${K('↑')} on its own (no spin)`, 'The hips twist the skis across and back'], 'The easiest style points there are: try one off every little roller.', { shifty: true }),
   L('daffy', 'basics', 1, 'Daffy', 'Boned', /Daffy|Boned/, ['Pop off a kicker', `In the air hold ${K('↓')} on its own`, 'Let go before you land'], 'On a board it is a Boned: front leg straight, nose kicked out.', { daffy: true }),
   L('180', 'basics', 1, '180', 'FS 180', /\b180\b|Half Cab/, ['Pop off a kicker', `In the air tap ${K('D')} (or ${K('A')} the other way)`, 'Let go: the landing assist finishes the half turn and you ride away switch'], 'Riding switch? A 180 brings you back round.', { spin: 180, dir: -1 }),
@@ -40,15 +42,27 @@ export const LESSONS = [
   L('flatspin', 'offaxis', 3, 'Flatspin 360', null, /Flatspin/, ['Medium kicker', `Spin with ${K('D')}`, `Add ${K('←')} or ${K('→')}: the spin lies down flat`], 'Flatspins pay like a flip and a spin.', { type: 'flatspin', flips: 1, spin: 360, dir: -1, roll: 1 }),
   L('dcork', 'offaxis', 4, 'Double Cork 1080', null, /Double Cork/, ['Big Air: full speed, perfect pop', `Spin with ${K('D')} and add ${K('S')}`, 'Keep both held through two flips', 'Let go late, land it straight'], 'The biggest trick on the mountain. Quick trick it first to see how it goes.', { type: 'cork', flips: 2, spin: 1080, dir: -1, grab: 'mute' }),
 
-  L('5050', 'rails', 1, '50-50', null, /50-50/, [`Ride straight onto a rail or box (park line ${K('2')})`, 'Keep A and D still: ride it to the end'], 'Boxes are easier than rails: start on the Butter Box.', { rail: 'straight' }, 'rails'),
+  L('5050', 'rails', 1, '50-50', null, /50-50/, [`Ride straight onto a rail or box (the rails line: L in the park)`, 'Keep A and D still: ride it to the end'], 'Boxes are easier than rails: start on the Butter Box.', { rail: 'straight' }, 'rails'),
   L('slide', 'rails', 2, 'Boardslide', null, /Boardslide|Lipslide/, ['Ride at a rail', `Turn sideways with ${K('A')} or ${K('D')} as you get on`, `Tap ${K('A')}/${K('D')} again on the rail to swap the slide`], 'Swaps on the rail pay extra every time.', { rail: 'side' }, 'rails'),
   L('press', 'rails', 2, 'Nose Press', null, /Press/, ['Ride onto a long rail', `Hold ${K('W')} for a nose press (${K('S')} for the tail)`, 'Hold it for most of the rail'], 'A held press pays 30% more.', { rail: 'press' }, 'rails'),
   L('270', 'rails', 3, '270 Out', null, /\b(270|450) Out/, ['Slide a rail sideways', `Off the end hold ${K('A')} or ${K('D')}`, 'Three quarters round and land forward'], 'Spins off a rail count in quarters: 270 out, 450 out.', { rail: 'side', spin: 270, dir: 1 }, 'rails'),
 ];
 export const LESSON = Object.fromEntries(LESSONS.map((l) => [l.id, l]));
 
-// the quick tricks you start with
-export const QUICK0 = { ski: ['backflip', 'cork', 'tweak', '540'], board: ['backflip', 'cork', 'tweak', '540'] };
+// the trick keys you start with (1-9, number row or keypad)
+const NINE = ['mute', 'shifty', '360', 'backflip', '540', 'frontflip', 'cork', 'rodeo', 'dcork'];
+export const QUICK0 = { ski: NINE, board: NINE };
+
+// the number-key way: hold to load, let go at the lip
+export function numSteps(l, key, where) {
+  if (!quickSpec(l.id)) return null;
+  return [
+    key ? `It's on key <kbd>${key}</kbd> (number row or keypad)` : 'Put it on a number key with the buttons below',
+    `Ride at ${where}`,
+    `Hold <kbd>${key ?? '#'}</kbd> on the way up the ramp: the rider loads up`,
+    'Let go right at the lip: <b>PERFECT POP</b> and the trick happens. Too early and it shrinks, too late and the air is gone',
+  ];
+}
 
 // a lesson's trick as a quick trick spec
 export function quickSpec(id) {

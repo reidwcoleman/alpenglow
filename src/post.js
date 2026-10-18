@@ -98,7 +98,7 @@ export class Post {
     this.composer.addPass(new RenderPass(scene, camera));
     this.shafts = new ShaderPass(ShaftShader);
     this.composer.addPass(this.shafts);
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.22, 0.45, 2.6);
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.13, 0.4, 2.8);
     this.bloom.enabled = opts.bloom;
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());

@@ -31,6 +31,7 @@ const b = await open(`menu=0&mode=run&tod=bluebird&room=${room}&z=300&v=12`);
 const c = await open(`menu=0&mode=run&tod=bluebird&room=${room}&z=310&x=4&v=12`);
 await b.waitForTimeout(9000);
 const st = (p) => p.evaluate(() => ({ who: window.__game.who, st: window.__game.room?.status, state: window.__game.state, live: document.getElementById('livelbl').textContent, peers: window.__game.room ? [...window.__game.room.peers.values()].map((x) => x.name + '@' + x.skier.pos.z.toFixed(0)) : null }));
+for (let i = 0; i < 30; i++) { const n = await b.evaluate(() => window.__game.room?.peers.size ?? 0); if (n) { console.log('peer seen after', 9 + i, 's'); break; } await b.waitForTimeout(1000); }
 console.log('B', JSON.stringify(await st(b)));
 console.log('C', JSON.stringify(await st(c)));
 await c.keyboard.press('KeyT'); await c.waitForTimeout(200); await c.keyboard.type('hello from C'); await c.keyboard.press('Enter');

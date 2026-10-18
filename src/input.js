@@ -4,11 +4,14 @@ export class Input {
     this.keys = new Set();
     this.pressed = new Set();
     this.steer = 0;
+    // 'arrows': the arrow keys ride (left/right carve and spin, up tuck / front flip, down
+    // brake / backflip) and the number keys do the tricks; 'classic': WASD rides, arrows roll
+    try { this.scheme = localStorage.getItem('alpenglow.scheme') || 'arrows'; } catch { this.scheme = 'arrows'; }
     this.touch = { left: false, right: false, tuck: false, brake: false, jump: false, grab: false };
     addEventListener('keydown', (e) => {
       // typing in a text field (chat, name, room) isn't riding
       if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
-      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Tab'].includes(e.code)) e.preventDefault();
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Tab'].includes(e.code) || /^Numpad/.test(e.code)) e.preventDefault();
       if (!this.keys.has(e.code)) this.pressed.add(e.code);
       this.keys.add(e.code);
     });
@@ -48,20 +51,22 @@ export class Input {
   read(dt, airborne) {
     const t = this.touch;
     let target = 0;
-    if (this.down('KeyA') || t.left || (!airborne && this.down('ArrowLeft'))) target -= 1;
-    if (this.down('KeyD') || t.right || (!airborne && this.down('ArrowRight'))) target += 1;
+    const A = this.scheme === 'arrows';
+    if (this.down('KeyA') || t.left || ((A || !airborne) && this.down('ArrowLeft'))) target -= 1;
+    if (this.down('KeyD') || t.right || ((A || !airborne) && this.down('ArrowRight'))) target += 1;
     // keyboard steering ramps like a real edge roll (in the air it's straight on/off)
     const rate = airborne ? 30 : target === 0 ? 7 : Math.sign(target) !== Math.sign(this.steer) ? 9 : 4.5;
     this.steer += Math.max(-rate * dt, Math.min(rate * dt, target - this.steer));
     let steer = this.steer;
-    let tuck = this.down('KeyW') || (!airborne && this.down('ArrowUp')) || t.tuck ? 1 : 0;
-    let brake = this.down('KeyS') || (!airborne && this.down('ArrowDown')) || t.brake ? 1 : 0;
-    let jump = this.down('Space') || t.jump;
+    let tuck = this.down('KeyW') || ((A || !airborne) && this.down('ArrowUp')) || t.tuck ? 1 : 0;
+    let brake = this.down('KeyS') || ((A || !airborne) && this.down('ArrowDown')) || t.brake ? 1 : 0;
+    // (keypad 0 pops too, so a run needs nothing but the arrows and the keypad)
+    let jump = this.down('Space') || this.down('Numpad0') || t.jump;
     let grabKind = this.down('ShiftLeft', 'ShiftRight') || t.grab ? 'mute' : this.down('KeyQ') ? 'tail' : this.down('KeyE') ? 'japan'
       : this.down('KeyF') ? 'safety' : this.down('KeyX') ? 'critical' : this.down('KeyZ') ? 'nose' : null;
-    let roll = airborne ? (this.down('ArrowRight') ? 1 : 0) - (this.down('ArrowLeft') ? 1 : 0) : 0;
-    let up = airborne && this.down('ArrowUp');
-    let down = airborne && this.down('ArrowDown');
+    let roll = airborne && !A ? (this.down('ArrowRight') ? 1 : 0) - (this.down('ArrowLeft') ? 1 : 0) : 0;
+    let up = airborne && !A && this.down('ArrowUp');
+    let down = airborne && !A && this.down('ArrowDown');
     let butter = this.down('KeyB');
     let flip = 0;
     const gp = this.pad();
@@ -94,6 +99,14 @@ export class Input {
     }
     return { steer, tuck, brake, jump, grab: !!grabKind, grabKind, flip, roll, up, down, butter };
   }
+
+  // the trick key held right now (0-8 for 1-9 on the number row or the keypad), or -1
+  trickKey() {
+    for (let i = 0; i < 9; i++) if (this.keys.has('Digit' + (i + 1)) || this.keys.has('Numpad' + (i + 1))) return i;
+    return -1;
+  }
+
+  setScheme(s) { this.scheme = s; try { localStorage.setItem('alpenglow.scheme', s); } catch { /* */ } }
 
   endFrame() { this.pressed.clear(); }
 }

@@ -16,7 +16,9 @@ export const SECTIONS = MAP.sections;
 
 export const START_Z = MAP.start;
 export const FINISH_Z = MAP.finish;
-const Z_MIN = -6000, Z_MAX = 9000;
+const Z_MIN = -6000, Z_MAX = Math.max(9000, FINISH_Z + 6000);
+// how far down the mountain the detailed terrain, trees and shade reach
+export const EXTENT_Z = FINISH_Z + 1060;
 
 // --- precomputed 1-D profiles along z (1 m steps) ---------------------------
 const PN = Z_MAX - Z_MIN + 1;
@@ -113,17 +115,19 @@ export const PARK_JUMPS = MAP.parkJumps ?? [];
 const RUN_JUMPS = MAP.runJumps;
 export const JUMPS = [...RUN_JUMPS, ...PARK_JUMPS].sort((a, b) => a.z - b.z);
 for (const J of JUMPS) {
+  // (the approach speed that lands in the sweet spot, roughly, where it wasn't measured)
+  J.speed ??= 7.5 + 2.1 * J.h;
   J.lip = J.z + J.ramp;
   J.len = J.ramp + J.table + J.land;
   KICKERS.push({ z: J.lip, off: J.dx, x: centerX(J.lip) + J.dx, h: J.h, w: J.w, ramp: J.ramp, kind: 'park', jump: J });
 }
 // halfpipe: flat bottom, 5.2 m transitions up to 72 degrees, a short steep wall to the lip, decks
 const P72 = 1.2566;
-export const PIPE = MAP.park ? { z0: 1100, z1: 1350, dx: 54, flat: 4.2, R: 5.2, deck: 3, outer: 7 } : { z0: -1e5, z1: -1e5 + 1, dx: 54, flat: 4.2, R: 5.2, deck: 3, outer: 7 };
+export const PIPE = MAP.park ? { z0: 1100, z1: 1350, dx: 54, ...(MAP.pipe ?? {}), flat: 4.2, R: 5.2, deck: 3, outer: 7 } : { z0: -1e5, z1: -1e5 + 1, dx: 54, flat: 4.2, R: 5.2, deck: 3, outer: 7 };
 PIPE.amax = PIPE.R * Math.sin(P72);
 PIPE.lip = PIPE.amax + 0.3;
 PIPE.H = PIPE.R * (1 - Math.cos(P72)) + 0.3 * Math.tan(P72);
-export const ROLLERS = MAP.park ? { z0: 1058, z1: 1382, dx: -58, len: 14, h: 1.15, w: 12 } : { z0: -1e5, z1: -1e5 + 1, dx: -58, len: 14, h: 1.15, w: 12 };
+export const ROLLERS = MAP.park ? { z0: 1058, z1: 1382, dx: -58, ...(MAP.rollers ?? {}), len: 14, h: 1.15, w: 12 } : { z0: -1e5, z1: -1e5 + 1, dx: -58, len: 14, h: 1.15, w: 12 };
 // rails and boxes: ridden onto from a short snow ramp. shape: down (parallel to the slope),
 // flat, kink (flat then down), rainbow (an arch)
 export const PARK_RAILS = MAP.parkRails ?? [];
@@ -159,7 +163,7 @@ export function pipeProfile(a) {
 export const pipeWalls = (z) => smoothstep(PIPE.z0, PIPE.z0 + 22, z) * (1 - smoothstep(PIPE.z1 - 16, PIPE.z1, z));
 
 // every feature's stretch of the run, bucketed along z so the height lookup stays cheap
-const B0 = -300, BS = 8, BN = 500;
+const B0 = -300, BS = 8, BN = Math.ceil((FINISH_Z + 900 - B0) / BS);
 const FEATS = [
   ...JUMPS.map((J) => ({ z0: J.z, z1: J.z + J.len, k: 0, J })),
   ...(MAP.park ? [{ z0: ROLLERS.z0, z1: ROLLERS.z1, k: 1 }, { z0: PIPE.z0, z1: PIPE.z1, k: 2 }] : []),
@@ -234,10 +238,11 @@ export function zoneAt(x, z) {
   const dx = x - centerX(z);
   if (z > PARK.top - 20 && z < PARK.z1 + 30) {
     if (z > PIPE.z0 - 10 && z < PIPE.z1 && Math.abs(dx - PIPE.dx) < 20) return 'Halfpipe';
-    if (dx < -44) return 'Rollers';
-    if (dx < -12) return 'Jump Line';
-    if (dx > 12) return 'Rail Garden';
-    return 'Terrain Park';
+    if (!MAP.parkJumps) { if (Math.abs(dx - ROLLERS.dx) < 12) return 'Rollers'; }
+    else if (dx < -44) return 'Rollers';
+    else if (dx < -12) return 'Jump Line';
+    else if (dx > 12) return 'Rail Garden';
+    else return 'Terrain Park';
   }
   for (const Z of ZONES) if (z < Z.z1) return Z.name;
   return 'Village';
@@ -404,7 +409,7 @@ export const GATES = [];
 
 // Racing line: Catmull-Rom through a pass point inside each gate, cheated
 // toward the next gate. LINE_K holds curvature for braking decisions.
-const LINE_Z0 = 0, LINE_N = 3600;
+const LINE_Z0 = 0, LINE_N = Math.ceil(FINISH_Z + 400);
 const LINE_X = new Float32Array(LINE_N);
 const LINE_K = new Float32Array(LINE_N);
 (function buildLine() {
@@ -454,7 +459,7 @@ export function treeDensity(x, z) {
   // edges of the piste get glades
   d *= smoothstep(5, 18, s);
   // tree-skiing parks: the forest comes right down to the edge
-  if (MAP.glades && z < FINISH_Z - 120) d = Math.max(d, 0.85 * smoothstep(5, 11, s) * (1 - smoothstep(35, 80, s)));
+  if (MAP.glades && MAP.forestEdge !== false && z < FINISH_Z - 120) d = Math.max(d, 0.85 * smoothstep(5, 11, s) * (1 - smoothstep(35, 80, s)));
   return clamp(d, 0, 1);
 }
 

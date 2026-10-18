@@ -3,12 +3,12 @@
 // ambient occlusion term. Every material is patched to use it, together with
 // an exponential height fog that thins with altitude and warms toward the sun.
 import * as THREE from 'three';
-import { heightAt } from './course.js';
+import { heightAt, EXTENT_Z } from './course.js';
 
 export const AG = {
   uCamWorld: { value: new THREE.Matrix4() },
   uShadeTex: { value: null },
-  uShadeBox: { value: new THREE.Vector4(-3200, -2600, 6400, 9200) },
+  uShadeBox: { value: new THREE.Vector4(-3200, -2600, 6400, Math.max(9200, EXTENT_Z + 4740)) },
   uSunDirA: { value: new THREE.Vector3(0, 1, 0) },
   uSunFog: { value: new THREE.Color(1, 0.8, 0.6) },
   uFogFall: { value: 1 / 900 },

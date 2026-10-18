@@ -10,15 +10,15 @@ import { AG } from './atmos.js';
 export const PRESETS = {
   bluebird: {
     label: 'Bluebird Morning', hdri: 'bluebird', az: 70, sun: 0xfff3e4, sunScale: 1.0,
-    fogD: 0.000075, fogFall: 1 / 1000, sunFog: 0xfff0dc, key: 4.2, haze: 0.28, snow: 0, shafts: 0.1,
+    fogD: 0.000075, fogFall: 1 / 1000, sunFog: 0xfff0dc, key: 3.9, haze: 0.28, snow: 0, shafts: 0.04,
   },
   golden: {
     label: 'Golden Hour', hdri: 'golden', az: 8, elev: 9, sun: 0xffb46e, sunOverSky: 1.9,
-    fogD: 0.00005, fogFall: 1 / 900, sunFog: 0xffc58e, sunFogK: 0.6, key: 2.3, haze: 0.12, snow: 0, shafts: 0.32,
+    fogD: 0.00005, fogFall: 1 / 900, sunFog: 0xffc58e, sunFogK: 0.35, key: 2.15, haze: 0.12, snow: 0, shafts: 0.12,
   },
   alpenglow: {
     label: 'Alpenglow Dusk', hdri: 'alpenglow', az: 334, elev: 3.2, sun: 0xff9a78, sunOverSky: 0.9,
-    fogD: 0.00006, fogFall: 1 / 850, sunFog: 0xffa98a, sunFogK: 0.5, key: 2.2, haze: 0.1, snow: 0, shafts: 0.28,
+    fogD: 0.00006, fogFall: 1 / 850, sunFog: 0xffa98a, sunFogK: 0.3, key: 2.1, haze: 0.1, snow: 0, shafts: 0.1,
   },
   night: {
     label: 'Night Session', hdri: 'night', az: 205, elev: 34, sun: 0xa9bcff, sunOverSky: 0.22,
@@ -27,8 +27,42 @@ export const PRESETS = {
   },
   storm: {
     label: 'Powder Day', hdri: 'storm', az: 60, elev: 40, sun: 0xeef2ff, sunOverSky: 0.08,
-    fogD: 0.0011, fogFall: 1 / 2200, sunFog: 0xdde3ee, key: 3.0, haze: 0.95, snow: 1,
+    fogD: 0.0011, fogFall: 1 / 2200, sunFog: 0xdde3ee, key: 2.85, haze: 0.95, snow: 1, wind: 6,
   },
+  // the same skies, other days
+  spring: {
+    label: 'Spring Sun', hdri: 'bluebird', az: 120, elev: 50, sun: 0xfff6ea, sunScale: 1.0,
+    fogD: 0.00007, fogFall: 1 / 1000, sunFog: 0xfff4e4, key: 3.8, haze: 0.32, snow: 0, shafts: 0.03,
+  },
+  arctic: {
+    label: 'Arctic Blue', hdri: 'bluebird', az: 30, elev: 15, sun: 0xeef3ff, sunScale: 0.92,
+    fogD: 0.00006, fogFall: 1 / 1000, sunFog: 0xe8f0ff, key: 3.5, haze: 0.2, snow: 0, shafts: 0.05,
+  },
+  flurries: {
+    label: 'Snow Showers', hdri: 'storm', az: 75, elev: 38, sun: 0xf4f6ff, sunOverSky: 0.35,
+    fogD: 0.00045, fogFall: 1 / 1800, sunFog: 0xe6ebf3, key: 3.0, haze: 0.6, snow: 0.45, wind: 3,
+  },
+  whiteout: {
+    label: 'Whiteout', hdri: 'storm', az: 60, elev: 40, sun: 0xeef2ff, sunOverSky: 0.04,
+    fogD: 0.0026, fogFall: 1 / 2600, sunFog: 0xe2e6ee, key: 2.7, haze: 1, snow: 1.6, wind: 11,
+  },
+  nightsnow: {
+    label: 'Night Snow', hdri: 'night', az: 205, elev: 34, sun: 0xa9bcff, sunOverSky: 0.16,
+    fogD: 0.0005, fogFall: 1 / 1400, sunFog: 0x5d6f96, sunFogK: 0.25, key: 0.6, haze: 0.4, snow: 0.8, night: true, wind: 2,
+    envK: 0.15, moonK: 0.18, domeK: 0.45, fogK: 0.45,
+  },
+};
+// what each sky does to the snow (see COND)
+for (const [k, c] of Object.entries({ bluebird: 'groomed', golden: 'groomed', alpenglow: 'packed', night: 'ice', storm: 'powder', spring: 'slush', arctic: 'ice', flurries: 'packed', whiteout: 'powder', nightsnow: 'powder' })) PRESETS[k].cond = c;
+// how often each comes up when the weather changes every run
+export const WX_WEIGHT = { bluebird: 3, golden: 2, alpenglow: 1.1, storm: 1.4, spring: 1.3, arctic: 1.2, flurries: 1.5, whiteout: 0.6, night: 0.8, nightsnow: 0.6 };
+// the snow: friction, edge grip, powder and ice on the piste, and how it looks (fresh, wet)
+export const COND = {
+  groomed: { name: 'Fresh corduroy', mu: 1, grip: 1, powder: 0, ice: 0, fresh: 0, wet: 0 },
+  packed: { name: 'Packed powder', mu: 1.06, grip: 1, powder: 0.12, ice: 0, fresh: 0.45, wet: 0 },
+  powder: { name: 'Fresh powder · 30 cm', mu: 1.12, grip: 0.95, powder: 0.42, ice: 0, fresh: 1, wet: 0 },
+  ice: { name: 'Hardpack and ice', mu: 0.8, grip: 0.86, powder: 0, ice: 0.28, fresh: 0, wet: 0 },
+  slush: { name: 'Spring slush', mu: 1.6, grip: 1.06, powder: 0.14, ice: 0, fresh: 0, wet: 1 },
 };
 
 const BASE = import.meta.env.BASE_URL + 'sky/';
@@ -111,11 +145,11 @@ export class Environment {
   async load() {
     this.meta = await (await fetch(BASE + 'sky.json')).json();
     const tl = new THREE.TextureLoader();
-    await Promise.all(Object.keys(PRESETS).map(async (k) => {
-      const t = await tl.loadAsync(BASE + PRESETS[k].hdri + '_bg.jpg');
+    await Promise.all([...new Set(Object.values(PRESETS).map((p) => p.hdri))].map(async (h) => {
+      const t = await tl.loadAsync(BASE + h + '_bg.jpg');
       t.colorSpace = THREE.NoColorSpace; // decoded by hand in the shader
       t.minFilter = THREE.LinearFilter; t.generateMipmaps = false; t.anisotropy = 4;
-      this.tex.set(k, t);
+      this.tex.set(h, t);
     }));
   }
 
@@ -124,7 +158,7 @@ export class Environment {
     this.preset = p; this.presetName = name;
     const m = this.meta[p.hdri];
     const u = this.mat.uniforms;
-    u.map.value = this.tex.get(name);
+    u.map.value = this.tex.get(p.hdri);
     u.scale.value = m.scale;
     u.rowsFrac.value = m.bgRows / m.rows;
     // the HDRI's sun azimuth in the dome's frame

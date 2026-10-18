@@ -2,13 +2,14 @@
 // coarse far mesh for the surrounding ranges. The snow material adds wind
 // ripples, groomer corduroy, exposed rock on steep faces and sun glints.
 import * as THREE from 'three';
-import { heightAt, PARK_ID } from './course.js';
+import { heightAt, PARK_ID, EXTENT_Z } from './course.js';
 import { buildChunkArrays } from './chunkbuild.js';
 import { makeSimplex, smoothstep } from './noise.js';
 
 export const CHUNK = 128;
 const NEAR_X = 896; // half extent of the chunked region
-const Z0 = -640, Z1 = 4480;
+const Z0 = -640, Z1 = Math.ceil(EXTENT_Z / 128) * 128;
+const MID_Z1 = Math.max(8800, Z1 + 4300), FAR_Z1 = Math.max(19000, MID_Z1 + 10200);
 const LODS = [96, 48, 24, 12];
 const LOD_DIST = [190, 430, 950];
 
@@ -73,6 +74,8 @@ export function makeSnowMaterial(env) {
     uRockC: { value: pbr('rock_face_04_c.webp', true) },
     uRockN: { value: pbr('rock_face_04_n.webp', false) },
     uRockR: { value: pbr('rock_face_04_arm.webp', false) },
+    // the day's snow: x fresh (covers the corduroy), y wet (spring slush), z hard (ice)
+    uCond: { value: new THREE.Vector3() },
   };
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, mat.userData.shared);
@@ -87,8 +90,10 @@ export function makeSnowMaterial(env) {
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
         uniform sampler2D uNoise; uniform vec3 uSunDir; uniform vec3 uSunCol;
-        uniform sampler2D uSnowC, uSnowN, uSnowR, uRockC, uRockN, uRockR;
+        uniform sampler2D uSnowC, uSnowN, uSnowR, uRockC, uRockN, uRockR; uniform vec3 uCond;
         varying vec3 vWPos; varying vec3 vWNrm; varying float vPiste; varying float vIce;
+        // fresh snow covers the grooming
+        float pk() { return vPiste * (1.0 - uCond.x * 0.85); }
         float hash12(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
         float gRock; float gSnowRough; float gRockRough; vec2 gSnowUv1; vec2 gSnowUv2; float gSnowMix; vec3 gTriW;
         mat2 rot2(float a) { float c = cos(a), s = sin(a); return mat2(c, -s, s, c); }`)
@@ -100,7 +105,7 @@ export function makeSnowMaterial(env) {
           vec4 nM = texture2D(uNoise, wp * 0.017);
           vec4 nS = texture2D(uNoise, wp * 0.13);
           float slope = 1.0 - vWNrm.y;
-          float rk = slope + (nM.g - 0.5) * 0.28 + (nL.r - 0.5) * 0.16 - vPiste;
+          float rk = slope + (nM.g - 0.5) * 0.28 + (nL.r - 0.5) * 0.16 - pk();
           gRock = smoothstep(0.44, 0.58, rk);
           gRock *= 1.0 - smoothstep(0.62, 0.75, nS.b + (0.55 - slope)); // snow ledges on rock faces
           // snow-filled gullies streaking down the faces: noise stretched along the fall line
@@ -125,15 +130,15 @@ export function makeSnowMaterial(env) {
           // the scan is a little grey: lift it to fresh-snow albedo, keep its relief
           vec3 snow = clamp(sTex * 1.18, 0.0, 1.0) * vec3(0.97, 0.985, 1.0);
           snow = mix(snow, vec3(0.92, 0.94, 0.97), smoothstep(150.0, 600.0, dist) * 0.6);
-          snow = mix(snow, snow * vec3(0.9, 0.95, 1.0), smoothstep(0.55, 0.8, nL.b) * 0.4 * (1.0 - vPiste));
+          snow = mix(snow, snow * vec3(0.9, 0.95, 1.0), smoothstep(0.55, 0.8, nL.b) * 0.4 * (1.0 - pk()));
           float band = abs(fract(wp.x / 4.6 + nL.g * 0.6) - 0.5);
-          snow *= 1.0 - vPiste * (0.03 + 0.02 * smoothstep(0.42, 0.5, band));
+          snow *= 1.0 - pk() * (0.03 + 0.02 * smoothstep(0.42, 0.5, band));
           // fresh corduroy: groomer ribs down the fall line, each pass a touch brighter or duller
           float pass = floor(wp.x / 4.6 + nL.g * 0.6);
-          snow *= 1.0 + smoothstep(0.8, 1.0, vPiste) * (fract(sin(pass * 12.9898) * 43758.5453) - 0.5) * 0.05;
+          snow *= 1.0 + smoothstep(0.8, 1.0, pk()) * (fract(sin(pass * 12.9898) * 43758.5453) - 0.5) * 0.05;
           float rib = wp.x * 6.2832 / 0.21;
           float ribFade = 1.0 - smoothstep(0.12, 0.45, fwidth(rib) / 6.2832);
-          snow *= 1.0 + smoothstep(0.8, 1.0, vPiste) * ribFade * 0.028 * sin(rib) * (0.7 + 0.3 * nM.b);
+          snow *= 1.0 + smoothstep(0.8, 1.0, pk()) * ribFade * 0.028 * sin(rib) * (0.7 + 0.3 * nM.b);
           gSnowRough = mix(texture2D(uSnowR, gSnowUv1).g, texture2D(uSnowR, gSnowUv2).g, gSnowMix);
           // scanned rock, triplanar so cliffs don't smear
           vec3 rock = vec3(0.2);
@@ -150,12 +155,15 @@ export function makeSnowMaterial(env) {
             rock = mix(rock, vec3(dot(rock, vec3(0.3, 0.45, 0.25))) * vec3(0.93, 0.96, 1.02), 0.55);
             gRockRough = texture2D(uRockR, q.xz).g;
           }
+          // spring slush: wet, a touch grey and glossy; hard days: a little bluer
+          snow *= mix(vec3(1.0), vec3(0.86, 0.87, 0.88), uCond.y);
+          snow *= mix(vec3(1.0), vec3(0.97, 0.985, 1.02), uCond.z);
           diffuseColor.rgb = mix(snow, rock, gRock);
           // scraped ice: grey-blue, polished
-          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.50, 0.58, 0.70), smoothstep(0.0, 0.6, vIce) * 0.9);
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.66, 0.72, 0.82), smoothstep(0.0, 0.6, vIce) * 0.4);
         }`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-        roughnessFactor = mix(mix(mix(0.35 + gSnowRough * 0.5, 0.45, vPiste * 0.5), gRockRough, gRock), 0.18, smoothstep(0.0, 0.6, vIce));`)
+        roughnessFactor = mix(mix(mix(0.52 + gSnowRough * 0.38, 0.64, pk() * 0.6) * (1.0 - 0.3 * uCond.y - 0.15 * uCond.z), gRockRough, gRock), 0.34, smoothstep(0.0, 0.6, vIce) * 0.7);`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         {
           vec2 wp = vWPos.xz;
@@ -169,14 +177,14 @@ export function makeSnowMaterial(env) {
           vec2 n1 = texture2D(uSnowN, gSnowUv1).xy * 2.0 - 1.0;
           vec2 n2 = rot2(-0.61) * (texture2D(uSnowN, gSnowUv2).xy * 2.0 - 1.0);
           vec2 sn = mix(n1, n2, gSnowMix) * (1.0 - smoothstep(60.0, 380.0, dist) * 0.7);
-          g += vec2(sn.x, -sn.y) * mix(0.55, 0.32, vPiste);
+          g += vec2(sn.x, -sn.y) * mix(0.55, 0.32, pk());
           if (dist < 260.0) {
             vec2 u1 = vec2(wp.x * 0.07 + wp.y * 0.02, wp.y * 0.09);
             float h0 = texture2D(uNoise, u1).a, hx = texture2D(uNoise, u1 + vec2(e, 0.)).a, hz = texture2D(uNoise, u1 + vec2(0., e)).a;
-            g += vec2(h0 - hx, h0 - hz) * (1.0 - vPiste) * 1.3 * (1.0 - smoothstep(60.0, 260.0, dist));
-            g.x += cos(cw) * 0.045 * vPiste * fade;
+            g += vec2(h0 - hx, h0 - hz) * (1.0 - pk()) * 1.3 * (1.0 - smoothstep(60.0, 260.0, dist));
+            g.x += cos(cw) * 0.045 * pk() * fade;
             float rib = wp.x * 6.2832 / 0.21;
-            g.x += cos(rib) * 0.075 * smoothstep(0.8, 1.0, vPiste) * (1.0 - smoothstep(0.12, 0.45, fwidth(rib) / 6.2832));
+            g.x += cos(rib) * 0.075 * smoothstep(0.8, 1.0, pk()) * (1.0 - smoothstep(0.12, 0.45, fwidth(rib) / 6.2832));
           }
           g *= 1.0 - gRock;
           g *= 1.0 - vIce * 0.85;
@@ -202,17 +210,17 @@ export function makeSnowMaterial(env) {
           float dist = length(cameraPosition - vWPos);
           vec2 cell = floor(vWPos.xz * 26.0);
           float r = hash12(cell);
-          if (r > 0.93 && dist < 70.0 && vIce < 0.3) {
+          if (r > 0.955 - 0.025 * uCond.x && dist < 60.0 && vIce < 0.3) {
             vec3 gn = normalize(vec3(hash12(cell + 3.1) - 0.5, 0.9, hash12(cell + 9.7) - 0.5));
             vec3 V = normalize(cameraPosition - vWPos);
             vec3 H = normalize(V + uSunDir);
             float s = pow(max(dot(gn, H), 0.0), 900.0);
             vec2 fc = fract(vWPos.xz * 26.0) - 0.5;
             s *= smoothstep(0.32, 0.0, length(fc));
-            reflectedLight.directSpecular += uSunCol * s * 26.0 * sh * agSun * (1.0 - gRock) * (1.0 - smoothstep(25.0, 70.0, dist));
+            reflectedLight.directSpecular += uSunCol * s * 9.0 * sh * agSun * (1.0 - gRock) * (1.0 - smoothstep(25.0, 70.0, dist));
           }
           // a whisper of subsurface blue in the shade
-          reflectedLight.indirectDiffuse += vec3(0.010, 0.018, 0.04) * (1.0 - sh * agSun) * (1.0 - gRock);
+          reflectedLight.indirectDiffuse += vec3(0.016, 0.03, 0.068) * (1.0 - sh * agSun) * (1.0 - gRock);
         }`);
   };
   return mat;
@@ -258,6 +266,9 @@ export class Terrain {
     this.jobId = 0;
   }
 
+  // the day's snow (sky.js COND) on the shader
+  setCondition(c) { this.material.userData.shared.uCond.value.set(c.fresh ?? 0, c.wet ?? 0, c.ice ? 1 : 0); }
+
   // surrounding ranges: a finer middle ring and a coarse outer ring, each sunk
   // under the finer mesh it surrounds
   buildFar() {
@@ -288,8 +299,8 @@ export class Terrain {
       this.scene.add(m);
       return m;
     };
-    this.mid = ring(36, -5200, 5200, -4400, 8800, NEAR_X, Z0, Z1);
-    this.far = ring(160, -16000, 16000, -14000, 19000, 5200, -4400, 8800);
+    this.mid = ring(36, -5200, 5200, -4400, MID_Z1, NEAR_X, Z0, Z1);
+    this.far = ring(160, -16000, 16000, -14000, FAR_Z1, 5200, -4400, MID_Z1);
   }
 
   lodFor(c, px, pz) {

@@ -195,6 +195,171 @@ export const MAPS = {
     icy: [],
     trees(z, s, d) { return d; },
   },
+
+  // a long tree run: glades where the pines stand on the run itself, slalom woods, a creek trail
+  timber: {
+    name: 'Timberline', tag: 'Tree run · 5.7 km', blurb: 'Five and a half kilometres through the forest: weave the glades, thread the slalom woods, follow the creek trail and pop the pillows.',
+    start: 30, finish: 5700, km: 5.7,
+    sections: [
+      { name: 'Start', z0: -200, z1: 140, grad: 0.12, width: 50 },
+      { name: 'Spruce Glades', z0: 140, z1: 1100, grad: 0.28, width: 110 },
+      { name: 'Slalom Woods', z0: 1100, z1: 1800, grad: 0.25, width: 70 },
+      { name: 'Creek Trail', z0: 1800, z1: 2500, grad: 0.17, width: 32 },
+      { name: 'Old Growth', z0: 2500, z1: 3400, grad: 0.31, width: 120 },
+      { name: 'Birch Run', z0: 3400, z1: 4300, grad: 0.26, width: 64 },
+      { name: 'Lumber Yard', z0: 4300, z1: 4900, grad: 0.2, width: 56 },
+      { name: 'Lower Woods', z0: 4900, z1: 5500, grad: 0.22, width: 90 },
+      { name: 'Run-out', z0: 5500, z1: 5800, grad: 0.1, width: 70 },
+      { name: 'Base', z0: 5800, z1: 99999, grad: 0.025, width: 120 },
+    ],
+    curve: (z) => 80 * Math.sin(z / 380 + 1.1) + 40 * Math.sin(z / 160 + 0.3) + 12 * Math.sin(z / 64 + 2),
+    curveClamp: [110, 5600],
+    crests: [
+      { z: 2000, off: 0, h: 1.0, w: 34, ramp: 14 }, { z: 2180, off: 0, h: 1.2, w: 34, ramp: 14 }, { z: 2380, off: 0, h: 1.1, w: 34, ramp: 14 },
+    ],
+    runJumps: [
+      { name: 'Side Hit', zone: 'Spruce Glades', z: 380, dx: -32, h: 1.4, ramp: 6, table: 2, land: 6, w: 6 },
+      { name: 'Side Hit', zone: 'Spruce Glades', z: 720, dx: 30, h: 1.6, ramp: 6, table: 2, land: 7, w: 6 },
+      { name: 'Root Kicker', zone: 'Slalom Woods', z: 1500, dx: 0, h: 1.8, ramp: 7, table: 3, land: 9, w: 8 },
+      { name: 'Pillow Drop', zone: 'Old Growth', z: 2700, dx: -28, h: 2.2, ramp: 3, table: 7, land: 2.5, w: 10, drop: true },
+      { name: 'Pillow Drop', zone: 'Old Growth', z: 2900, dx: 26, h: 2.6, ramp: 3, table: 8, land: 2.5, w: 10, drop: true },
+      { name: 'Big Pillow', zone: 'Old Growth', z: 3150, dx: -6, h: 3.0, ramp: 3.5, table: 9, land: 3, w: 12, drop: true },
+      { name: 'Stump Jump', zone: 'Birch Run', z: 3800, dx: 14, h: 2.0, ramp: 8, table: 4, land: 10, w: 8 },
+      { name: 'Creek Gap', zone: 'Lower Woods', z: 5200, dx: 0, h: 2.4, ramp: 8, table: 6, land: 11, w: 10 },
+    ],
+    runRails: [
+      { name: 'Creek Log', zone: 'Creek Trail', z: 2100, dx: 8, len: 9, h: 0.42, kind: 'log', shape: 'down' },
+      { name: 'Fallen Log', zone: 'Lumber Yard', z: 4380, dx: -12, len: 9, h: 0.45, kind: 'log', shape: 'down' },
+      { name: 'Flat Log', zone: 'Lumber Yard', z: 4480, dx: 12, len: 11, h: 0.5, kind: 'log', shape: 'flat' },
+      { name: 'Log Ride', zone: 'Lumber Yard', z: 4600, dx: 0, len: 14, h: 0.55, kind: 'log', shape: 'down' },
+      { name: 'Twin Log', zone: 'Lumber Yard', z: 4740, dx: -14, len: 9, h: 0.45, kind: 'log', shape: 'down' },
+      { name: 'Twin Log', zone: 'Lumber Yard', z: 4740, dx: 14, len: 9, h: 0.45, kind: 'log', shape: 'down' },
+    ].map((r) => ({ ...r, color: 0x6b4a32 })),
+    zones: [
+      { name: 'Drop In', z1: 140 }, { name: 'Spruce Glades', z1: 1100 }, { name: 'Slalom Woods', z1: 1800 }, { name: 'Creek Trail', z1: 2500 },
+      { name: 'Old Growth', z1: 3400 }, { name: 'Birch Run', z1: 4300 }, { name: 'Lumber Yard', z1: 4900 }, { name: 'Lower Woods', z1: 5500 },
+      { name: 'Run-out', z1: 5690 }, { name: 'Finish', z1: 5760 },
+    ],
+    signs: { 'Spruce Glades': 'TREES ON THE RUN', 'Slalom Woods': 'WEAVE', 'Creek Trail': 'NARROW · ROLLERS', 'Old Growth': 'PILLOWS', 'Birch Run': 'TREES · A KICKER', 'Lumber Yard': 'LOGS', 'Lower Woods': 'CREEK GAP' },
+    // the pines grow on the run: [z0, z1, density]
+    glades: [[170, 1080, 0.12], [1120, 1780, 0.19], [2520, 3380, 0.1], [3420, 4280, 0.15], [4920, 5480, 0.09]],
+    soft(z) {
+      for (const [a, b] of [[160, 1090], [2510, 3390], [4910, 5490]]) if (z > a - 30 && z < b + 30) return 0.6 * smoothstep(a - 30, a + 10, z) * (1 - smoothstep(b - 10, b + 30, z)) + 0.25;
+      return z > 150 && z < 5500 ? 0.3 : 0;
+    },
+    icy: [],
+    trees(z, s, d) { return Math.max(d, 0.6) * 0.85; },
+  },
+
+  // the big mountain: summit ridge to the village, 8.5 km and ~2.5 km of vertical
+  grand: {
+    name: 'Grand Descent', tag: 'Big mountain · 8.5 km', blurb: 'From the summit ridge to the village: a north face, the glacier, a couloir, a giant bowl, cornices and treeline steeps, then the long road home.',
+    start: 30, finish: 8500, km: 8.5,
+    sections: [
+      { name: 'Summit Ridge', z0: -200, z1: 200, grad: 0.14, width: 60 },
+      { name: 'North Face', z0: 200, z1: 900, grad: 0.46, width: 96 },
+      { name: 'The Glacier', z0: 900, z1: 1900, grad: 0.29, width: 180 },
+      { name: 'The Couloir', z0: 1900, z1: 2300, grad: 0.52, width: 36 },
+      { name: 'Big Bowl', z0: 2300, z1: 3400, grad: 0.36, width: 200 },
+      { name: 'Cornice Traverse', z0: 3400, z1: 3900, grad: 0.2, width: 54 },
+      { name: 'Treeline Steeps', z0: 3900, z1: 5000, grad: 0.35, width: 84 },
+      { name: 'Valley Glades', z0: 5000, z1: 6200, grad: 0.26, width: 100 },
+      { name: 'The Long Road', z0: 6200, z1: 7600, grad: 0.19, width: 46 },
+      { name: 'Village Run', z0: 7600, z1: 8550, grad: 0.15, width: 90 },
+      { name: 'Village', z0: 8550, z1: 99999, grad: 0.025, width: 120 },
+    ],
+    curve: (z) => 150 * Math.sin(z / 760 + 0.5) + 60 * Math.sin(z / 280 + 1.9) + 18 * Math.sin(z / 95),
+    curveClamp: [120, 8380],
+    crests: [
+      { z: 1300, off: -30, h: 1.4, w: 90, ramp: 22 }, { z: 1600, off: 30, h: 1.6, w: 90, ramp: 24 },
+      { z: 6600, off: 0, h: 1.0, w: 40, ramp: 16 }, { z: 7000, off: 0, h: 1.1, w: 40, ramp: 16 }, { z: 7300, off: 0, h: 0.9, w: 40, ramp: 16 },
+    ],
+    runJumps: [
+      { name: 'Wind Lip', zone: 'The Glacier', z: 1100, dx: -50, h: 1.8, ramp: 8, table: 3, land: 10, w: 10 },
+      { name: 'Wind Lip', zone: 'The Glacier', z: 1750, dx: 45, h: 2.2, ramp: 9, table: 4, land: 12, w: 12 },
+      { name: 'Bowl Kicker', zone: 'Big Bowl', z: 2700, dx: -40, h: 3.0, ramp: 10, table: 8, land: 14, w: 12 },
+      { name: 'Cornice', zone: 'Cornice Traverse', z: 3500, dx: -10, h: 2.4, ramp: 3, table: 6, land: 2.5, w: 14, drop: true },
+      { name: 'Cornice', zone: 'Cornice Traverse', z: 3700, dx: 12, h: 3.2, ramp: 3, table: 7, land: 3, w: 14, drop: true },
+      { name: 'Rock Drop', zone: 'Treeline Steeps', z: 4300, dx: 20, h: 2.8, ramp: 3, table: 6, land: 3, w: 10, drop: true },
+      { name: 'Road Gap', zone: 'Valley Glades', z: 5600, dx: 0, h: 2.6, ramp: 9, table: 7, land: 12, w: 12 },
+    ],
+    runRails: [],
+    zones: [
+      { name: 'Summit Ridge', z1: 200 }, { name: 'North Face', z1: 900 }, { name: 'The Glacier', z1: 1900 }, { name: 'The Couloir', z1: 2300 },
+      { name: 'Big Bowl', z1: 3400 }, { name: 'Cornice Traverse', z1: 3900 }, { name: 'Treeline Steeps', z1: 5000 }, { name: 'Valley Glades', z1: 6200 },
+      { name: 'The Long Road', z1: 7600 }, { name: 'Village Run', z1: 8490 }, { name: 'Finish', z1: 8560 },
+    ],
+    signs: { 'North Face': 'STEEP · ICY', 'The Glacier': 'WIDE OPEN', 'The Couloir': 'EXPERTS ONLY', 'Big Bowl': 'BOWL · MOGULS', 'Cornice Traverse': 'CORNICE DROPS', 'Treeline Steeps': 'STEEP TREES', 'Valley Glades': 'GLADES', 'The Long Road': 'CAT TRACK' },
+    moguls: { z0: 2500, z1: 3200 },
+    glades: [[5050, 6150, 0.07]],
+    // (above the tree line it's open mountain: only the glades grow trees on the run)
+    forestEdge: false,
+    soft(z) {
+      if (z > 900 && z < 1900) return 0.35;
+      if (z > 2300 && z < 3400) return 0.45;
+      if (z > 5000 && z < 6200) return 0.5;
+      return 0;
+    },
+    icy: [[220, 880], [1920, 2280], [4000, 4700]],
+    trees(z, s, d) { return d; },
+  },
+
+  // the big park: a jib garden, two kicker lines, a pipe, two big airs, step-downs
+  mega: {
+    name: 'Mega Park', tag: 'The big park · 2.8 km', blurb: 'The biggest park on the mountain: a jib garden of eighteen rails, two kicker lines up to XXL, a halfpipe, twin big airs and a step-down line.',
+    start: 30, finish: 2760, km: 2.8, calm: true,
+    sections: [
+      { name: 'Drop In', z0: -200, z1: 120, grad: 0.12, width: 70 },
+      { name: 'Jib Garden', z0: 120, z1: 650, grad: 0.17, width: 150 },
+      { name: 'Kicker Alley', z0: 650, z1: 1330, grad: 0.24, width: 160 },
+      { name: 'The Pipe', z0: 1330, z1: 1660, grad: 0.19, width: 170 },
+      { name: 'Big Air Duo', z0: 1660, z1: 2060, grad: 0.33, width: 140 },
+      { name: 'Step-Down Line', z0: 2060, z1: 2400, grad: 0.27, width: 120 },
+      { name: 'Last Jib', z0: 2400, z1: 2700, grad: 0.15, width: 120 },
+      { name: 'Finish', z0: 2700, z1: 2850, grad: 0.1, width: 120 },
+      { name: 'Base', z0: 2850, z1: 99999, grad: 0.025, width: 120 },
+    ],
+    curve: (z) => 30 * Math.sin(z / 520 + 0.4) + 10 * Math.sin(z / 210 + 2),
+    curveClamp: [90, 2650],
+    crests: [],
+    park: { top: 1335, z0: 1345, z1: 1650 },
+    pipe: { z0: 1370, z1: 1640, dx: 4 },
+    rollers: { z0: 1360, z1: 1640, dx: -60 },
+    runJumps: [
+      // kicker alley: two lines side by side, small to XXL
+      ...[['Small', 1.6, 6.5, 4, 8, 7, 680], ['Medium', 2.5, 8.5, 7, 11, 9, 770], ['Large', 3.3, 10.5, 10, 14, 11, 870], ['XL', 4.1, 12, 13, 17, 12, 990], ['XL', 4.1, 12, 13, 17, 12, 1120]]
+        .map(([n, h, ramp, table, land, w, z]) => ({ name: n, zone: 'Kicker Alley', z, dx: -34, h, ramp, table, land, w })),
+      ...[['Medium', 2.5, 8.5, 7, 11, 9, 700], ['Large', 3.3, 10.5, 10, 14, 11, 800], ['XL', 4.1, 12, 13, 17, 12, 920], ['XXL', 5, 14, 16, 22, 14, 1060], ['XXL', 5, 14, 16, 22, 14, 1210]]
+        .map(([n, h, ramp, table, land, w, z]) => ({ name: n, zone: 'Kicker Alley', z, dx: 34, h, ramp, table, land, w })),
+      { name: 'Hip', zone: 'Kicker Alley', z: 1260, dx: 0, h: 2.2, ramp: 8, table: 3, land: 10, w: 10 },
+      { name: 'Big Air', zone: 'Big Air Duo', z: 1720, dx: -32, h: 6, ramp: 18, table: 8, land: 32, w: 18 },
+      { name: 'Mega Air', zone: 'Big Air Duo', z: 1760, dx: 34, h: 6.8, ramp: 20, table: 9, land: 36, w: 18 },
+      { name: 'Step-Down', zone: 'Step-Down Line', z: 2090, dx: -26, h: 2.4, ramp: 3, table: 7, land: 2.5, w: 12, drop: true },
+      { name: 'Step-Down', zone: 'Step-Down Line', z: 2170, dx: 24, h: 3.0, ramp: 3, table: 8, land: 3, w: 12, drop: true },
+      { name: 'Gap', zone: 'Step-Down Line', z: 2250, dx: -4, h: 3.6, ramp: 11, table: 18, land: 16, w: 13 },
+      { name: 'Step-Down', zone: 'Step-Down Line', z: 2340, dx: -24, h: 3.4, ramp: 3.5, table: 9, land: 3, w: 12, drop: true },
+    ],
+    runRails: [
+      ...[[170, 'box', 'flat', 8], [260, 'rail', 'down', 10], [350, 'box', 'rainbow', 9], [440, 'rail', 'kink', 12], [530, 'box', 'down', 11], [610, 'rail', 'flat', 10]]
+        .flatMap(([z, kind, shape, len], i) => [-40, 0, 40].map((dx, j) => ({
+          name: ['Flat Box', 'Down Rail', 'Rainbow', 'Kink', 'Down Box', 'Flat Bar'][i] + ' ' + 'ABC'[j], zone: 'Jib Garden', z: z + j * 12, dx,
+          len: len + j * 2, h: kind === 'box' ? 0.5 : 0.65, kind: j === 1 && kind === 'rail' && shape !== 'kink' ? 'box' : kind, shape,
+          color: [0x2a7de1, 0xf2b705, 0xff4f8b, 0xd8342c, 0x18a868, 0x8e3fd1][(i + j) % 6],
+        }))),
+      { name: 'Last Tube', zone: 'Last Jib', z: 2440, dx: -20, len: 16, h: 0.8, kind: 'rail', shape: 'down', color: 0xff6a2b },
+      { name: 'Last Box', zone: 'Last Jib', z: 2440, dx: 20, len: 12, h: 0.5, kind: 'box', shape: 'flat', color: 0x2a7de1 },
+      { name: 'Wall Kink', zone: 'Last Jib', z: 2540, dx: 0, len: 13, h: 0.7, kind: 'rail', shape: 'kink', color: 0xd8342c },
+      { name: 'Rainbow', zone: 'Last Jib', z: 2620, dx: -18, len: 10, h: 0.55, kind: 'box', shape: 'rainbow', color: 0xff4f8b },
+      { name: 'Down Rail', zone: 'Last Jib', z: 2620, dx: 18, len: 11, h: 0.65, kind: 'rail', shape: 'down', color: 0xf2b705 },
+    ],
+    zones: [
+      { name: 'Drop In', z1: 120 }, { name: 'Jib Garden', z1: 650 }, { name: 'Kicker Alley', z1: 1330 }, { name: 'The Pipe', z1: 1660 },
+      { name: 'Big Air Duo', z1: 2060 }, { name: 'Step-Down Line', z1: 2400 }, { name: 'Last Jib', z1: 2690 }, { name: 'Finish', z1: 2780 },
+    ],
+    signs: { 'Jib Garden': '18 RAILS & BOXES', 'Kicker Alley': 'TWO LINES · S TO XXL', 'The Pipe': 'HALFPIPE · ROLLERS', 'Big Air Duo': 'TWIN BIG AIRS', 'Step-Down Line': 'STEP-DOWNS · GAP', 'Last Jib': 'ONE MORE' },
+    icy: [],
+    trees(z, s, d) { return d * 0.8; },
+  },
 };
 
 export const MAP_IDS = Object.keys(MAPS);

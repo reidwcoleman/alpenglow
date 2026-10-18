@@ -264,7 +264,7 @@ export class Props {
       const gy = heightAt(x, z);
       const base = colorize(new THREE.BoxGeometry(9, 6, 16), 0x5b3d2a); base.translate(0, 3, 0);
       const roof = snowCap(new THREE.CylinderGeometry(0.01, 8.5, 3.2, 4, 1).rotateY(Math.PI / 4).scale(1, 1, 1.6), 0x3a2a22, 0.3);
-      roof.translate(0, 7.6, 0);
+      roof.translate(0, 7.05, 0);
       const wheel = colorize(new THREE.TorusGeometry(2.6, 0.18, 8, 24).rotateX(Math.PI / 2), 0x2b2f36); wheel.translate(0, H + 0.3, t === 0 ? -6 : 6);
       const deck = colorize(new THREE.BoxGeometry(6.5, 0.6, 9), steel); deck.translate(0, H - 0.4, t === 0 ? -5 : 5);
       const g = merge([base, roof, wheel, deck]);
@@ -735,7 +735,7 @@ export class Props {
     this.scene.add(im);
     // park entry arch (two poles + banner)
     if (!MAP.park) return;
-    const z = 1015, cx = centerX(z), hw = halfWidth(z) * 0.7;
+    const z = MAP.park.top - 17, cx = centerX(z), hw = halfWidth(z) * 0.7;
     const tex = canvasTex(1024, 128, (c, w, h) => {
       c.fillStyle = '#111'; c.fillRect(0, 0, w, h);
       c.fillStyle = '#ffde2e'; c.font = 'bold 72px Helvetica'; c.textAlign = 'center'; c.textBaseline = 'middle';

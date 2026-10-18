@@ -9,7 +9,7 @@ Built like the front page of a live-service indie game: tabs for **Ride**, **Eve
 - **Flakes and XP**: every finished run (and every park session, race and event) pays XP and flakes. XP fills a 100-tier **Season Pass**: three tiers a day at full rate, a quarter after that; tiers pay flakes and every fifth one unlocks an exclusive item.
 - **Shop and Locker**: about 245 things: jackets and pants in 16 prints (camo, tartan, stripes, chevron, pixel camo, quilted puffer...), helmets (gloss, matte, chrome, racing stripes) and beanies, goggles with mirrored lenses, skis and snowboards with printed top sheets (flames, tiger, galaxy, wood, checkers...), gloves and poles, plus your choice of rider. **Today's deals** (six items, 20% off, new every day) and **outfit sets** (a whole look for 30% less). The Locker shows your rider on a turntable (drag to turn).
 - **Events**: the Alpine Cup (8-racer downhill), the Express Sprint (6 racers, the fast bottom third), a Gate Trial against medal times, and four trick contests (Yard Jam, Slopestyle Open, Forest Freeride, Big Air Showdown) against a field of computer scores. Each at Am, Pro and Legend, with medals, prizes, and Champion kit for a Pro win.
-- **Trick School**: 31 lessons from a first grab to a double cork 1080. Each has the keys step by step, your rider doing the trick on a loop, a Try it button that drops you on the right park line with the steps on screen, and flakes the first time you land it. Any of them can go on keys 1-4 as a quick trick.
+- **Trick School**: 31 lessons from a first grab to a double cork 1080. Each has the keys step by step, your rider doing the trick on a loop, a Try it button that drops you on the right park line with the steps on screen, and flakes the first time you land it. Any of them can go on keys 1-9: hold the key up the kicker, let go at the lip.
 - **Daily challenge**: one trick a day for 150 flakes.
 - **Leaderboard**: global boards for every park, Park Laps, the Alpine Cup and the Express Sprint, all time and this week, plus your own runs. Every best run is on the server: press Watch on anyone's.
 - **Replays**: your last five runs are saved in the browser (IndexedDB); keep the ones you want for good.
@@ -31,18 +31,35 @@ Pick one on the illustrated map (Ride > the park card), by day or by night. Each
 - **Trick Zone** (1.4 km): a groomed slopestyle course. A rail zone with eight features, three stepped kickers, and a big air to finish.
 - **Forest Line** (2.3 km): ungroomed tree skiing. Powder glades with pines on the run itself, a winding tree trail with rollers, three pillow drops and a log jam.
 - **Big Air** (0.8 km): a steep inrun into one mega kicker. A full tuck gives about 4.5 s of air.
+- **Timberline** (5.7 km): a real tree run. Glades with trees on the line itself, the Creek Trail, pillows and the Lumber Yard logs.
+- **Grand Descent** (8.5 km, about 2.5 km of vertical): North Face, Glacier, Couloir, the Big Bowl with moguls, Cornice Traverse, Treeline Steeps, Valley Glades, The Long Road and the Village Run. Wind lips, cornice and rock drops, the Road Gap, icy patches.
+- **Mega Park** (2.8 km): an 18-feature Jib Garden in three lanes, Kicker Alley (two lines up to XXL plus a hip), a pipe, Big Air Duo, a step-down line with a gap and the Last Jib.
 
 ## Modes
 - **The Run**: top to bottom with a timer, score, minimap and a results card. Hold R for 2 s to restart.
-- **Ski Park** (The Yard): laps of the terrain park. Keys 1-4 jump to a line, and holding R takes you to the top of yours.
+- **Ski Park** (The Yard): laps of the terrain park. L picks a line, and holding R takes you to the top of yours.
 - **Race the Cup** (The Yard): mass-start downhill against 7 AI racers through 39 gates, with realistic physics.
 - **Multiplayer**: pick Multiplayer and a server (or type a private room code) before you ride. Same park and same server means the same slope. You get name tags, Tab for the room list, T to chat, a live trick feed, server races, and invite links (`?park=forest&room=abc`).
 - **Events**: see the Events tab above. Races and the trial run on The Yard, contests on every park.
 - **Replays**: V replays your last trick, and the results card plays the whole run. You get chase, TV, GoPro, orbit and drone cameras, 1/4 to 1x speed, scrubbing, and "Save clip" (records the canvas to a .webm).
 
-Five conditions: Bluebird Morning, Golden Hour, Alpenglow Dusk, Night Session (a moonlit sky with floodlight towers, the nearest ones real spot lights with shadows) and Powder Day (snowfall).
+Weather: a new sky every time you drop in (restarting keeps it; Menu > Weather > Fixed turns it off). Bluebird Morning, Golden Hour, Alpenglow Dusk, Night Session (moonlit, floodlight towers), Powder Day, Spring Sun, Arctic Blue, Snow Showers, Whiteout and Night Snow. Each comes with its snow, which changes the physics and the look: Fresh corduroy, Packed powder, Fresh powder (slow, deep, floaty), Hardpack and ice (fast, little grip, glints) and Spring slush (grabby, wet). Storms bring wind that pushes you in the air.
 
 ## Controls
+Two schemes (Menu > Controls). **Arrows** is the default and needs only the arrows and the number keys (or the keypad):
+
+| Arrows (default) | On the snow | In the air |
+|---|---|---|
+| ← → | carve | spin |
+| ↑ | tuck | front flip |
+| ↓ | brake | backflip |
+| 1-9 (number row or keypad) | hold to load, let go at the lip to pop that trick | let go to throw it now (if there is time) |
+| Space / keypad 0 | hold and let go to pop with no trick | |
+
+Trick keys are timed: hold the number on the way up the kicker and let go right at the lip for a PERFECT POP and the full trick, sized to the air. Let go too early and it shrinks (or there is no air), too late and you are already off the lip. The nine keys start as Mute, Shifty, 360, Backflip, 540, Frontflip, Cork 720, Rodeo 540 and Double Cork 1080, and any Trick School trick can go on any key. In the park, L picks the next line.
+
+**Classic** keeps every move by hand:
+
 | | Keyboard | Gamepad |
 |---|---|---|
 | Carve / spin in the air | A D | Left stick |
@@ -59,12 +76,10 @@ Five conditions: Bluebird Morning, Golden Hour, Alpenglow Dusk, Night Session (a
 | Restart (hold) | R | View |
 | Replay | V | |
 | Room list / chat (multiplayer) | Tab / T | |
-| Quick tricks (in the air: now; on the snow: armed for the next kicker, popped for you at the lip) | 1 / 2 / 3 / 4 | |
+| Trick keys | 1-9 | |
 | Pause / mute | Esc / M | Menu |
 
-On a rail, A/D swap the slide a quarter turn and Space pops off. Touch controls appear on phones and tablets.
-
-Quick tricks: put any Trick School trick on keys 1-4. The rider flies it for you, planned on takeoff as the biggest version that fits the air (a double cork off a medium kicker becomes a cork 720), and lands it. In the park, keys 1-4 on the snow still pick a line.
+The letter keys work in both schemes. On a rail, A/D swap the slide a quarter turn and Space pops off. Touch controls appear on phones and tablets.
 
 Landing assist: about 0.45 s before touchdown the rider finishes whatever rotation is closest to a clean landing (the nearest half turn of spin, the nearest whole flip, carrying on if well into it). Way off still bails. The Tricks tab is a trick book that ticks off each family the first time you land it; new tricks call out "NEW TRICK" and count on the results card.
 
@@ -117,10 +132,11 @@ node tools/ui2.mjs shots/ui2     # park picker, two browsers in one multiplayer 
 node tools/cloudtest.mjs bigair  # guest run -> global board -> watch it off the server -> cloud save
 node tools/srvrace.mjs           # two browsers on one server race each other
 node tools/eventtest.mjs sprint 1 yard   # an event on autopilot to its results
-node tools/quick.mjs cork Large  # a quick trick off a park kicker
+node tools/quick.mjs cork Large -0.9   # hold key 1 up a park kicker, let go 0.9 m before the lip
+node tools/wx.mjs shots/wx timber 6    # drop in 6 times: a new sky and snow each time (or name them: grand whiteout,nightsnow)
 node tools/portrait.mjs out.jpg 4 1.6 1.66 20   # rider portraits (OUTFITS='[{"head":"hx-racer"}]')
 PARK=forest node tools/sim.mjs free 150   # any park headless
 ```
-URL flags: `?park=yard|slope|forest|bigair&room=name&event=cup|sprint|trial|jam|slopestyle|freeride|bigair&tier=0|1|2&cwatch=<replay id>&menu=0&mode=race|run|park&line=jumps|rails|pipe&auto=1&tod=bluebird|golden|alpenglow|night|storm&z=1200&cam=chase|action|helmet|tv&q=low|high|ultra`.
+URL flags: `?park=yard|slope|forest|bigair|timber|grand|mega&room=name&event=cup|sprint|trial|jam|slopestyle|freeride|bigair&tier=0|1|2&cwatch=<replay id>&menu=0&mode=race|run|park&line=jumps|rails|pipe&auto=1&tod=bluebird|golden|alpenglow|night|storm|spring|arctic|flurries|whiteout|nightsnow&tm=aces|agx|neutral&z=1200&cam=chase|action|helmet|tv&q=low|high|ultra`.
 
 Pushing `main` deploys to GitHub Pages.

@@ -4,7 +4,7 @@
 // draws it and passes clicks back.
 import { ITEMS, ITEM, CATS, RARITY, LEVELS, LEVEL_XP, SEASON, RIVALS, SETS, store } from './meta.js';
 import { EVENTS, TIERS, field, prize, MEDAL } from './events.js';
-import { LESSONS, LESSON, FAMS, QUICK0, quickSpec } from './school.js';
+import { LESSONS, LESSON, FAMS, QUICK0, quickSpec, numSteps } from './school.js';
 import { SERVERS, errText } from './cloud.js';
 import { designURL } from './gear.js';
 import { listRuns, getRun, keepRun, deleteRun } from './vault.js';
@@ -77,6 +77,7 @@ function shortDate(t) { const d = new Date(t); return d.toLocaleDateString(undef
 function clock(s) { const m = Math.floor(s / 60); return `${String(m).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`; }
 
 const NOTES = [
+  { d: '18 OCT', t: 'Real ski runs and a new day every drop', p: 'Three new places to ride: Timberline, 5.7 km of glades where you weave through the trees; Grand Descent, 8.5 km and 2.5 km of vertical from a north face and a glacier through a couloir, a giant bowl and treeline steeps down to the village; and Mega Park, 2.8 km with a jib garden, a two-line kicker alley up to XXL, a pipe and a step-down gap. The weather is different every time you drop in, and the snow with it: fresh powder is slow and floaty, hardpack is fast and skates out, spring slush grabs. Tricks are now on the number keys: hold one on the way up a kicker and let go right at the lip. The arrows steer, tuck and brake on the snow and spin and flip in the air. Less glare and more snow-like snow, too.', tags: ['NEW RUNS', 'MEGA PARK', 'WEATHER', 'TRICK KEYS', 'ARROWS'] },
   { d: '18 OCT', t: 'Accounts and the shared server', p: 'Every rider now has an account on the Alpenglow server. Make it yours with an email and a password and your wallet, pass, locker and trick book follow you to any device. Leaderboards are global and weekly, and every best run can be watched by anyone. Multiplayer runs on our own servers: pick one from the list, or race everyone on it.', tags: ['ACCOUNTS', 'GLOBAL BOARDS', 'SERVERS', 'SERVER RACES'] },
   { d: '18 OCT', t: 'Events, Trick School, 180 new items', p: 'Events: the Alpine Cup, the Express Sprint, a Gate Trial and four trick contests, each at Am, Pro and Legend with medals and prizes. Trick School shows every trick, step by step, with your rider doing it. Set any of them as a quick trick on keys 1 to 4 and it flies itself, sized to the jump. The shop has 180 more things to wear, outfit sets, today\'s deals, skis and boards with printed top sheets, and a whole new look for the riders: real helmets, mirrored goggles, ski boots and roomy kit.', tags: ['EVENTS', 'TRICK SCHOOL', 'QUICK TRICKS', 'SHOP', 'NEW RIDERS'] },
   { d: '17 OCT', t: 'The front page', p: 'A new home for the mountain: a Season Pass with 100 levels, an Item Shop and a Locker to dress your rider, flakes for every run, a daily challenge, leaderboards for every park and your last five runs saved to watch again.', tags: ['SEASON PASS', 'SHOP', 'LOCKER', 'REPLAYS'] },
@@ -476,10 +477,15 @@ export class Menu {
     const ok = has(l.re);
     const slots = g.quickSlots();
     const canQuick = !!quickSpec(l.id);
+    const slot = slots.indexOf(l.id);
+    const where = l.where === 'rails' ? 'a rail' : l.lvl >= 4 ? 'the biggest kicker you can find (XL, Big Air)' : l.lvl >= 3 ? 'a large kicker' : 'any kicker';
+    const num = numSteps(l, slot >= 0 ? slot + 1 : null, where);
+    const handHead = num ? `<div class="lv2" style="margin-top:12px">BY HAND${l.classic ? ' · CLASSIC KEYS (MENU › CONTROLS)' : ''}</div>` : '';
     $('howbox').innerHTML = `<div class="lv2">${FAMS.find(([k]) => k === l.fam)?.[1].toUpperCase() ?? ''} LEVEL ${l.lvl} · ${ok ? 'LANDED ✓' : `FIRST LANDING PAYS ${l.reward} FLAKES`}</div><h3>${esc(B ? l.board : l.name)}</h3>
-      <ol>${l.steps.map((st) => `<li><span>${st}</span></li>`).join('')}</ol><div class="tip">${esc(l.tip)}</div>
-      ${canQuick ? `<div class="tip" style="margin-top:8px">Quick trick: put it on a number key and press it in the air (or before a kicker): the rider does it for you, sized to the jump. Slots now: ${slots.map((id, i) => `<b>${i + 1}</b> ${esc(LESSON[id] ? (B ? LESSON[id].board : LESSON[id].name) : '—')}`).join(' · ')}</div>` : ''}
-      <div class="row"><button class="btn p" id="sc-try">Try it ↗</button>${canQuick ? [0, 1, 2, 3].map((i) => `<button class="btn" data-q="${i}" title="Put it on key ${i + 1}">Key ${i + 1}</button>`).join('') : ''}</div>`;
+      ${num ? `<div class="lv2" style="margin-top:8px">WITH A TRICK KEY</div><ol>${num.map((st) => `<li><span>${st}</span></li>`).join('')}</ol>` : ''}
+      ${handHead}<ol>${l.steps.map((st) => `<li><span>${st}</span></li>`).join('')}</ol><div class="tip">${esc(l.tip)}</div>
+      <div class="row"><button class="btn p" id="sc-try">Try it ↗</button></div>
+      ${canQuick ? `<div class="lv2" style="margin-top:12px">PUT IT ON A KEY</div><div class="keyrow">${slots.map((id, i) => `<button class="${id === l.id ? 'on' : ''}" data-q="${i}" title="Key ${i + 1}: ${esc(LESSON[id] ? (B ? LESSON[id].board : LESSON[id].name) : '—')}"><b>${i + 1}</b><small>${esc(LESSON[id] ? (B ? LESSON[id].board : LESSON[id].name) : '—')}</small></button>`).join('')}</div>` : ''}`;
     $('demo').innerHTML = `<div class="cap">${esc(B ? l.board : l.name)}</div>`;
     $('sc-try').onclick = () => g.tryLesson(l.id);
     for (const b of document.querySelectorAll('#howbox [data-q]')) b.onclick = () => { g.setQuick(Number(b.dataset.q), l.id); this.school(); g.toast(`${esc(B ? l.board : l.name)} is on key ${Number(b.dataset.q) + 1}`); };

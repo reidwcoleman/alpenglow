@@ -1,6 +1,6 @@
 // Alpenglow: boot, game modes (The Run / Ski Park / Race the Cup), scoring, loop, HUD.
 import * as THREE from 'three';
-import { Environment, PRESETS } from './sky.js';
+import { Environment, PRESETS, COND, WX_WEIGHT } from './sky.js';
 import { Terrain } from './terrain.js';
 import { Forest } from './trees.js';
 import { Props } from './props.js';
@@ -23,7 +23,7 @@ import { Meta } from './meta.js';
 import { Cloud, SERVERS, packReplay, errText } from './cloud.js';
 import { SNAP_N } from './snap.js';
 import { EVENT, TIERS, field, prize, MEDAL } from './events.js';
-import { LESSONS, LESSON, QUICK0, quickSpec } from './school.js';
+import { LESSONS, LESSON, QUICK0, quickSpec, numSteps } from './school.js';
 import { Menu, FLAKE } from './menu.js';
 import { saveRun, getRun } from './vault.js';
 import { MAPS, MAP_IDS } from './maps.js';
@@ -62,6 +62,8 @@ class Game {
   constructor() {
     this.state = 'loading';
     this.tod = params.get('tod') ?? store.get('tod', 'golden');
+    // a sky asked for in the address (screenshots, shared links) holds for the first run
+    this.wxPinned = params.has('tod');
     if (!PRESETS[this.tod]) this.tod = 'golden';
     this.quality = params.get('q') ?? store.get('quality', 'high');
     if (!QUALITY[this.quality]) this.quality = 'high';
@@ -103,7 +105,7 @@ class Game {
     const setLoad = (p, m) => { $('loadbar').style.width = p + '%'; if (m) $('loadmsg').textContent = m; };
     const canvas = $('gl');
     const r = (this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false }));
-    r.toneMapping = THREE.ACESFilmicToneMapping;
+    r.toneMapping = { aces: THREE.ACESFilmicToneMapping, agx: THREE.AgXToneMapping, neutral: THREE.NeutralToneMapping }[params.get('tm') ?? 'aces'];
     r.outputColorSpace = THREE.SRGBColorSpace;
     r.shadowMap.enabled = true;
     r.shadowMap.type = THREE.PCFShadowMap;
@@ -195,20 +197,43 @@ class Game {
     this.env.apply(this.tod);
     this.shade?.compute(this.env.sunDir);
     const night = !!PRESETS[this.tod].night;
-    // a storm blows: gusty wind across the run
-    this.world && (this.world.wind = PRESETS[this.tod].snow ? { x: 0.8, z: 0.6, s: 0, base: 6 } : null);
+    const P0 = PRESETS[this.tod];
+    // wind: gusts across the run on the snowy days
+    if (this.world) this.world.wind = P0.wind ? { x: 0.8, z: 0.6, s: 0, base: P0.wind } : null;
+    // the snow under you that day
+    const cond = COND[P0.cond] ?? COND.groomed;
+    if (this.world) this.world.snow = cond;
+    this.terrain?.setCondition?.(cond);
     this.lights?.setActive(night);
     AG.uAgDirect.value = night ? 0 : 1;
-    const dusk = { bluebird: 0.05, golden: 0.45, alpenglow: 1, storm: 0.35, night: 1 }[this.tod] ?? 0;
+    const dusk = { bluebird: 0.05, golden: 0.45, alpenglow: 1, storm: 0.35, night: 1, nightsnow: 1, whiteout: 0.4, flurries: 0.25, arctic: 0.15, spring: 0 }[this.tod] ?? 0;
     this.props.setDusk(dusk);
-    this.snowfall.points.visible = !!PRESETS[this.tod].snow;
-    const warm = { bluebird: [1.0, 1.0, 1.02], golden: [1.04, 1.0, 0.95], alpenglow: [1.05, 0.98, 1.0], storm: [0.98, 1.0, 1.03], night: [0.98, 1.0, 1.06] }[this.tod];
+    this.snowfall.points.visible = !!P0.snow;
+    this.snowfall.setAmount?.(P0.snow ?? 0);
+    const warm = { bluebird: [1.0, 1.0, 1.02], golden: [1.04, 1.0, 0.95], alpenglow: [1.05, 0.98, 1.0], storm: [0.98, 1.0, 1.03], night: [0.98, 1.0, 1.06], nightsnow: [0.97, 1.0, 1.07],
+      spring: [1.02, 1.0, 0.98], arctic: [0.97, 1.0, 1.05], flurries: [0.99, 1.0, 1.03], whiteout: [0.98, 1.0, 1.02] }[this.tod] ?? [1, 1, 1];
     this.post.lens.uniforms.uWarm.value.set(...warm);
     this.post.shafts.uniforms.uTint.value.set(PRESETS[this.tod].sun ?? 0xffffff).multiplyScalar(0.9);
     const p = PRESETS[this.tod];
     // snow spray: lit like snow (albedo ~0.9 over pi) by the sun and the sky
     const e = this.env;
     this.sunLit = new THREE.Color(p.sun).multiplyScalar(e.sunL * Math.max(0.15, e.sunDir.y) * 0.29).addScalar(e.skyL * 0.29);
+  }
+
+  // a random sky and snow for this run
+  rollWeather() {
+    const list = Object.entries(WX_WEIGHT).filter(([k]) => k !== this.tod || Math.random() < 0.15);
+    let r = Math.random() * list.reduce((a, [, w]) => a + w, 0);
+    let pick = list[0][0];
+    for (const [k, w] of list) { r -= w; if (r <= 0) { pick = k; break; } }
+    this.tod = pick;
+    this.applyConditions();
+    for (const b of $('tod').children) b.classList.toggle('on', b.textContent === PRESETS[this.tod].label);
+  }
+
+  weatherLine() {
+    const p = PRESETS[this.tod];
+    return `${p.label} · ${(COND[p.cond] ?? COND.groomed).name}`;
   }
 
   // ---------------- UI ----------------
@@ -219,6 +244,20 @@ class Game {
       b.textContent = p.label; b.className = k === this.tod ? 'on' : '';
       b.onclick = () => { this.tod = k; store.set('tod', k); [...tod.children].forEach((c) => c.classList.toggle('on', c === b)); this.applyConditions(); };
       tod.appendChild(b);
+    }
+    const sc = $('ctrl');
+    for (const [k, label] of [['arrows', 'Arrows + numbers'], ['classic', 'Classic (WASD)']]) {
+      const b = document.createElement('button');
+      b.textContent = label; b.className = k === this.input.scheme ? 'on' : '';
+      b.onclick = () => { this.input.setScheme(k); [...sc.children].forEach((c) => c.classList.toggle('on', c === b)); };
+      sc.appendChild(b);
+    }
+    const wx = $('wx');
+    for (const [k, label] of [['change', 'New every run'], ['fixed', 'Keep what I pick']]) {
+      const b = document.createElement('button');
+      b.textContent = label; b.className = k === store.get('wx', 'change') ? 'on' : '';
+      b.onclick = () => { store.set('wx', k); [...wx.children].forEach((c) => c.classList.toggle('on', c === b)); };
+      wx.appendChild(b);
     }
     const q = $('qual');
     for (const [k, v] of Object.entries(QUALITY)) {
@@ -263,7 +302,7 @@ class Game {
     $('b-ride').onclick = () => this.go();
     $('pk-ride').onclick = () => this.go();
     $('pk-back').onclick = () => this.closeParks();
-    for (const b of document.querySelectorAll('#pk-tod button')) b.onclick = () => this.setNight(b.dataset.n === '1');
+    for (const b of document.querySelectorAll('#pk-tod button')) b.onclick = () => { this.wxPinned = true; this.setNight(b.dataset.n === '1'); };
     addEventListener('resize', () => this.layoutParks());
     $('menubtn').onclick = () => this.setPaused(true);
     $('p-resume').onclick = () => this.setPaused(false);
@@ -416,8 +455,8 @@ class Game {
     $('parks').classList.remove('hidden');
     const pins = $('pk-pins');
     if (!pins.children.length) {
-      const POS = { yard: [15, 40], slope: [45, 47], forest: [57, 38], bigair: [76, 17] };
-      const COL = { yard: '#7fe0c4', slope: '#ff8a5c', forest: '#9fd36b', bigair: '#ff5c7a' };
+      const POS = { yard: [15, 40], slope: [45, 47], forest: [57, 38], bigair: [76, 17], timber: [48, 80], grand: [30, 14], mega: [36, 64] };
+      const COL = { yard: '#7fe0c4', slope: '#ff8a5c', forest: '#9fd36b', bigair: '#ff5c7a', timber: '#c6e36b', grand: '#8ec8ff', mega: '#d68cff' };
       MAP_IDS.forEach((id, i) => {
         const M = MAPS[id];
         const b = document.createElement('button');
@@ -896,6 +935,9 @@ class Game {
     if (mode !== 'run' && PARK_ID !== 'yard') mode = 'run';
     this.online = opts.online ?? null;
     if (this.online) this.event = null;
+    // a new day every time you drop in (unless the weather is fixed in the menu)
+    if (store.get('wx', 'change') === 'change' && !opts.keepWeather && !this.wxPinned) this.rollWeather();
+    this.wxPinned = false;
     this.replay?.close();
     this.replay?.reset();
     if (this.who === 'multi') { this.joinRoom(); if (this.room) this.room.me.outfit = this.outfit(); }
@@ -916,6 +958,7 @@ class Game {
     $('course').classList.toggle('hidden', mode === 'park');
     $('botbar').classList.toggle('hidden', mode === 'park');
     $('evtag').classList.toggle('hidden', !this.event && !this.online);
+    $('wxtag').textContent = this.weatherLine();
     $('quick').classList.toggle('hidden', mode === 'race');
     this.quickShown = null;
     setTimeout(() => this.quickHud(), 0);
@@ -934,14 +977,14 @@ class Game {
       this.populatePark();
       this.state = 'free';
       this.resetScore();
-      this.say('SKI PARK', '', 'jumps left · rails right · pipe far right · 1–4 pick a line', '', 3200);
+      this.say('SKI PARK', '', 'jumps left · rails right · pipe far right · L for the next line', '', 3200);
     } else {
       this.populateFree(false);
       this.state = 'free';
       this.resetScore();
       const ev = this.event?.ev;
       if (ev) this.say(ev.name.toUpperCase(), '', `score to beat · ${field(ev, this.event.tier, NAMES)[0].score.toLocaleString()}`, 'gold', 3400);
-      else this.say('DROP IN', '', 'summit to village · hold R to restart', '', 3000);
+      else this.say('DROP IN', '', this.weatherLine(), '', 3200);
     }
     if (params.get('auto') === '1') {
       this.player.ai = new AIController(this.player, mode === 'race' ? 'racer' : 'park', this.rnd, this.world); this.player.ai.skill = 0.95;
@@ -958,7 +1001,7 @@ class Game {
   // hold R: back to the top (the whole run, or your park line), score wiped
   restart() {
     if (this.mode === 'park') { this.parkSpawn(this.player, this.player.parkLine ?? 'gate'); this.say('BACK TO THE TOP', '', '', '', 1200); }
-    else { this.start(this.mode); return; }
+    else { this.start(this.mode, { keepWeather: true }); return; }
     this.rig.snap = true;
   }
 
@@ -1047,7 +1090,7 @@ class Game {
   // ---------------- trick school ----------------
   quickSlots() {
     const q = this.meta.quick?.[this.gear];
-    return Array.isArray(q) && q.length === 4 ? q : QUICK0[this.gear];
+    return Array.isArray(q) && q.length === 9 ? q : QUICK0[this.gear];
   }
 
   setQuick(i, id) {
@@ -1064,21 +1107,34 @@ class Game {
     const B = this.gear === 'board', p = this.player;
     el.innerHTML = this.quickSlots().map((id, i) => {
       const l = LESSON[id];
-      const on = p && (p.autoArm?.id === id || p.auto?.id === id);
-      return `<span class="${on ? 'on' : ''}"><kbd>${i + 1}</kbd>${l ? esc(B ? l.board : l.name) : '—'}</span>`;
+      const on = this.trickHeld === i || (p && p.auto?.id === id);
+      const name = l ? (B ? l.board : l.name).replace('Double ', 'Dbl ').replace(' Grab', '') : '—';
+      return `<span class="${on ? 'on' : ''}" title="${l ? esc(B ? l.board : l.name) : ''}"><kbd>${i + 1}</kbd>${esc(name)}</span>`;
     }).join('');
   }
 
-  // keys 1-4: in the air the trick starts now; on the snow it waits for the next kicker
-  quickKey(i) {
-    const p = this.player;
-    const id = this.quickSlots()[i];
-    const spec = quickSpec(id);
-    if (!p || !spec || p.crash > 0) return;
-    const q = { ...spec, id };
-    if (!p.onGround && !p.grind && p.airTime < 0.45 && !p.trickType) { p.auto = q; p.autoArm = null; }
-    else { p.autoArm = p.autoArm?.id === id ? null : q; if (p.autoArm) this.status('READY · ' + (this.gear === 'board' ? LESSON[id].board : LESSON[id].name).toUpperCase()); }
-    this.quickHud();
+  // the number keys: hold to load the legs, let go to pop and throw that trick. Timed at a
+  // lip it's a perfect pop and the full trick; early and it shrinks to fit; in the air the
+  // trick starts when you let go, and too near the snow it never happens.
+  trickKeys(inp) {
+    const P = this.player;
+    const k = inp.trickKey();
+    const prev = this.trickHeld ?? -1;
+    if (k >= 0 && P.onGround && !P.grind) P.controls.jump = true;
+    if (prev >= 0 && k !== prev) {
+      const id = this.quickSlots()[prev], spec = quickSpec(id);
+      const name = (this.gear === 'board' ? LESSON[id]?.board : LESSON[id]?.name)?.toUpperCase() ?? '';
+      if (spec && P.crash <= 0) {
+        const q = { ...spec, id };
+        if (P.onGround && !P.grind) { P.controls.jump = false; P.autoArm = q; this.armT = this.time; }
+        else if (!P.trickType && !P.auto && P.flightTime() > 0.5) P.auto = q;
+        else if (!P.onGround && !P.auto) this.status('TOO LATE · ' + name);
+      }
+    }
+    // an arm only lasts for the pop it was let go on
+    if (P.autoArm && this.time - (this.armT ?? 0) > 0.25) { P.autoArm = null; if (P.onGround) this.status('TOO EARLY · NO AIR'); }
+    if (k !== prev) { this.trickHeld = k; this.quickHud(); }
+    else if ((P.auto?.id ?? null) !== this.quickShown) { this.quickShown = P.auto?.id ?? null; this.quickHud(); }
   }
 
   // Try it: to the right line of the park with the lesson on screen
@@ -1101,7 +1157,9 @@ class Game {
     el.classList.toggle('hidden', !l);
     if (!l) return;
     const B = this.gear === 'board';
-    el.innerHTML = `<div class="ct">TRICK SCHOOL · ${esc(B ? l.board : l.name)}<button id="coach-x">×</button></div><ol>${l.steps.map((s2) => `<li>${s2}</li>`).join('')}</ol>`;
+    const slot = this.quickSlots().indexOf(l.id);
+    const steps = slot >= 0 ? numSteps(l, slot + 1, 'a kicker') ?? l.steps : l.steps;
+    el.innerHTML = `<div class="ct">TRICK SCHOOL · ${esc(B ? l.board : l.name)}<button id="coach-x">×</button></div><ol>${steps.map((s2) => `<li>${s2}</li>`).join('')}</ol>`;
     $('coach-x').onclick = () => { this.coach = null; this.showCoach(); };
   }
 
@@ -1385,18 +1443,15 @@ class Game {
           const need = this.mode === 'park' ? 0.7 : 2;
           if (this.holdR >= need) { this.holdR = -99; this.restart(); }
         }
-        // 1-4: in the park on the snow they pick a line; otherwise they're the quick tricks
+        // L: the next park line; 1-9: the trick keys
         const P = this.player;
-        const keys = { Digit1: 'jumps', Digit2: 'rails', Digit3: 'pipe', Digit4: 'rollers' };
-        const names = { jumps: 'JUMP LINE', rails: 'RAIL GARDEN', pipe: 'HALFPIPE', rollers: 'ROLLERS' };
-        Object.entries(keys).forEach(([k, line], i) => {
-          if (!inp.hit(k) || this.state === 'countdown') return;
-          if (this.mode === 'park' && P.onGround && !P.grind) { this.parkSpawn(P, line); this.rig.snap = true; this.say(names[line], '', '', '', 1200); }
-          else if (this.mode !== 'race') this.quickKey(i);
-        });
-        // an armed quick trick pops for you at the lip
-        if (P.autoArm && P.onGround && !P.grind && P.lipAhead(-0.4, 9)) P.controls.jump = !P.lipAhead(-0.4, 1.6);
-        if ((P.auto || P.autoArm) !== this.quickShown) { this.quickShown = P.auto || P.autoArm; this.quickHud(); }
+        if (this.mode === 'park' && inp.hit('KeyL') && P.onGround) {
+          const order = ['jumps', 'rails', 'pipe', 'rollers'];
+          const line = order[(order.indexOf(P.parkLine) + 1) % order.length] ?? 'jumps';
+          const names = { jumps: 'JUMP LINE', rails: 'RAIL GARDEN', pipe: 'HALFPIPE', rollers: 'ROLLERS' };
+          this.parkSpawn(P, line); this.rig.snap = true; this.say(names[line], '', 'L for the next line', '', 1200);
+        }
+        if (this.mode !== 'race' && this.state !== 'countdown') this.trickKeys(inp);
       }
       if (this.state === 'countdown') {
         this.countdown -= dt;
@@ -1589,7 +1644,7 @@ class Game {
       }
     }
     if (!tip && this.time < (this.tipUntil ?? 0)) tip = 'V · instant replay';
-    if (!tip && this.sc && this.time - (this.startAt ?? 0) < 10 && !document.body.classList.contains('touch')) tip = 'A/D spin · W/S flip · arrows roll · Shift Q E F X Z grab · ↑ shifty · hold Space, release to pop';
+    if (!tip && this.sc && this.time - (this.startAt ?? 0) < 10 && !document.body.classList.contains('touch')) tip = this.input.scheme === 'arrows' ? '← → carve · ↑ tuck · ↓ brake · in the air ← → spin, ↑ ↓ flip · hold 1-9 and let go at the lip for a trick' : 'A/D spin · W/S flip · arrows roll · Shift Q E F X Z grab · ↑ shifty · hold Space, release to pop';
     const tp = $('tip');
     if (tip !== this.tipTxt) { this.tipTxt = tip; tp.textContent = tip; tp.classList.toggle('hidden', !tip); }
     // hold-to-restart ring
