@@ -24,7 +24,7 @@ export class Replay {
     this.bind();
   }
 
-  reset() { this.frames.length = 0; this.times.length = 0; this.marks.length = 0; this.clock = 0; }
+  reset() { this.frames = []; this.times = []; this.marks = []; this.clock = 0; this.outfitFor = null; }
 
   // called every rendered frame while riding
   record(dt, s) {
@@ -36,6 +36,24 @@ export class Replay {
     if (this.times.length >= MAX) this.times.shift();
     snap(s, f);
     this.frames.push(f); this.times.push(this.clock);
+  }
+
+  // the whole recording, flat, for the vault
+  pack() {
+    const n = this.frames.length, f = new Float32Array(n * SNAP_N);
+    this.frames.forEach((x, i) => f.set(x, i * SNAP_N));
+    const t0 = this.times[0] ?? 0;
+    return { frames: f, times: Float32Array.from(this.times, (t) => t - t0), marks: this.marks.map((m) => ({ t: m.t - t0, name: m.name })) };
+  }
+
+  // a saved run from the vault, to watch in place of the live recording
+  load(run) {
+    this.frames = [];
+    for (let i = 0; i < run.times.length; i++) this.frames.push(run.frames.subarray(i * SNAP_N, (i + 1) * SNAP_N));
+    this.times = Array.from(run.times);
+    this.marks = run.marks.map((m) => ({ ...m }));
+    this.outfitFor = run.outfit;
+    this.clock = this.times[this.times.length - 1] ?? 0;
   }
 
   mark(name) { this.marks.push({ t: this.clock, name }); if (this.marks.length > 60) this.marks.shift(); }
@@ -56,8 +74,11 @@ export class Replay {
     this.t = this.from;
     this.playing = true; this.speed = range === 'last' ? 0.5 : 1;
     // a stand-in skier wearing the player's outfit
-    const outfit = g.outfit();
-    if (this.ghost && this.ghost.board !== !!outfit.board) { this.ghost.dispose(); this.ghost = null; }
+    const outfit = this.outfitFor ?? g.outfit();
+    // a different board/skis or kit: dress a new stand-in
+    const key = JSON.stringify(outfit);
+    if (this.ghost && this.ghostKey !== key) { this.ghost.dispose(); this.ghost = null; }
+    this.ghostKey = key;
     if (!this.ghost) {
       this.ghost = new Skier({ scene: g.scene, tracks: null, skiers: [] }, { outfit, isPlayer: true });
       patchTree(this.ghost.model.group);
@@ -66,6 +87,8 @@ export class Replay {
     this.hidden = g.skiers.filter((s) => s.model.group.visible);
     for (const s of g.skiers) s.model.group.visible = false;
     this.camMode = g.rig.mode;
+    this.fromMenu = g.state === 'menu';
+    if (this.fromMenu) $('menu').classList.add('hidden');
     $('replay').classList.remove('hidden');
     $('hud').classList.add('hidden');
     this.setCam(0);
@@ -83,6 +106,7 @@ export class Replay {
     g.rig.mode = this.camMode; g.rig.snap = true;
     $('replay').classList.add('hidden');
     if (g.state !== 'menu') $('hud').classList.remove('hidden');
+    if (this.fromMenu) { $('menu').classList.remove('hidden'); g.menuTab?.('replays'); }
     if (g.state === 'results') $('results').classList.remove('hidden');
   }
 

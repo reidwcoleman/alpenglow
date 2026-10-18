@@ -106,6 +106,9 @@ function kitMaterial(kit, outfit) {
     uJacket: { value: c(outfit.jacket) },
     uPants: { value: c(outfit.pants) },
     uGloves: { value: c(outfit.gloves) },
+    uJacket2: { value: c(outfit.jacket2 ?? outfit.jacket) },
+    uPants2: { value: c(outfit.pants2 ?? outfit.pants) },
+    uPat: { value: new THREE.Vector2(outfit.jpat ?? 0, outfit.ppat ?? 0) },
     uBoots: { value: c(outfit.boots) },
     uLm: { value: new THREE.Vector2(kit.waistY, kit.neckY) },
     // how far the jacket and pants stand off the body (a race suit is skin tight)
@@ -127,9 +130,28 @@ vPart = aPart; vRest = position;
 }`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
-uniform sampler2D uMask; uniform vec3 uJacket, uPants, uGloves, uBoots; uniform vec2 uLm;
+uniform sampler2D uMask; uniform vec3 uJacket, uPants, uGloves, uBoots, uJacket2, uPants2; uniform vec2 uLm, uPat;
 varying float vPart; varying vec3 vRest;
-float gRough; vec4 gNS;`)
+float gRough; vec4 gNS;
+float agH(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+float agN(vec3 x) {
+  vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(agH(i), agH(i + vec3(1,0,0)), f.x), mix(agH(i + vec3(0,1,0)), agH(i + vec3(1,1,0)), f.x), f.y),
+             mix(mix(agH(i + vec3(0,0,1)), agH(i + vec3(1,0,1)), f.x), mix(agH(i + vec3(0,1,1)), agH(i + vec3(1,1,1)), f.x), f.y), f.z);
+}
+// a garment's print: 1 chest band, 2 camo, 3 tartan, 4 colour-block sleeves, 5 fade
+vec3 agPat(vec3 a, vec3 b, float pat, float part, vec3 p, vec2 lm) {
+  if (pat < 0.5) return a;
+  if (pat < 1.5) { float y = (p.y - lm.x) / (lm.y - lm.x); return (part > 1.5 && part < 2.5 && y > 0.42 && y < 0.7) || (part > 3.5 && part < 4.5) ? b : a; }
+  if (pat < 2.5) { float n = agN(p * 9.0) * 0.65 + agN(p * 23.0) * 0.35; return n > 0.62 ? b : n > 0.5 ? mix(a, b, 0.5) : a; }
+  if (pat < 3.5) {
+    float sx = step(0.62, fract(p.x * 9.0)), sy = step(0.62, fract(p.y * 9.0));
+    float tx = step(0.94, fract(p.x * 9.0 + 0.3)), ty = step(0.94, fract(p.y * 9.0 + 0.3));
+    return mix(mix(a, b, (sx + sy) * 0.42), vec3(0.95), max(tx, ty) * 0.35);
+  }
+  if (pat < 4.5) return part > 2.5 && part < 4.5 ? b : a;
+  return mix(b, a, smoothstep(lm.x - 0.75, lm.y, p.y));
+}`)
       .replace('#include <map_fragment>', `
 {
   vec2 uv = vMapUv;
@@ -148,9 +170,9 @@ float gRough; vec4 gNS;`)
   float rough = 0.6;
   if ( bodyHalf || part > 0.5 ) {
     if ( part > 7.5 ) { dye = uBoots; rough = 0.35; }
-    else if ( part > 5.5 ) { dye = uPants; rough = 0.7; }
+    else if ( part > 5.5 ) { dye = agPat( uPants, uPants2, uPat.y, part, vRest, uLm ); rough = 0.7; }
     else if ( part > 4.5 ) { dye = uGloves; rough = 0.75; }
-    else if ( part > 1.5 ) { dye = vRest.y < uLm.x - 0.03 ? uPants : uJacket; rough = vRest.y < uLm.x - 0.03 ? 0.7 : 0.5; }
+    else if ( part > 1.5 ) { bool low = vRest.y < uLm.x - 0.03; dye = low ? agPat( uPants, uPants2, uPat.y, 6.0, vRest, uLm ) : agPat( uJacket, uJacket2, uPat.x, part, vRest, uLm ); rough = low ? 0.7 : 0.5; }
     else if ( part > 0.5 ) { dye = uJacket * 0.55; rough = 0.8; }
   }
   if ( dye.r >= 0.0 ) {

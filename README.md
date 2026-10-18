@@ -4,6 +4,15 @@ A freeski park game in the browser, built around the feel of the indie game Cork
 
 **Play:** https://reidwcoleman.github.io/alpenglow/
 
+## The front page
+Built like the front page of a live-service indie game: tabs for **Ride**, **Leaderboard**, **Locker**, **Shop**, **Pass**, **Replays**, **Tricks** and **Updates** over a painted background, with your rider as a sticker standing on a lift pass (type your name on it).
+- **Flakes and XP**: every finished run (and every park session, and every race) pays XP and flakes. XP fills a 100-tier **Season Pass**: three tiers a day at full rate, a quarter after that; tiers pay flakes and every fifth one unlocks an exclusive item.
+- **Shop and Locker**: jackets (solid, chest band, camo, tartan, colour-block, fade), pants, helmets and beanies, goggles, skis, snowboards and gloves in rare, epic and legendary tiers. The Locker shows your rider on a turntable (drag to turn).
+- **Daily challenge**: one trick a day for 150 flakes.
+- **Leaderboard**: your best runs on each park against a ladder of local (computer) riders, with Watch buttons.
+- **Replays**: your last five runs are saved in the browser (IndexedDB); keep the ones you want for good.
+Everything is stored in this browser only: there are no accounts.
+
 ## Skis or snowboard
 Pick SKIS or SNOWBOARD on the Ride tab. Snowboarders stand sideways on a twin-tip board (left foot forward) with a tighter 7.5 m sidecut, float better in powder, can't tuck as small, and ride switch after landing a half turn. Spins are called by side (FS 360, BS 540, Half Cab, Cab 720, Switch BS), rolls are wildcats and tamedogs, and the grabs are indy, melon, method, stalefish, nose and tail. About a third of the riders on the mountain are snowboarders.
 

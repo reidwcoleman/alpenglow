@@ -19,6 +19,9 @@ import { Park } from './park.js';
 import { Floodlights } from './night.js';
 import { Replay } from './replay.js';
 import { Room, myId } from './net.js';
+import { Meta } from './meta.js';
+import { Menu, FLAKE } from './menu.js';
+import { saveRun, getRun } from './vault.js';
 import { MAPS, MAP_IDS } from './maps.js';
 import { preloadAvatars } from './avatar.js';
 import { mulberry32, clamp, smoothstep } from './noise.js';
@@ -32,7 +35,6 @@ const store = {
   set(k, v) { try { localStorage.setItem('alpenglow.' + k, v); } catch { /* private mode */ } },
 };
 
-const JACKETS = [0xff6a2b, 0xd8342c, 0xf2b705, 0x2a7de1, 0x18a868, 0x8e3fd1, 0xff4f8b, 0xf4f4f4];
 const NAMES = ['Ana Berg', 'Jonas Falk', 'Lena Moser', 'Marco Valli', 'Ingrid Dahl', 'Felix Gruber', 'Sofia Rinaldi', 'Kai Lindqvist', 'Elin Strand', 'Theo Baumann', 'Mila Novak', 'Nils Eriksen', 'Clara Huber', 'Luca Ferrari', 'Hanna Aas', 'Emil Steiner'];
 const QUALITY = {
   low: { label: 'Fast', dpr: 1, shadow: 2048, msaa: 0, bloom: false, smaa: true },
@@ -59,7 +61,8 @@ class Game {
     if (!PRESETS[this.tod]) this.tod = 'golden';
     this.quality = params.get('q') ?? store.get('quality', 'high');
     if (!QUALITY[this.quality]) this.quality = 'high';
-    this.jacket = Number(store.get('jacket', JACKETS[0]));
+    // the wallet, the pass, the kit
+    this.meta = new Meta();
     // skis or a snowboard
     this.gear = params.get('gear') ?? store.get('gear', 'ski');
     if (!['ski', 'board'].includes(this.gear)) this.gear = 'ski';
@@ -158,6 +161,8 @@ class Game {
     const mode = params.get('mode');
     if (params.get('menu') === '0' && mode) this.start(mode === 'race' ? 'race' : mode === 'park' ? 'park' : 'run');
     else this.showMenu();
+    // ?watch=<id>: a saved run from the Replays tab
+    if (params.get('watch')) getRun(params.get('watch')).then((run) => { if (run) { this.menu.setTab('replays'); this.replay.reset(); this.replay.load(run); this.replay.open('all'); } });
     window.__game = this;
     window.__cx = centerX;
     window.__parkJumps = PARK_JUMPS;
@@ -202,13 +207,6 @@ class Game {
       b.onclick = () => { this.tod = k; store.set('tod', k); [...tod.children].forEach((c) => c.classList.toggle('on', c === b)); this.applyConditions(); };
       tod.appendChild(b);
     }
-    const jk = $('jackets');
-    for (const c of JACKETS) {
-      const b = document.createElement('button');
-      b.style.background = hex(c); b.className = c === this.jacket ? 'on' : '';
-      b.onclick = () => { this.jacket = c; store.set('jacket', c); [...jk.children].forEach((x) => x.classList.toggle('on', x === b)); };
-      jk.appendChild(b);
-    }
     const q = $('qual');
     for (const [k, v] of Object.entries(QUALITY)) {
       const b = document.createElement('button');
@@ -216,25 +214,8 @@ class Game {
       b.onclick = () => { if (k === this.quality) return; store.set('quality', k); location.reload(); };
       q.appendChild(b);
     }
-    // tabs: ride (the mode cards), locker, how to ride
-    const tabs = [...document.querySelectorAll('#tabs button')];
-    for (const t of tabs) t.onclick = () => {
-      tabs.forEach((x) => x.classList.toggle('on', x === t));
-      for (const k of ['ride', 'locker', 'tricks', 'how']) $('tab-' + k).classList.toggle('hidden', k !== t.dataset.tab);
-      if (t.dataset.tab === 'tricks') this.showBook();
-    };
-    const gears = [...document.querySelectorAll('#gear button')];
-    const setGear = (g) => {
-      this.gear = g; store.set('gear', g);
-      gears.forEach((b) => b.classList.toggle('on', b.dataset.gear === g));
-      document.querySelector('.mchip[data-mode="park"]').firstChild.textContent = g === 'board' ? 'PARK LAPS' : 'SKI PARK';
-      if (this.room) this.room.me.outfit = this.outfit();
-      if (!$('tab-tricks').classList.contains('hidden')) this.showBook();
-    };
-    for (const b of gears) b.onclick = () => setGear(b.dataset.gear);
-    setGear(this.gear);
     // the ride tab: the park, the mode, solo or multiplayer
-    const chips = [...document.querySelectorAll('.mchip')];
+    const chips = [...document.querySelectorAll('#modes button')];
     const pick = (m) => {
       if (m !== 'run' && this.selPark !== 'yard') m = 'run';
       this.selMode = m; store.set('mode', m);
@@ -248,23 +229,23 @@ class Game {
     pick(this.selMode);
     $('b-park-pick').onclick = () => this.openParks();
     const whos = [...document.querySelectorAll('.who button')];
-    const setWho = (w) => {
+    this.setWho = (w) => {
       this.who = w; store.set('who', w);
       whos.forEach((b) => b.classList.toggle('on', b.dataset.who === w));
       $('mp-panel').classList.toggle('hidden', w !== 'multi');
       if (w === 'multi' && this.state === 'menu') this.joinRoom();
       if (w === 'solo') this.leaveRoom();
     };
-    for (const b of whos) b.onclick = () => setWho(b.dataset.who);
+    for (const b of whos) b.onclick = () => this.setWho(b.dataset.who);
     $('mp-name').value = this.nick;
     $('mp-room').value = this.roomName;
-    $('mp-name').onchange = () => { this.nick = $('mp-name').value.trim().slice(0, 16) || this.nick; store.set('name', this.nick); if (this.room) { this.room.me.name = this.nick; this.room.hello(); } };
+    $('mp-name').onchange = () => { this.nick = $('mp-name').value.trim().slice(0, 16) || this.nick; $('mp-name').value = this.nick; store.set('name', this.nick); if (this.room) { this.room.me.name = this.nick; this.room.hello(); } };
     $('mp-room').onchange = () => { this.roomName = $('mp-room').value.trim(); store.set('room', this.roomName); if (this.room) { this.leaveRoom(); this.joinRoom(); } };
     $('mp-copy').onclick = () => {
       const url = `${location.origin}${location.pathname}?park=${this.selPark}&room=${encodeURIComponent(this.roomName || 'public')}`;
       navigator.clipboard?.writeText(url).then(() => { $('mp-copy').textContent = 'Copied'; setTimeout(() => ($('mp-copy').textContent = 'Copy invite'), 1500); });
     };
-    setWho(this.who);
+    this.setWho(this.who);
     $('b-ride').onclick = () => this.go();
     $('pk-ride').onclick = () => this.go();
     $('pk-back').onclick = () => this.closeParks();
@@ -277,6 +258,29 @@ class Game {
     $('tc-cam').onclick = () => this.cycleCam();
     if (matchMedia('(pointer: coarse)').matches) { document.body.classList.add('touch'); $('tc-cam').classList.remove('hidden'); }
     this.buildMinimap();
+    this.menu = new Menu(this);
+  }
+
+  setGear(g) {
+    this.gear = g; store.set('gear', g);
+    this.kitChanged();
+  }
+
+  // the kit or the gear changed: the menu, the sticker and the room all see it
+  kitChanged() {
+    if (this.room) { this.room.me.outfit = this.outfit(); this.room.hello(); }
+    this.menu?.refresh();
+  }
+
+  setMuted(m) { this.audio.setMuted(m); store.set('muted', m ? '1' : '0'); }
+
+  menuTab(k) { this.menu?.setTab(k); }
+
+  toast(html, ms = 2600) {
+    const t = $('toast');
+    t.innerHTML = html; t.classList.remove('hidden');
+    t.style.animation = 'none'; void t.offsetWidth; t.style.animation = '';
+    clearTimeout(this.toastT); this.toastT = setTimeout(() => t.classList.add('hidden'), ms);
   }
 
   showBest() {
@@ -285,11 +289,7 @@ class Game {
     $('best').innerHTML = best ? (m === 'race' ? `Best Cup time<b>${fmt(best)}</b>` : `Best ${m === 'run' ? MAPS[this.selPark].name : 'park session'}<b>${best.toLocaleString()}</b>`) : 'No score yet<b>Send it</b>';
   }
 
-  outfit() {
-    const o = { ...this.myOutfit, jacket: this.jacket, board: this.gear === 'board' };
-    if (o.board && o.boots === 0xf0f0f0) o.boots = 0x2a2d35;
-    return o;
-  }
+  outfit() { return this.meta.outfit(this.myOutfit, this.gear === 'board'); }
 
   // a rider for the mountain: about a third ride a snowboard (more in the park)
   aiOutfit(style) {
@@ -439,12 +439,14 @@ class Game {
     const el = $('players');
     el.classList.toggle('hidden', !on);
     if (!on) return;
-    const rows = [{ name: this.nick + ' (you)', color: hex(this.jacket), score: this.sc?.score ?? 0 }, ...[...(this.room?.peers.values() ?? [])].map((p) => ({ name: p.name, color: p.color, score: p.score ?? 0 }))]
+    const rows = [{ name: this.nick + ' (you)', color: hex(this.outfit().jacket), score: this.sc?.score ?? 0 }, ...[...(this.room?.peers.values() ?? [])].map((p) => ({ name: p.name, color: p.color, score: p.score ?? 0 }))]
       .sort((a, b) => b.score - a.score);
     el.innerHTML = `<h4>${this.room ? `${MAP.name} · ${this.room.room}` : 'Solo'}</h4>` + rows.map((r) => `<div class="r"><i style="background:${r.color}"></i>${esc(r.name)}<b>${r.score.toLocaleString()}</b></div>`).join('');
   }
 
   showMenu() {
+    // a park session pays when you leave it
+    if (this.mode === 'park' && this.sc) { const pay = this.reward('park'); if (pay) this.toast(`Park session ${pay}`, 3800); }
     this.state = 'menu';
     this.mode = null;
     $('menu').classList.remove('hidden');
@@ -579,7 +581,7 @@ class Game {
     lanes.forEach((off, i) => {
       const isP = i === playerLane;
       const outfit = randomOutfit(this.rnd, true);
-      if (isP) { outfit.jacket = this.jacket; outfit.pants = this.jacket; }
+      if (isP) { outfit.jacket = this.outfit().jacket; outfit.pants = outfit.jacket; outfit.jpat = 0; outfit.ppat = 0; }
       const s = this.addSkier({ outfit, name: isP ? 'You' : names[i], isPlayer: isP, bib: bib++, grip: isP ? 1.75 : undefined, sidecut: 24 }, isP ? null : 'racer');
       s.place(centerX(START_Z) + off, START_Z, null, 0);
       if (isP) { this.player = s; this.hookPlayer(s); }
@@ -695,6 +697,8 @@ class Game {
     this.say(title, `+${total.toLocaleString()}${mult > 1 ? `<em>×${mult.toFixed(2).replace(/0$/, '')}</em>` : ''}`, sketchy ? 'sketchy' : line ? line.slice(0, -3) : '', big ? 'gold' : '');
     this.status(fresh.length && !sketchy ? 'NEW TRICK' : sketchy ? 'SKETCHY' : stomp ? 'STOMPED' : 'CLEAN LANDING');
     if (big || (fresh.length && !sketchy)) this.audio.chime();
+    const daily = !sketchy && name && this.meta.checkDaily(name);
+    if (daily) { this.toast(`DAILY CHALLENGE DONE · ${FLAKE} +${daily.reward}`, 3500); this.status('DAILY DONE'); }
   }
 
   onPlayerGrind(g) {
@@ -836,8 +840,11 @@ class Game {
       return `<tr class="${r.s === this.player ? 'me' : ''}"><td>${i + 1}</td><td><span class="sw" style="background:${hex(r.color)}"></span>${r.s.name}${r.missed ? ` <small style="opacity:.6">(${r.missed} missed)</small>` : ''}</td><td class="t">${i === 0 ? fmt(t) : gap}</td></tr>`;
     }).join('');
     const title = me === 1 ? 'VICTORY' : me <= 3 ? 'PODIUM' : 'FINISHED';
+    // the race pays by finishing place
+    this.sc = { score: Math.max(2000, 26000 - (me - 1) * 3000), paid: false };
+    const pay = this.reward('race');
     $('rescard').innerHTML = `<h2>${title}</h2><p class="lead">You finished ${me}${ord(me)} of ${rs.length}${this.racers.find((r) => r.s === this.player).missed ? ', with ' + this.racers.find((r) => r.s === this.player).missed + ' missed gates' : ''}.</p>
-      <table class="res">${rows}</table>
+      <table class="res">${rows}</table>${pay}
       <div class="row"><button class="btn p" id="r-again">Race again</button><button class="btn" id="r-replay">Watch replay</button><button class="btn" id="r-menu">Menu</button></div>`;
     $('results').classList.remove('hidden');
     $('r-again').onclick = () => this.start('race');
@@ -854,8 +861,9 @@ class Game {
     const prev = Number(store.get('best.run.' + PARK_ID, '0'));
     const isBest = sc.score > prev;
     if (isBest) store.set('best.run.' + PARK_ID, sc.score);
+    const pay = this.reward('run');
     $('rescard').innerHTML = `<h2>RUN COMPLETE</h2>
-      <div class="bigscore">${sc.score.toLocaleString()}</div><p class="lead" style="margin-top:0">${isBest ? 'New best run.' : prev ? `Best ${prev.toLocaleString()}` : ''}</p>
+      <div class="bigscore">${sc.score.toLocaleString()}</div><p class="lead" style="margin-top:0">${isBest ? 'New best run.' : prev ? `Best ${prev.toLocaleString()}` : ''}</p>${pay}
       <div class="stats">
         <div class="stat"><b>${clock(sc.t)}</b><span>Time</span></div>
         <div class="stat"><b>${Math.round(sc.top * 3.6)} km/h</b><span>Top speed</span></div>
@@ -869,6 +877,23 @@ class Game {
     $('r-lift').onclick = () => this.start('run');
     $('r-replay').onclick = () => { if (this.replay.open('all')) $('results').classList.add('hidden'); };
     $('r-menu').onclick = () => this.showMenu();
+  }
+
+  // a run is over: XP and flakes, a line on the leaderboard, the run into the replay vault
+  reward(kind) {
+    const sc = this.sc;
+    if (!sc || sc.paid || (kind !== 'run' && sc.score <= 0)) return '';
+    sc.paid = true;
+    const r = this.meta.payout(sc.score);
+    if (kind === 'run') {
+      const rid = `${PARK_ID}-${Date.now().toString(36)}`;
+      const pk = this.replay.pack();
+      const best = sc.best.name !== '—' ? sc.best.name : '';
+      if (pk.times.length > 30) saveRun({ id: rid, park: PARK_ID, gear: this.gear, outfit: this.outfit(), score: sc.score, time: sc.t, date: Date.now(), best, keep: false, ...pk });
+      this.meta.addRun(PARK_ID, { score: sc.score, time: sc.t, date: Date.now(), gear: this.gear, rid });
+    }
+    const gifts = r.gifts.map((g) => g.name).join(', ');
+    return `<div class="payout"><span>+${r.xp.toLocaleString()} XP</span><span>${FLAKE}+${r.flakes.toLocaleString()}</span>${r.levels ? `<span class="hi">PASS TIER ${r.level}</span>` : ''}${gifts ? `<span class="hi">UNLOCKED ${esc(gifts)}</span>` : ''}</div>`;
   }
 
   standings() {
@@ -1041,11 +1066,15 @@ class Game {
         if (e.key === 'Enter' || e.key === 'Escape') { box.classList.add('hidden'); el.blur(); }
       };
     }
-    if (inp.hit('Escape') || inp.hit('KeyP') || inp.padHit?.[9]) this.setPaused(!this.paused);
-    if (inp.hit('KeyM')) { this.audio.setMuted(!this.audio.muted); store.set('muted', this.audio.muted ? '1' : '0'); }
+    if (this.state === 'menu' && (inp.hit('Escape') || inp.padHit?.[9])) {
+      // Esc on the front page: close whatever's open, or open the menu
+      const open = ['howto', 'credits', 'settings', 'parks'].find((id) => !$(id).classList.contains('hidden'));
+      if (open === 'parks') this.closeParks(); else if (open) $(open).classList.add('hidden'); else $('settings').classList.remove('hidden');
+    } else if (inp.hit('Escape') || inp.hit('KeyP') || inp.padHit?.[9]) this.setPaused(!this.paused);
+    if (inp.hit('KeyM')) { this.setMuted(!this.audio.muted); this.menu?.sound(); }
     if (inp.hit('KeyC') || inp.padHit?.[12]) this.cycleCam();
     if (inp.hit('Enter') || inp.padHit?.[0]) {
-      if (this.state === 'menu') this.go();
+      if (this.state === 'menu' && $('settings').classList.contains('hidden') && $('howto').classList.contains('hidden')) this.go();
       else if (this.state === 'results' && !$('results').classList.contains('hidden')) this.start(this.mode);
     }
 
@@ -1099,7 +1128,11 @@ class Game {
 
     // the replay records what you ride
     if (this.player && !this.paused && this.state !== 'menu' && this.state !== 'countdown') this.replay.record(dt, this.player);
-    this.renderWorld(dt, false);
+    // the front page is art over a still world: only the rider sticker draws
+    if (this.state === 'menu' && !$('menu').classList.contains('hidden') && $('parks').classList.contains('hidden')) {
+      this.room?.update(dt, null, this.camera.position);
+      this.menu.render(dt);
+    } else this.renderWorld(dt, false);
     inp.endFrame();
   }
 
