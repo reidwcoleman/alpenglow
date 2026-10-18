@@ -224,6 +224,7 @@ const CALM = new Float32Array(PN);
 for (let i = 0; i < PN; i++) {
   const z = i + Z_MIN;
   let c = smoothstep(PARK.z0 - 60, PARK.z0, z) * (1 - smoothstep(PARK.z1, PARK.z1 + 60, z));
+  if (MAP.calm) c = Math.max(c, 1 - smoothstep(FINISH_Z, FINISH_Z + 80, z));
   for (const f of FEATS) if (z > f.z0 - 40 && z < f.z1 + 40) c = Math.max(c, smoothstep(f.z0 - 35, f.z0 - 8, z) * (1 - smoothstep(f.z1 + 8, f.z1 + 35, z)));
   CALM[i] = c;
 }

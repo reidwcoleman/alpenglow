@@ -85,7 +85,7 @@ export const MAPS = {
   // a compact pro slopestyle line: a rail zone, three stepped kickers, then a huge big air
   slope: {
     name: 'Trick Zone', tag: 'Slopestyle', blurb: 'A pro slopestyle line: a rail zone, three big step-up kickers and a huge big air to finish.',
-    start: 30, finish: 1420, km: 1.4,
+    start: 30, finish: 1420, km: 1.4, calm: true,
     sections: [
       { name: 'Start', z0: -200, z1: 110, grad: 0.12, width: 60 },
       { name: 'Rail Zone', z0: 110, z1: 500, grad: 0.18, width: 76 },
@@ -175,7 +175,7 @@ export const MAPS = {
   // one huge kicker off a steep inrun
   bigair: {
     name: 'Big Air', tag: 'One huge kicker', blurb: 'A steep inrun, one gigantic kicker and a landing hill that goes on for ever.',
-    start: 30, finish: 760, km: 0.8,
+    start: 30, finish: 760, km: 0.8, calm: true,
     sections: [
       { name: 'Start', z0: -200, z1: 70, grad: 0.1, width: 46 },
       { name: 'Inrun', z0: 70, z1: 300, grad: 0.5, width: 34 },

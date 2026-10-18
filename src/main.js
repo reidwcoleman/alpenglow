@@ -1161,13 +1161,14 @@ class Game {
     let tip = '';
     const stuck = p.stuck > 3 && this.state !== 'countdown';
     if (stuck) tip = this.mode === 'race' ? 'Press R to get back on the piste' : 'Hold R to go back to the top';
-    if (!tip && this.mode === 'park' && p.onGround && p.crash <= 0) {
+    if (!tip && this.mode !== 'race' && p.onGround && p.crash <= 0) {
       const dx = p.pos.x - centerX(p.pos.z);
-      for (const J of PARK_JUMPS) {
+      for (const J of JUMPS) {
+        if (J.drop) continue;
         const dz = J.z - p.pos.z;
         if (dz > 0 && dz < 45 && Math.abs(dx - J.dx) < J.w / 2 + 3) {
           const want = Math.round(J.speed * 3.6), now = kmh;
-          tip = `${J.name} jump · ${want - 2}–${want + 3} km/h${now < want - 6 ? ' · tuck!' : now > want + 8 ? ' · scrub some speed' : ''}`;
+          tip = `${J.name} · ${want - 2}–${want + 3} km/h${now < want - 6 ? ' · tuck!' : now > want + 8 ? ' · scrub some speed' : ' · good speed'}`;
           break;
         }
       }

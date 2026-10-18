@@ -1,7 +1,7 @@
 // The forest: snow-laden spruces (src/spruce.js), placed by the course's tree density.
 // Also the spatial hash every collider on the mountain lives in.
 import * as THREE from 'three';
-import { heightAt, treeDensity, slopeAt, LIFT, centerX, halfWidth } from './course.js';
+import { heightAt, treeDensity, slopeAt, LIFT, centerX, halfWidth, MAP } from './course.js';
 import { mulberry32, makeSimplex } from './noise.js';
 
 const SPRUCE_H = 16;
@@ -70,7 +70,9 @@ export class Forest {
   // the GPU side (browser only: the headless sim never builds it)
   async buildRender(renderer, patch, quality = 'high') {
     const { SpruceForest } = await import('./spruce.js');
-    this.veg = new SpruceForest(this.trees, quality, patch, treeSnow);
+    // the tree-skiing park has trees all round you: keep the full-detail ring tighter there
+    const q = MAP.glades && quality !== 'low' ? (quality === 'ultra' ? 'high' : 'low') : quality;
+    this.veg = new SpruceForest(this.trees, q, patch, treeSnow);
     this.scene.add(this.veg.group);
   }
 

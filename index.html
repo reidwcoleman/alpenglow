@@ -179,7 +179,8 @@
   .who { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .who button { position: relative; min-height: 92px; padding: 14px; border-radius: 16px; border: 0; color: #fff; text-align: left; cursor: pointer; overflow: hidden; box-shadow: inset 0 0 0 3px rgba(255,255,255,0); }
   .who button.on { box-shadow: inset 0 0 0 3px #fff; }
-  .who .t { font: 400 26px/1 var(--disp); margin-top: 18px; }
+  .who .t { font: 400 clamp(19px, 2.2vw, 26px)/1 var(--disp); margin-top: 18px; white-space: nowrap; }
+  @media (max-width: 520px) { .who .t { font-size: 19px; } }
   .who .d { font: 600 11px Inter; opacity: .85; margin-top: 4px; }
   .who .solo { background: linear-gradient(135deg, #3a74ff, #1c3fcf); }
   .who .multi { background: linear-gradient(135deg, #9b4dff, #5a1fd1); }

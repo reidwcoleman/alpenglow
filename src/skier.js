@@ -458,7 +458,7 @@ export class Skier {
     let crash, sketchy = false;
     if (arc) {
       // forgiving: a bit sideways still rides away, just sketchy
-      crash = big && (pErr > 0.95 || off > 1.12 || vn > 22);
+      crash = big && (pErr > 0.95 || off > 1.12 || vn > 26);
       sketchy = !crash && big && (off > 0.5 || pErr > 0.55);
     } else {
       // landing into a flat bottom from height is what breaks people, not big air onto a slope

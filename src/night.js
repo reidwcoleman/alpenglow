@@ -2,7 +2,7 @@
 // a glow you see from far away and a faint beam in the air; a small pool of real spot
 // lights (two with shadows) follows the camera to the towers that matter.
 import * as THREE from 'three';
-import { heightAt, centerX, halfWidth, START_Z, FINISH_Z, JUMPS, RAILS } from './course.js';
+import { heightAt, centerX, halfWidth, START_Z, FINISH_Z, JUMPS, RAILS, PIPE, ROLLERS, MAP } from './course.js';
 
 const _v = new THREE.Vector3();
 
@@ -44,13 +44,30 @@ export class Floodlights {
       this.towers.push({ x, z, y, head, target, side: Math.sign(dx) });
       side = -side;
     }
+    // wide sections (the terrain park) get towers out among the lines too
+    const inPipe = (z, d) => MAP.park && z > PIPE.z0 - 10 && z < PIPE.z1 + 10 && Math.abs(d - PIPE.dx) < 22;
+    const inRoll = (z, d) => MAP.park && z > ROLLERS.z0 - 10 && z < ROLLERS.z1 + 10 && Math.abs(d - ROLLERS.dx) < 12;
+    for (let z = START_Z + 40; z < FINISH_Z - 60; z += 70) {
+      const hw = halfWidth(z);
+      if (hw < 52) continue;
+      for (const f of [-0.6, 0.6, 0]) {
+        const dx = f * hw + (f === 0 ? 40 : 0);
+        const hit = JUMPS.some((J) => z > J.z - 10 && z < J.z + J.len + 8 && Math.abs(dx - J.dx) < J.w / 2 + 5)
+          || RAILS.some((R) => z > R.z - 8 && z < R.z + R.len + 5 && Math.abs(dx - R.dx) < 5) || inPipe(z, dx) || inRoll(z, dx);
+        if (hit || Math.abs(dx) < 16) continue;
+        const x = centerX(z) + dx, y = heightAt(x, z);
+        const head = new THREE.Vector3(x, y + 12.5, z);
+        const tz = z + 20, tx = centerX(tz) + dx * 0.7;
+        this.towers.push({ x, z, y, head, target: new THREE.Vector3(tx, heightAt(tx, tz), tz), side: Math.sign(dx) || 1 });
+      }
+    }
     this.build();
     // the moving pool of real lights
-    const n = quality === 'low' ? 5 : 8;
-    const shadows = quality === 'low' ? 0 : 2;
+    const n = quality === 'low' ? 4 : quality === 'ultra' ? 8 : 6;
+    const shadows = quality === 'low' ? 0 : quality === 'ultra' ? 2 : 1;
     this.spots = [];
     for (let i = 0; i < n; i++) {
-      const s = new THREE.SpotLight(0xfff3e2, 0, 140, 0.62, 0.55, 1.6);
+      const s = new THREE.SpotLight(0xfff3e2, 0, 160, 0.72, 0.6, 1.6);
       s.castShadow = i < shadows;
       if (s.castShadow) {
         s.shadow.mapSize.set(1024, 1024);
@@ -61,7 +78,7 @@ export class Floodlights {
       this.group.add(s, s.target);
       this.spots.push(s);
     }
-    this.intensity = 9000;
+    this.intensity = 12000;
     this.t = 0;
   }
 

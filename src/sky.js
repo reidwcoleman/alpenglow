@@ -23,7 +23,7 @@ export const PRESETS = {
   night: {
     label: 'Night Session', hdri: 'night', az: 205, elev: 34, sun: 0xa9bcff, sunOverSky: 0.22,
     fogD: 0.00011, fogFall: 1 / 900, sunFog: 0x5d6f96, sunFogK: 0.25, key: 0.62, haze: 0.12, snow: 0, night: true,
-    envK: 0.1, moonK: 0.18, domeK: 0.55, fogK: 0.35,
+    envK: 0.15, moonK: 0.3, domeK: 0.6, fogK: 0.4,
   },
   storm: {
     label: 'Powder Day', hdri: 'storm', az: 60, elev: 40, sun: 0xeef2ff, sunOverSky: 0.08,
