@@ -509,7 +509,7 @@ export class SkierModel {
     const headUp = (this._headUp ??= new THREE.Vector3()).copy(j.spine).lerp(Y, 0.55 + tuck * 0.2).normalize();
     j.head.copy(j.neck).addScaledVector(headUp, 0.12);
     const yaw = this.board ? 1.15 + (p.look || 0) : this.twistNow * 1.15 + (p.look || 0);
-    const hq = (this._hq ??= new THREE.Quaternion()).setFromUnitVectors(Y, headUp).multiply(tmpQ.setFromAxisAngle(Y, clamp(yaw, -1.6, 1.9)));
+    const hq = (this._hq ??= new THREE.Quaternion()).setFromUnitVectors(Y, headUp).multiply(tmpQ.setFromAxisAngle(Y, clamp(yaw, -1.95, 1.95)));
     for (const k of ['face', ...this.headGear]) { P[k].position.copy(j.head); P[k].quaternion.copy(hq); }
     if (P.bib) {
       P.bib.position.copy(j.pelvis).addScaledVector(j.spine, 0.3).addScaledVector(j.fwd, 0.158);

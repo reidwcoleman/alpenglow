@@ -1,4 +1,4 @@
-# Alpenglow
+# Shredline
 
 A freeski park game in the browser, with accounts, global leaderboards and multiplayer servers, built around the feel of the indie game Cork7: corks, flips, grabs, rails and butters scored by rotation, with lines that build a multiplier until you land or bail. One 3.4 km run from the summit to the village (~1 km of vertical) lined with kickers and rail zones, a terrain park, a downhill race, and a mountain full of AI skiers, under photographed skies with scanned snow and rock and real people on the skis.
 
@@ -33,7 +33,9 @@ Pick one on the illustrated map (Ride > the park card), by day or by night. Each
 - **Big Air** (0.8 km): a steep inrun into one mega kicker. A full tuck gives about 4.5 s of air.
 - **Timberline** (5.7 km): a real tree run. Glades with trees on the line itself, the Creek Trail, pillows and the Lumber Yard logs.
 - **Grand Descent** (8.5 km, about 2.5 km of vertical): North Face, Glacier, Couloir, the Big Bowl with moguls, Cornice Traverse, Treeline Steeps, Valley Glades, The Long Road and the Village Run. Wind lips, cornice and rock drops, the Road Gap, icy patches.
-- **Mega Park** (2.8 km): an 18-feature Jib Garden in three lanes, Kicker Alley (two lines up to XXL plus a hip), a pipe, Big Air Duo, a step-down line with a gap and the Last Jib.
+- **Mega Park** (4.3 km): an 18-feature Jib Garden in three lanes, Kicker Alley (two lines up to XXL plus a hip), a pipe, Big Air Duo, a step-down line with a gap, Rainbow Road (12 rainbows, kinks and boxes), Triple Threat (three lines of three tables plus a hip), the Slopestyle Final (rail, kicker, kink, XL, box, Final Air) and the Last Jib.
+
+Every part of every run has its name and difficulty sprayed on the snow where it starts, on the trail signs at its edges and in the corner of the HUD as you ride in.
 
 ## Modes
 - **The Run**: top to bottom with a timer, score, minimap and a results card. Hold R for 2 s to restart.
@@ -55,6 +57,7 @@ Two schemes (Menu > Controls). **Arrows** is the default and needs only the arro
 | ↓ | brake | backflip |
 | 1-9 (number row or keypad) | hold to load, let go at the lip to pop that trick | let go to throw it now (if there is time) |
 | Space / keypad 0 | hold and let go to pop with no trick | |
+| Keypad . / G | hop round: ride backwards (switch), or forwards again | |
 
 Trick keys are timed: hold the number on the way up the kicker and let go right at the lip for a PERFECT POP and the full trick, sized to the air. Let go too early and it shrinks (or there is no air), too late and you are already off the lip. The nine keys start as Mute, Shifty, 360, Backflip, 540, Frontflip, Cork 720, Rodeo 540 and Double Cork 1080, and any Trick School trick can go on any key. In the park, L picks the next line.
 
@@ -79,9 +82,14 @@ Trick keys are timed: hold the number on the way up the kicker and let go right 
 | Trick keys | 1-9 | |
 | Pause / mute | Esc / M | Menu |
 
+Riding backwards on skis the rider turns his shoulders and looks over one of them; land any half turn and you ride away switch too.
+
 The letter keys work in both schemes. On a rail, A/D swap the slide a quarter turn and Space pops off. Touch controls appear on phones and tablets.
 
 Landing assist: about 0.45 s before touchdown the rider finishes whatever rotation is closest to a clean landing (the nearest half turn of spin, the nearest whole flip, carrying on if well into it). Way off still bails. The Tricks tab is a trick book that ticks off each family the first time you land it; new tricks call out "NEW TRICK" and count on the results card.
+
+## Hitting things
+Piste poles, race gates (breakaway), park flags and signs knock over when you ride into them and cost a little speed; they stand back up next run. The side nets stretch up to about a metre, catch you and push you back in (hit them at over ~45 km/h and you go down in them). The finish straight has solid boards. Trees, rocks, snow guns and lift towers are solid. A wipeout is a short tumble, a beat on the snow and back up within about two seconds, keeping about 40% of the speed you fell at.
 
 ## Scoring
 - Rotation pays by the square of the turns: a 720 is worth four 360s, and flips count as turns. Each inversion adds 15%, riding switch 25%.
@@ -133,6 +141,7 @@ node tools/cloudtest.mjs bigair  # guest run -> global board -> watch it off the
 node tools/srvrace.mjs           # two browsers on one server race each other
 node tools/eventtest.mjs sprint 1 yard   # an event on autopilot to its results
 node tools/quick.mjs cork Large -0.9   # hold key 1 up a park kicker, let go 0.9 m before the lip
+node tools/hits.mjs shots/hits yard     # a pole, the nets, a crash at speed, a hop turn to ride switch
 node tools/wx.mjs shots/wx timber 6    # drop in 6 times: a new sky and snow each time (or name them: grand whiteout,nightsnow)
 node tools/portrait.mjs out.jpg 4 1.6 1.66 20   # rider portraits (OUTFITS='[{"head":"hx-racer"}]')
 PARK=forest node tools/sim.mjs free 150   # any park headless

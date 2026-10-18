@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-<title>Alpenglow</title>
-<meta name="description" content="Alpenglow: a freeski park game in your browser. Corks, flips, grabs, rails and a 3.4 km run full of kickers, plus a terrain park and a downhill race." />
+<title>Shredline</title>
+<meta name="description" content="Shredline: a freeski game in your browser. Corks, flips, grabs, rails and a 3.4 km run full of kickers, plus a terrain park and a downhill race." />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22%3E%3Crect width=%2264%22 height=%2264%22 rx=%2214%22 fill=%22%23ff8a3d%22/%3E%3Cpath d=%22M6 52 L24 22 L34 36 L42 26 L58 52Z%22 fill=%22%23fff%22/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -383,6 +383,11 @@
   /* ---------- HUD ---------- */
   #hud { position: fixed; inset: 0; z-index: 10; pointer-events: none; }
   #zone { position: absolute; top: max(26px, env(safe-area-inset-top)); left: clamp(18px, 3.6vw, 46px); font: 400 clamp(22px, 2.4vw, 30px)/1 var(--disp); text-transform: uppercase; }
+  #zone .dif { display: inline-block; width: .62em; height: .62em; margin: 0 .35em .08em 0; vertical-align: middle; background: #2a63e0; border-radius: 50%; box-shadow: 0 0 0 2px #fff; }
+  #zone .dif.red { background: #d8282e; border-radius: 2px; }
+  #zone .dif.black { background: #111; border-radius: 1px; transform: rotate(45deg) scale(.86); }
+  #zone.in { animation: zoneIn .9s cubic-bezier(.2,.9,.3,1.2); }
+  @keyframes zoneIn { 0% { transform: translateX(-24px) scale(1.5); opacity: 0; } 30% { opacity: 1; } 100% { transform: none; } }
   #menubtn { position: absolute; top: max(14px, env(safe-area-inset-top)); right: clamp(14px, 3vw, 44px); pointer-events: auto; display: flex; align-items: center; gap: 10px; padding: 9px 12px 9px 14px; border-radius: 10px; background: rgba(24,31,44,.62); border: 1px solid var(--line); color: #fff; font: 600 13px Inter; letter-spacing: .06em; cursor: pointer; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
   #menubtn .bars { width: 14px; height: 10px; border-top: 2px solid #fff; border-bottom: 2px solid #fff; position: relative; }
   #menubtn .bars::after { content: ''; position: absolute; left: 0; right: 0; top: 2px; border-top: 2px solid #fff; }
@@ -541,7 +546,7 @@
 
 <div id="loading">
   <div style="position:relative;z-index:1">
-    <div class="t">ALPENGLOW</div>
+    <div class="t">SHREDLINE</div>
     <div class="pk" id="loadpark"></div>
     <div class="bar"><i id="loadbar"></i></div>
     <div class="msg" id="loadmsg">Shaping the mountain…</div>
@@ -552,7 +557,7 @@
 <div id="menu" class="hidden">
   <div class="m-bg"></div>
   <header class="m-top">
-    <div class="logo">ALPENGLOW</div>
+    <div class="logo">SHREDLINE</div>
     <div class="m-icons">
       <button class="acct" id="ib-acct" title="Your account"><span class="av" id="ac-av">R</span><span class="tx"><b id="ac-name">Rider</b><small id="ac-sub">GUEST</small></span><i class="dot" id="ac-dot"></i></button>
       <span class="wallet" title="Flakes: earned on every run, spent in the Shop"><svg class="flake" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 1v14M1.9 4.5l12.2 7M1.9 11.5l12.2-7M6 2.6 8 4.4l2-1.8M6 13.4l2-1.8 2 1.8"/></svg><b id="flakes">0</b></span>
@@ -653,7 +658,7 @@
   </section>
 
   <section class="tab t-wide hidden" id="tab-updates">
-    <div class="eyebrow">ALPENGLOW / PATCH NOTES</div>
+    <div class="eyebrow">SHREDLINE / PATCH NOTES</div>
     <h1>WHAT'S NEW ON THE MOUNTAIN</h1>
     <div class="notes" id="notes"></div>
   </section>
@@ -686,6 +691,7 @@
     <span><kbd>↑</kbd></span><span>Tuck · in the air: front flip</span>
     <span><kbd>↓</kbd></span><span>Brake · in the air: backflip</span>
     <span><kbd>1</kbd>…<kbd>9</kbd></span><span>Trick keys (number row or keypad). Hold one on the way up a kicker, let go right at the lip: a perfect pop and that trick. Early and it shrinks to fit the air; in the air it starts when you let go, too near the snow and it's too late. Pick what's on each key in Trick School</span>
+    <span><kbd>.</kbd> <kbd>G</kbd></span><span>Hop round to ride backwards (keypad . or G); again to turn forwards</span>
     <span><kbd>SPACE</kbd></span><span>Hold to load, release to pop (no trick)</span>
     <span><kbd>SHIFT</kbd><kbd>Q</kbd><kbd>E</kbd><kbd>F</kbd><kbd>X</kbd><kbd>Z</kbd></span><span>Six grabs by hand. Switch keys mid-air to chain them, hold one a second to tweak it</span>
     <span><kbd>B</kbd></span><span>Butter (add ↓ for the tail) · hold ← → to pivot 180, 360, 540</span>
@@ -753,7 +759,7 @@
 
 <div id="parks" class="hidden">
   <div id="pk-stage"><img id="pk-img" src="art/map.webp" alt="" /><div id="pk-pins"></div></div>
-  <div class="pk-head"><div class="logo" style="font-size:40px">ALPENGLOW</div><div class="t">CHOOSE YOUR PARK</div><button class="pk-back" id="pk-back">← Back</button></div>
+  <div class="pk-head"><div class="logo" style="font-size:40px">SHREDLINE</div><div class="t">CHOOSE YOUR PARK</div><button class="pk-back" id="pk-back">← Back</button></div>
   <div class="pk-panel">
     <h3 id="pk-name">The Yard</h3><span class="tag" id="pk-tag">Open session</span>
     <p id="pk-blurb"></p>

@@ -204,7 +204,7 @@ export class Room {
   refresh() {
     const st = this.links.some((L) => L.live) || this.fire?.live ? 'live' : 'offline';
     if (st !== this.status) { this.status = st; this.emit('status', st); }
-    this.url = this.fire ? 'alpenglow server' : this.links.filter((L) => L.live).map((L) => L.url.split('/')[2]).join(', ');
+    this.url = this.fire ? 'shredline server' : this.links.filter((L) => L.live).map((L) => L.url.split('/')[2]).join(', ');
   }
 
   // kind: 's' snapshot (Float32Array), 'h' hello (object), 'e' event (object)

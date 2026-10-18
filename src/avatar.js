@@ -101,8 +101,10 @@ export async function preloadAvatars(onEach) {
 
 // ---------------------------------------------------------------- material: the dyed kit
 const LUM = 'vec3( 0.2126, 0.7152, 0.0722 )';
-function kitMaterial(kit, outfit) {
+// crowd: a baked, posed copy (people.js) with the jacket colour per instance and no gear
+export function kitMaterial(kit, outfit, crowd = false) {
   const m = new THREE.MeshStandardMaterial({ map: kit.map, normalMap: kit.normal, roughness: 1, metalness: 0 });
+  if (crowd) m.defines = { CROWD: '' };
   const c = (x) => new THREE.Color(x);
   const racer = !!outfit.racer;
   const u = {
@@ -130,9 +132,17 @@ function kitMaterial(kit, outfit) {
     Object.assign(sh.uniforms, u);
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>
-attribute float aPart; varying float vPart; varying vec3 vRest; uniform float uPuff; uniform vec2 uLmV; uniform vec3 uSkull, uHatC, uHatR, uFootL, uFootR;`)
+attribute float aPart; varying float vPart; varying vec3 vRest; uniform float uPuff; uniform vec2 uLmV; uniform vec3 uSkull, uHatC, uHatR, uFootL, uFootR;
+#ifdef CROWD
+attribute vec3 aRest;
+#endif`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
-vPart = aPart; vRest = position;
+vPart = aPart;
+#ifdef CROWD
+vRest = aRest;
+#else
+vRest = position;
+#endif
 {
   float pp = floor( aPart + 0.5 );
   // ski pants: roomy, wider toward the hem, which sits on the boot cuff
@@ -141,9 +151,11 @@ vPart = aPart; vRest = position;
   // the collar stands up round the neck to just under the chin (lower at the front, where it zips)
   float cTop = uLmV.y + 0.06 - 0.025 * step( 0.03, position.z );
   float collar = 1.0 - smoothstep( cTop - 0.012, cTop + 0.002, position.y );
-  float puff = pp == 2.0 ? 0.036 : pp == 3.0 ? 0.032 : pp == 4.0 ? 0.03 : pp == 6.0 ? 0.04 : pp == 7.0 ? 0.034 + 0.03 * flare : pp == 5.0 ? 0.012 : pp < 1.5 ? 0.022 * collar : 0.0;
+  // (the chest's puff eases off up into the collar so the two meet without a step)
+  float puff = pp == 2.0 ? mix( 0.036, 0.013, smoothstep( uLmV.y - 0.1, uLmV.y - 0.01, position.y ) ) : pp == 3.0 ? 0.032 : pp == 4.0 ? 0.03 : pp == 6.0 ? 0.04 : pp == 7.0 ? 0.034 + 0.03 * flare : pp == 5.0 ? 0.012 : pp < 1.5 ? 0.012 * collar : 0.0;
   if ( pp == 7.0 && uPuff > 0.5 ) transformed.y = max( transformed.y, hem );
   transformed += objectNormal * ( uPuff < 0.5 ? min( puff, uPuff ) : puff );
+#ifndef CROWD
   // feet shrink a little inside the boot shells
   if ( pp == 8.0 ) { vec3 fc = ( position.x > 0.0 ? uFootL : uFootR ) + vec3( 0.0, -0.035, 0.03 ); transformed = fc + ( transformed - fc ) * 0.55; }
   // hair: anything above the brow squeezed inside the helmet's liner
@@ -153,10 +165,16 @@ vPart = aPart; vRest = position;
     float L = length( d );
     if ( L > 0.9 ) { float k = 0.9 + 0.1 * ( 1.0 - exp( -( L - 0.9 ) / 0.1 ) ); transformed = c + ( transformed - c ) * ( k / L ); }
   }
+#endif
 }`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
 uniform sampler2D uMask; uniform vec3 uJacket, uPants, uGloves, uBoots, uJacket2, uPants2, uHandL, uHandR; uniform vec2 uLm, uPat;
+#ifdef CROWD
+#define JK vColor.rgb
+#else
+#define JK uJacket
+#endif
 varying float vPart; varying vec3 vRest;
 float gRough; vec4 gNS; float gH;
 float agH(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
@@ -209,13 +227,18 @@ vec3 agPat(vec3 a, vec3 b, float pat, float part, vec3 p, vec2 lm) {
     if ( part > 7.5 ) { dye = uBoots; rough = 0.35; }
     else if ( part > 5.5 ) { dye = agPat( uPants, uPants2, uPat.y, part, vRest, uLm ); rough = 0.7; }
     else if ( part > 4.5 ) { dye = uGloves; rough = 0.75; }
-    else if ( part > 1.5 ) { bool low = vRest.y < uLm.x - 0.03; dye = low ? agPat( uPants, uPants2, uPat.y, 6.0, vRest, uLm ) : agPat( uJacket, uJacket2, uPat.x, part, vRest, uLm ); rough = low ? 0.7 : 0.5; }
+    else if ( part > 1.5 ) { bool low = vRest.y < uLm.x - 0.03; dye = low ? agPat( uPants, uPants2, uPat.y, 6.0, vRest, uLm ) : agPat( JK, uJacket2, uPat.x, part, vRest, uLm ); rough = low ? 0.7 : 0.5;
+      // (skin weighted to the chest that reaches up the neck stays skin above the collar line)
+      if ( part < 2.5 && uLm.y > 0.0 && vRest.y > uLm.y + 0.064 - 0.025 * step( 0.03, vRest.z ) ) dye = vec3( -1.0 );
+    }
   }
   // the collar: everything round the neck below the line, head or neck alike
   if ( part < 1.5 && uLm.y > 0.0 ) {
     float top = uLm.y + 0.06 - 0.025 * step( 0.03, vRest.z );
-    float c = 1.0 - smoothstep( top - 0.003, top + 0.003, vRest.y );
-    if ( c > 0.0 ) { dye = mix( a.rgb, agPat( uJacket, uJacket2, uPat.x, 2.0, vRest, uLm ) * 0.92, c ); rough = 0.6; }
+    float c = 1.0 - smoothstep( top - 0.008, top + 0.004, vRest.y );
+    // a folded-over edge: a little darker right at the top
+    float rim = smoothstep( top - 0.02, top - 0.006, vRest.y ) * c;
+    if ( c > 0.0 ) { dye = mix( a.rgb, agPat( JK, uJacket2, uPat.x, 2.0, vRest, uLm ) * ( 1.0 - rim * 0.2 ), c ); rough = 0.6; gH += rim * 0.8; }
   }
   // the garment's make: zip, hem and cuffs on the jacket, a cargo pocket and knee darts on the pants, quilting
   if ( dye.r >= 0.0 && part > 1.5 && part < 7.5 && part != 5.0 ) {
@@ -246,11 +269,20 @@ vec3 agPat(vec3 a, vec3 b, float pat, float part, vec3 p, vec2 lm) {
     }
   }
   if ( dye.r >= 0.0 ) {
+    // soft folds in the fabric where it bunches, and the weave catching the light
+    if ( part > 1.5 && part < 7.5 && part != 5.0 ) {
+      vec3 q = vRest * vec3( 11.0, 5.0, 11.0 );
+      float fold = agN( q ) * 0.65 + agN( q * 2.3 + 7.0 ) * 0.35;
+      gH += ( fold - 0.5 ) * 2.2;
+      dye *= 0.93 + 0.1 * fold;
+      rough += ( agN( vRest * 260.0 ) - 0.5 ) * 0.12;
+    }
     col = min( dye * det * fine, vec3( 0.82 ) );
     gRough = rough;
   }
   diffuseColor.rgb *= col;
 }`)
+      .replace('#include <color_fragment>', '#ifndef CROWD\n#include <color_fragment>\n#endif')
       .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = gRough;')
       .replace('#include <normal_fragment_maps>', THREE.ShaderChunk.normal_fragment_maps.replace(
         'vec3 mapN = texture2D( normalMap, vNormalMapUv ).xyz * 2.0 - 1.0;',
@@ -267,7 +299,7 @@ mapN.z = sqrt( max( 0.0, 1.0 - dot( mapN.xy, mapN.xy ) ) );`) + `
   normal = normalize( abs( dt ) * normal - grad );
 }`);
   };
-  m.customProgramCacheKey = () => 'ag-skier-kit';
+  m.customProgramCacheKey = () => 'ag-skier-kit' + (crowd ? '-crowd' : '');
   return m;
 }
 

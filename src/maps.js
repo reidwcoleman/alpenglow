@@ -306,8 +306,8 @@ export const MAPS = {
 
   // the big park: a jib garden, two kicker lines, a pipe, two big airs, step-downs
   mega: {
-    name: 'Mega Park', tag: 'The big park · 2.8 km', blurb: 'The biggest park on the mountain: a jib garden of eighteen rails, two kicker lines up to XXL, a halfpipe, twin big airs and a step-down line.',
-    start: 30, finish: 2760, km: 2.8, calm: true,
+    name: 'Mega Park', tag: 'The big park · 4.3 km', blurb: 'The biggest park on the mountain, top to bottom: a jib garden, two kicker lines up to XXL, a halfpipe, twin big airs, step-downs, Rainbow Road, three lines of tables and a slopestyle finale.',
+    start: 30, finish: 4240, km: 4.3, calm: true,
     sections: [
       { name: 'Drop In', z0: -200, z1: 120, grad: 0.12, width: 70 },
       { name: 'Jib Garden', z0: 120, z1: 650, grad: 0.17, width: 150 },
@@ -315,12 +315,15 @@ export const MAPS = {
       { name: 'The Pipe', z0: 1330, z1: 1660, grad: 0.19, width: 170 },
       { name: 'Big Air Duo', z0: 1660, z1: 2060, grad: 0.33, width: 140 },
       { name: 'Step-Down Line', z0: 2060, z1: 2400, grad: 0.27, width: 120 },
-      { name: 'Last Jib', z0: 2400, z1: 2700, grad: 0.15, width: 120 },
-      { name: 'Finish', z0: 2700, z1: 2850, grad: 0.1, width: 120 },
-      { name: 'Base', z0: 2850, z1: 99999, grad: 0.025, width: 120 },
+      { name: 'Rainbow Road', z0: 2400, z1: 2800, grad: 0.17, width: 140 },
+      { name: 'Triple Threat', z0: 2800, z1: 3340, grad: 0.26, width: 160 },
+      { name: 'Slopestyle Final', z0: 3340, z1: 3880, grad: 0.26, width: 130 },
+      { name: 'Last Jib', z0: 3880, z1: 4180, grad: 0.15, width: 120 },
+      { name: 'Finish', z0: 4180, z1: 4330, grad: 0.1, width: 120 },
+      { name: 'Base', z0: 4330, z1: 99999, grad: 0.025, width: 120 },
     ],
     curve: (z) => 30 * Math.sin(z / 520 + 0.4) + 10 * Math.sin(z / 210 + 2),
-    curveClamp: [90, 2650],
+    curveClamp: [90, 4130],
     crests: [],
     park: { top: 1335, z0: 1345, z1: 1650 },
     pipe: { z0: 1370, z1: 1640, dx: 4 },
@@ -338,6 +341,18 @@ export const MAPS = {
       { name: 'Step-Down', zone: 'Step-Down Line', z: 2170, dx: 24, h: 3.0, ramp: 3, table: 8, land: 3, w: 12, drop: true },
       { name: 'Gap', zone: 'Step-Down Line', z: 2250, dx: -4, h: 3.6, ramp: 11, table: 18, land: 16, w: 13 },
       { name: 'Step-Down', zone: 'Step-Down Line', z: 2340, dx: -24, h: 3.4, ramp: 3.5, table: 9, land: 3, w: 12, drop: true },
+      // triple threat: three lines of three tables, easy on the right to huge in the middle
+      ...[['Medium', 2.5, 8.5, 7, 11, 9, 2850], ['Medium', 2.5, 8.5, 7, 11, 9, 2950], ['Large', 3.3, 10.5, 10, 14, 11, 3050]]
+        .map(([n, h, ramp, table, land, w, z]) => ({ name: n, zone: 'Triple Threat', z, dx: 44, h, ramp, table, land, w })),
+      ...[['XL', 4.1, 12, 13, 17, 12, 2840], ['XL', 4.1, 12, 13, 17, 12, 2960], ['XXL', 5, 14, 16, 22, 14, 3090]]
+        .map(([n, h, ramp, table, land, w, z]) => ({ name: n, zone: 'Triple Threat', z, dx: 0, h, ramp, table, land, w })),
+      ...[['Large', 3.3, 10.5, 10, 14, 11, 2870], ['Large', 3.3, 10.5, 10, 14, 11, 2980], ['XL', 4.1, 12, 13, 17, 12, 3100]]
+        .map(([n, h, ramp, table, land, w, z]) => ({ name: n, zone: 'Triple Threat', z, dx: -44, h, ramp, table, land, w })),
+      { name: 'Hip', zone: 'Triple Threat', z: 3230, dx: 30, h: 2.4, ramp: 8, table: 3, land: 10, w: 10 },
+      // slopestyle final: rail, kicker, rail, kicker, box, then the biggest table in the park
+      { name: 'Large', zone: 'Slopestyle Final', z: 3440, dx: 12, h: 3.3, ramp: 10.5, table: 10, land: 14, w: 11 },
+      { name: 'XL', zone: 'Slopestyle Final', z: 3600, dx: -2, h: 4.1, ramp: 12, table: 13, land: 17, w: 12 },
+      { name: 'Final Air', zone: 'Slopestyle Final', z: 3750, dx: 0, h: 5.6, ramp: 16, table: 12, land: 28, w: 16 },
     ],
     runRails: [
       ...[[170, 'box', 'flat', 8], [260, 'rail', 'down', 10], [350, 'box', 'rainbow', 9], [440, 'rail', 'kink', 12], [530, 'box', 'down', 11], [610, 'rail', 'flat', 10]]
@@ -346,17 +361,29 @@ export const MAPS = {
           len: len + j * 2, h: kind === 'box' ? 0.5 : 0.65, kind: j === 1 && kind === 'rail' && shape !== 'kink' ? 'box' : kind, shape,
           color: [0x2a7de1, 0xf2b705, 0xff4f8b, 0xd8342c, 0x18a868, 0x8e3fd1][(i + j) % 6],
         }))),
-      { name: 'Last Tube', zone: 'Last Jib', z: 2440, dx: -20, len: 16, h: 0.8, kind: 'rail', shape: 'down', color: 0xff6a2b },
-      { name: 'Last Box', zone: 'Last Jib', z: 2440, dx: 20, len: 12, h: 0.5, kind: 'box', shape: 'flat', color: 0x2a7de1 },
-      { name: 'Wall Kink', zone: 'Last Jib', z: 2540, dx: 0, len: 13, h: 0.7, kind: 'rail', shape: 'kink', color: 0xd8342c },
-      { name: 'Rainbow', zone: 'Last Jib', z: 2620, dx: -18, len: 10, h: 0.55, kind: 'box', shape: 'rainbow', color: 0xff4f8b },
-      { name: 'Down Rail', zone: 'Last Jib', z: 2620, dx: 18, len: 11, h: 0.65, kind: 'rail', shape: 'down', color: 0xf2b705 },
+      // rainbow road: four rows of three, rainbows and kinks
+      ...[[2450, 'rainbow', 'box'], [2530, 'kink', 'rail'], [2610, 'rainbow', 'rail'], [2690, 'down', 'box']]
+        .flatMap(([z, shape, kind], i) => [-36, 0, 36].map((dx, j) => ({
+          name: ['Rainbow', 'Kink', 'Rainbow Bar', 'Down Box'][i] + ' ' + 'ABC'[j], zone: 'Rainbow Road', z: z + j * 8, dx,
+          len: 10 + j * 2 + (shape === 'kink' ? 2 : 0), h: kind === 'box' ? 0.5 : 0.65, kind: shape === 'kink' ? 'rail' : j === 1 ? (kind === 'box' ? 'rail' : 'box') : kind, shape,
+          color: [0xff4f8b, 0xf2b705, 0x2a7de1, 0x18a868, 0xff6a2b, 0x8e3fd1][(i * 2 + j) % 6],
+        }))),
+      { name: 'Final Rail', zone: 'Slopestyle Final', z: 3380, dx: -12, len: 14, h: 0.7, kind: 'rail', shape: 'down', color: 0xff6a2b },
+      { name: 'Final Kink', zone: 'Slopestyle Final', z: 3520, dx: 14, len: 15, h: 0.7, kind: 'rail', shape: 'kink', color: 0xd8342c },
+      { name: 'Final Box', zone: 'Slopestyle Final', z: 3690, dx: -20, len: 11, h: 0.5, kind: 'box', shape: 'rainbow', color: 0x18a868 },
+      { name: 'Last Tube', zone: 'Last Jib', z: 3920, dx: -20, len: 16, h: 0.8, kind: 'rail', shape: 'down', color: 0xff6a2b },
+      { name: 'Last Box', zone: 'Last Jib', z: 3920, dx: 20, len: 12, h: 0.5, kind: 'box', shape: 'flat', color: 0x2a7de1 },
+      { name: 'Wall Kink', zone: 'Last Jib', z: 4020, dx: 0, len: 13, h: 0.7, kind: 'rail', shape: 'kink', color: 0xd8342c },
+      { name: 'Rainbow', zone: 'Last Jib', z: 4100, dx: -18, len: 10, h: 0.55, kind: 'box', shape: 'rainbow', color: 0xff4f8b },
+      { name: 'Down Rail', zone: 'Last Jib', z: 4100, dx: 18, len: 11, h: 0.65, kind: 'rail', shape: 'down', color: 0xf2b705 },
     ],
     zones: [
       { name: 'Drop In', z1: 120 }, { name: 'Jib Garden', z1: 650 }, { name: 'Kicker Alley', z1: 1330 }, { name: 'The Pipe', z1: 1660 },
-      { name: 'Big Air Duo', z1: 2060 }, { name: 'Step-Down Line', z1: 2400 }, { name: 'Last Jib', z1: 2690 }, { name: 'Finish', z1: 2780 },
+      { name: 'Big Air Duo', z1: 2060 }, { name: 'Step-Down Line', z1: 2400 }, { name: 'Rainbow Road', z1: 2800 }, { name: 'Triple Threat', z1: 3340 },
+      { name: 'Slopestyle Final', z1: 3880 }, { name: 'Last Jib', z1: 4170 }, { name: 'Finish', z1: 4260 },
     ],
-    signs: { 'Jib Garden': '18 RAILS & BOXES', 'Kicker Alley': 'TWO LINES · S TO XXL', 'The Pipe': 'HALFPIPE · ROLLERS', 'Big Air Duo': 'TWIN BIG AIRS', 'Step-Down Line': 'STEP-DOWNS · GAP', 'Last Jib': 'ONE MORE' },
+    signs: { 'Jib Garden': '18 RAILS & BOXES', 'Kicker Alley': 'TWO LINES · S TO XXL', 'The Pipe': 'HALFPIPE · ROLLERS', 'Big Air Duo': 'TWIN BIG AIRS', 'Step-Down Line': 'STEP-DOWNS · GAP',
+      'Rainbow Road': 'RAINBOWS · KINKS', 'Triple Threat': 'THREE LINES OF TABLES', 'Slopestyle Final': 'RAIL · KICKER · FINAL AIR', 'Last Jib': 'ONE MORE' },
     icy: [],
     trees(z, s, d) { return d * 0.8; },
   },

@@ -88,6 +88,33 @@ export class Audio {
     o.connect(og).connect(this.master); o.start(t); o.stop(t + 0.32);
   }
 
+  // a pole or a sign whacked: a hollow knock with a rattle (wood: lower and duller)
+  clack(k = 1, wood = false) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const src = ctx.createBufferSource(); src.buffer = this.noise;
+    const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = wood ? 900 : 2200; f.Q.value = 2.5;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.7 * k, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+    src.connect(f).connect(g).connect(this.master); src.start(t, Math.random()); src.stop(t + 0.2);
+    const o = ctx.createOscillator(); o.type = 'triangle';
+    o.frequency.setValueAtTime(wood ? 210 : 520, t); o.frequency.exponentialRampToValueAtTime(wood ? 120 : 330, t + 0.12);
+    const og = ctx.createGain(); og.gain.setValueAtTime(0.35 * k, t); og.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+    o.connect(og).connect(this.master); o.start(t); o.stop(t + 0.18);
+  }
+
+  // into the netting: a soft whump and the mesh rustling
+  netHit(k = 1) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const src = ctx.createBufferSource(); src.buffer = this.noise;
+    const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1400; f.Q.value = 0.6;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5 * k, t + 0.04); g.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+    src.connect(f).connect(g).connect(this.master); src.start(t, Math.random()); src.stop(t + 0.55);
+    this.thump(0.35 * k);
+  }
+
   beep(freq = 880, dur = 0.12, vol = 0.25, type = 'sine') {
     if (!this.ctx) return;
     const ctx = this.ctx, t = ctx.currentTime;

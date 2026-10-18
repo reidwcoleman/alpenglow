@@ -2,7 +2,7 @@
 // terrain sits just under it, see meshHeightAt), the rails and boxes, dye lines on the
 // lips and knuckles, and the signs.
 import * as THREE from 'three';
-import { heightAt, centerX, PARK_FEET, RAILS, railAt, JUMPS, PIPE, ROLLERS, PARK, MAP, surfaceAt } from './course.js';
+import { heightAt, centerX, halfWidth, PARK_FEET, RAILS, railAt, JUMPS, PIPE, ROLLERS, PARK, MAP, surfaceAt } from './course.js';
 
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
 
@@ -88,8 +88,9 @@ function signTexture(lines, bg = '#11161f', fg = '#ffffff', accent = '#ff8a3d') 
 }
 
 export class Park {
-  constructor(scene, terrainMaterial) {
+  constructor(scene, terrainMaterial, smash) {
     this.scene = scene;
+    this.smash = smash;
     this.group = new THREE.Group();
     this.group.name = 'park';
     scene.add(this.group);
@@ -254,6 +255,7 @@ export class Park {
       f.rotation.y = out > 0 ? 0.4 : Math.PI - 0.4;
       f.castShadow = true;
       this.group.add(p, f);
+      this.smash?.add(x, z, 0.2, [p, f], { h: 2.3, slow: 0.015 });
     };
     for (const J of JUMPS) for (const s of [-1, 1]) {
       flag(centerX(J.lip) + J.dx + s * (J.w / 2 + 1.6), J.lip - 0.5, s);
@@ -261,7 +263,7 @@ export class Park {
     }
     for (const R of RAILS) for (const s of [-1, 1]) flag(R.a.x + s * 1.6, R.a.z - 3.5, s);
     // banner fences along both pipe decks
-    const bannerT = signTexture(['ALPENGLOW', 'PARK · PIPE'], '#0f1420', '#fff', '#ff8a3d');
+    const bannerT = signTexture(['SHREDLINE', 'PARK · PIPE'], '#0f1420', '#fff', '#ff8a3d');
     bannerT.wrapS = THREE.RepeatWrapping;
     const bm = new THREE.MeshStandardMaterial({ map: bannerT, roughness: 0.7, side: THREE.DoubleSide });
     for (const s of [-1, 1]) {
@@ -303,6 +305,8 @@ export class Park {
       g.position.set(x, y, z);
       g.rotation.y = Math.PI + yaw;
       this.group.add(g);
+      // on two posts: ride into it and it goes over
+      this.smash?.add(x, z, Math.max(0.4, w / 2), [g], { h: raise + h, slow: w > 2 ? 0.1 : 0.05, kind: 'sign' });
       return g;
     };
     const zTop = PARK.top + 6;
@@ -312,7 +316,8 @@ export class Park {
     sign(centerX(zTop) - 58, zTop, 4.2, 2.1, signTexture(['ROLLERS', 'PUMP IT']));
     sign(centerX(PIPE.z0 - 4) + PIPE.dx, PIPE.z0 - 4, 4.6, 2.3, signTexture(['HALFPIPE', '4.5 M WALLS']));
     }
-    // zone boards down the run, on the side of the first feature
+    // zone boards down the run, at the edge of the piste on the side of the first feature
+    // (never out in the middle where people ride)
     const seen = new Set();
     const firsts = [...JUMPS, ...RAILS].filter((f) => !['Jump Line', 'Rail Garden'].includes(f.zone)).sort((a, b) => a.z - b.z);
     const SUBS = MAP.signs ?? {};
@@ -320,7 +325,7 @@ export class Park {
       if (seen.has(f.zone)) continue;
       seen.add(f.zone);
       const z = f.z - 26, side = Math.sign(f.dx) || 1;
-      sign(centerX(z) + f.dx + side * 3, z, 4.2, 2.1, signTexture([f.zone.toUpperCase(), SUBS[f.zone] ?? ''], '#11161f', '#fff', '#3d8bff'), 0, 1.4);
+      sign(centerX(z) + side * (halfWidth(z) + 1.6), z, 4.2, 2.1, signTexture([f.zone.toUpperCase(), SUBS[f.zone] ?? ''], '#11161f', '#fff', '#3d8bff'), side * 0.35, 1.4);
     }
     // size boards beside every takeoff, with the speed it wants
     for (const J of JUMPS) {
@@ -328,21 +333,6 @@ export class Park {
       const z = J.z - 2;
       const size = J.name === 'XL' ? 'XL' : J.h < 2 ? 'S' : J.h < 3 ? 'M' : J.h < 4 ? 'L' : J.h < 5 ? 'XL' : 'XXL';
       sign(centerX(z) + J.dx - J.w / 2 - 2.4, z, 1.6, 1.1, signTexture([size, Math.round(J.speed * 3.6) + ' KM/H'], '#11161f', '#fff', '#3d8bff'), 0, 1.0);
-    }
-    if (!MAP.park) return;
-    // the gateway banner
-    const z = PARK.top - 6, c = centerX(z);
-    const span = 34;
-    const y = Math.max(heightAt(c - span / 2, z), heightAt(c + span / 2, z));
-    const banner = new THREE.Mesh(new THREE.PlaneGeometry(span - 2, 2.6), new THREE.MeshStandardMaterial({ map: signTexture(['ALPENGLOW PARK', 'RIDE · SLIDE · SEND IT'], '#0f1420', '#fff', '#ff8a3d'), roughness: 0.6, side: THREE.DoubleSide }));
-    banner.position.set(c, y + 6.2, z); banner.rotation.y = Math.PI;
-    this.group.add(banner);
-    for (const s of [-1, 1]) {
-      const x = c + s * span / 2, gy = heightAt(x, z);
-      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, y + 8 - gy, 10), post);
-      p.position.set(x, (y + 8 + gy) / 2 - 0.3, z);
-      p.castShadow = true;
-      this.group.add(p);
     }
   }
 }

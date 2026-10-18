@@ -1,9 +1,10 @@
-// Alpenglow: boot, game modes (The Run / Ski Park / Race the Cup), scoring, loop, HUD.
+// Shredline: boot, game modes (The Run / Ski Park / Race the Cup), scoring, loop, HUD.
 import * as THREE from 'three';
 import { Environment, PRESETS, COND, WX_WEIGHT } from './sky.js';
 import { Terrain } from './terrain.js';
 import { Forest } from './trees.js';
-import { Props } from './props.js';
+import { Props, trailDiff } from './props.js';
+import { Smash } from './smash.js';
 import { Tracks } from './tracks.js';
 import { Particles, Snowfall } from './particles.js';
 import { Skier } from './skier.js';
@@ -34,6 +35,7 @@ import { START_Z, FINISH_Z, GATES, centerX, halfWidth, sectionName, heightAt, PA
 const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+const _v = new THREE.Vector3();
 const store = {
   get(k, d) { try { const v = localStorage.getItem('alpenglow.' + k); return v == null ? d : v; } catch { return d; } },
   set(k, v) { try { localStorage.setItem('alpenglow.' + k, v); } catch { /* private mode */ } },
@@ -132,16 +134,24 @@ class Game {
     await this.forest.buildRender(r, patchMaterial, this.quality);
     setLoad(75, 'Building the lift and the village…');
     await nextFrame();
-    this.props = new Props(scene, this.forest, this.env);
+    this.smash = new Smash(this.forest);
+    this.props = new Props(scene, this.forest, this.env, this.smash);
     setLoad(80, 'Shaping the park…');
-    this.park = new Park(scene, this.terrain.material);
+    this.park = new Park(scene, this.terrain.material, this.smash);
     await this.park.build();
     this.lights = new Floodlights(scene, this.quality);
     this.tracks = new Tracks(scene);
     this.particles = new Particles(scene);
     this.snowfall = new Snowfall(scene);
     this.debris = new Debris(scene);
-    this.world = { scene, forest: this.forest, tracks: this.tracks, particles: this.particles, race: false, raceStarted: false, skiers: this.skiers, arcade: true, glades: !!MAP.glades };
+    this.world = { scene, forest: this.forest, tracks: this.tracks, particles: this.particles, race: false, raceStarted: false, skiers: this.skiers, arcade: true, glades: !!MAP.glades,
+      smash: this.smash, netHit: (s, z, pen) => this.props.netHit(s, z, pen) };
+    // a pole or a sign goes down: a knock, a puff of snow (and a jolt if it was you)
+    this.smash.onHit = (o, sp) => {
+      const d = this.camera.position.distanceTo(_v.set(o.x, heightAt(o.x, o.z), o.z));
+      if (d < 60) this.audio.clack(Math.min(1, 0.4 + sp / 25) * (1 - d / 60), o.kind === 'sign');
+      if (d < 120) this.particles.emit(o.x, heightAt(o.x, o.z) + 0.3, o.z, 0, 1.2, 0, 2.5, 0.45, 1, 18);
+    };
     this.shade = new ShadeField(r);
     patchTree(scene);
     this.post = new Post(r, scene, this.camera, { ...QUALITY[this.quality], ...JSON.parse(params.get('post') ?? '{}') });
@@ -155,6 +165,7 @@ class Game {
     setLoad(86, 'Waking up the skiers…');
     await preloadAvatars((k) => setLoad(86 + k * 8)).catch((e) => console.warn('avatars', e));
     await nextFrame();
+    try { this.props.buildPeople(); } catch (e) { console.warn('people', e); }
     this.populateFree(true);
     // compile shaders before the first visible frame
     this.rig.menu(0.016, 0, this.skiers);
@@ -177,6 +188,7 @@ class Game {
     // ?watch=<id>: a saved run from the Replays tab
     if (params.get('watch')) getRun(params.get('watch')).then((run) => { if (run) { this.menu.setTab('replays'); this.replay.reset(); this.replay.load(run); this.replay.open('all'); } });
     window.__game = this;
+    window.__course = { centerX, halfWidth, heightAt, FINISH_Z };
     window.__cx = centerX;
     window.__parkJumps = PARK_JUMPS;
     window.__rails = RAILS;
@@ -774,6 +786,11 @@ class Game {
         this.status('BAIL');
       } else this.say('WIPEOUT', '', e.reason === 'landing' ? 'land it straight' : '', 'bad');
     });
+    p.on('smash', (e) => { this.rig.bump(e.kind === 'sign' ? 0.5 : 0.2); });
+    p.on('impact', (e) => {
+      if (e.kind === 'net') { this.audio.netHit(Math.min(1, e.speed / 10)); this.rig.bump(Math.min(0.6, e.speed / 18)); this.burst(p, 20 + e.speed * 3, 3); }
+      else if (e.kind === 'boards') { this.audio.thump(Math.min(1, e.speed / 10)); this.rig.bump(0.5); }
+    });
     p.on('recover', () => { if (this.sc) this.say('BACK ON YOUR FEET', '', '', '', 1300); });
     p.on('grindStart', () => this.audio.thump(0.35));
     p.on('grindEnd', (g) => this.onPlayerGrind(g));
@@ -938,6 +955,7 @@ class Game {
     // a new day every time you drop in (unless the weather is fixed in the menu)
     if (store.get('wx', 'change') === 'change' && !opts.keepWeather && !this.wxPinned) this.rollWeather();
     this.wxPinned = false;
+    this.smash.reset();
     this.replay?.close();
     this.replay?.reset();
     if (this.who === 'multi') { this.joinRoom(); if (this.room) this.room.me.outfit = this.outfit(); }
@@ -1452,6 +1470,10 @@ class Game {
           this.parkSpawn(P, line); this.rig.snap = true; this.say(names[line], '', 'L for the next line', '', 1200);
         }
         if (this.mode !== 'race' && this.state !== 'countdown') this.trickKeys(inp);
+        // keypad . (or G): hop round to ride the other way, backwards or forwards again
+        if ((inp.hit('NumpadDecimal') || inp.hit('KeyG') || inp.hit('NumpadEnter')) && P.onGround && !P.grind && P.crash <= 0 && this.state !== 'countdown') {
+          P.turnReq = -Math.sign(P.controls.steer) || (this.turnDir = -(this.turnDir || -1));
+        }
       }
       if (this.state === 'countdown') {
         this.countdown -= dt;
@@ -1523,7 +1545,10 @@ class Game {
     const focus = this.player && this.state !== 'menu' ? this.player.pos : cam.position;
     this.terrain.update(cam.position.x, cam.position.z, 4);
     this.forest.update(cam, this.time, this.env.sunDir);
-    this.props.updateLift(this.time);
+    this.props.updateLift(this.time, cam.position);
+    this.props.updatePeople(cam.position);
+    this.props.updateNets(dt);
+    this.smash.update(dt);
     this.lights.update(cam, focus);
     this.cheerT = Math.max(0, (this.cheerT ?? 0) - dt);
     const nearFinish = smoothstep(260, 40, Math.abs(cam.position.z - FINISH_Z));
@@ -1565,7 +1590,13 @@ class Game {
   hud(dt) {
     const p = this.player;
     const name = this.mode === 'race' ? sectionName(p.pos.z) : zoneAt(p.pos.x, p.pos.z);
-    if (name !== this.secName) { this.secName = name; $('zone').textContent = name; }
+    if (name !== this.secName) {
+      // a new part of the run: its name and difficulty, as on the trail signs and the snow
+      this.secName = name;
+      const z = $('zone');
+      z.innerHTML = `<i class="dif ${trailDiff(name)}"></i>${esc(name)}`;
+      z.classList.remove('in'); void z.offsetWidth; z.classList.add('in');
+    }
     // speed, or air time while flying
     const kmh = Math.round(p.speed * 3.6);
     const flying = !p.onGround && !p.grind && p.crash <= 0 && p.airTime > 0.2;

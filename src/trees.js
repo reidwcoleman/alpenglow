@@ -24,7 +24,9 @@ export class Forest {
     const k = this.key(ix, iz);
     let a = this.hash.get(k);
     if (!a) { a = []; this.hash.set(k, a); }
-    a.push({ x, z, r, kind });
+    const o = { x, z, r, kind };
+    a.push(o);
+    return o;
   }
 
   // colliders within radius of (x, z)

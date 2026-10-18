@@ -113,10 +113,16 @@ export function makeSnowMaterial(env) {
             vec3 tw = pow(abs(normalize(vWNrm)), vec3(4.0));
             tw /= tw.x + tw.y + tw.z;
             // projected on the world planes (stable), stretched tall: snow runs down the face
-            float gully = texture2D(uNoise, vec2(vWPos.z * 0.012, vWPos.y * 0.0018)).g * tw.x
-              + texture2D(uNoise, vec2(vWPos.x * 0.012, vWPos.y * 0.0018 + 0.37)).g * tw.z
+            // (warped sideways so they wander, and broken along their length into couloirs and patches)
+            // (one shared warp from the noise already sampled: no extra lookups on the big faces)
+            float wq = (nL.a - 0.5) * 1.6 + (nM.g - 0.5) * 0.25;
+            float gully = texture2D(uNoise, vec2(vWPos.z * 0.012 + wq, vWPos.y * 0.0018)).g * tw.x
+              + texture2D(uNoise, vec2(vWPos.x * 0.012 + wq, vWPos.y * 0.0018 + 0.37)).g * tw.z
               + 0.5 * tw.y;
+            gully *= 0.8 + 0.4 * nM.a;
             gRock *= 1.0 - smoothstep(0.6, 0.72, gully) * smoothstep(0.5, 0.85, slope) * 0.8;
+            // snow caught on every ledge and bench of a far face
+            gRock *= 1.0 - smoothstep(0.55, 0.8, nM.b + (0.66 - slope) * 1.6) * smoothstep(300.0, 1200.0, dist) * 0.55;
           }
           // scanned snow at two scales, the larger one turned so the repeats never line up
           gSnowUv1 = wp / 3.1;
@@ -153,6 +159,12 @@ export function makeSnowMaterial(env) {
             rock = mix(rock, rock * vec3(0.85, 0.9, 1.0), 0.3);
             // alpine limestone and gneiss: greyer and cooler than the scan
             rock = mix(rock, vec3(dot(rock, vec3(0.3, 0.45, 0.25))) * vec3(0.93, 0.96, 1.02), 0.55);
+            // bedding: the layers of the rock in bands across the face, light and dark,
+            // and rust-warm patches where water runs over it
+            float sy = vWPos.y * 0.13 + nL.g * 5.5 + (vWPos.x + vWPos.z) * 0.004;
+            float strata = 0.5 + 0.3 * sin(sy) + 0.2 * sin(sy * 2.7 + 1.3);
+            rock *= 0.78 + 0.44 * strata;
+            rock = mix(rock, rock * vec3(1.1, 0.97, 0.86), smoothstep(0.55, 0.8, nL.a) * 0.55);
             gRockRough = texture2D(uRockR, q.xz).g;
           }
           // spring slush: wet, a touch grey and glossy; hard days: a little bluer

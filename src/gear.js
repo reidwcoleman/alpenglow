@@ -401,7 +401,7 @@ export function paintDesign(g, w, h, design, c1, c2, board = false) {
   g.textAlign = 'center'; g.textBaseline = 'middle';
   const dark = (new THREE.Color(c1).getHSL({}).l > 0.55);
   g.fillStyle = design === 'logo' ? B : dark ? 'rgba(0,0,0,.55)' : 'rgba(255,255,255,.75)';
-  g.fillText('ALPENGLOW', 0, 0);
+  g.fillText('SHREDLINE', 0, 0);
   g.restore();
   if (design === 'logo') { g.fillStyle = B; g.fillRect(0, h * 0.06, w, h * 0.012); g.fillRect(0, h * 0.93, w, h * 0.012); }
 }
