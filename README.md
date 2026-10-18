@@ -4,6 +4,9 @@ A freeski park game in the browser, built around the feel of the indie game Cork
 
 **Play:** https://reidwcoleman.github.io/alpenglow/
 
+## Skis or snowboard
+Pick SKIS or SNOWBOARD on the Ride tab. Snowboarders stand sideways on a twin-tip board (left foot forward) with a tighter 7.5 m sidecut, float better in powder, can't tuck as small, and ride switch after landing a half turn. Spins are called by side (FS 360, BS 540, Half Cab, Cab 720, Switch BS), rolls are wildcats and tamedogs, and the grabs are indy, melon, method, stalefish, nose and tail. About a third of the riders on the mountain are snowboarders.
+
 ## Parks
 Pick one on the illustrated map (Ride > the park card), by day or by night. Each is its own line down the mountain.
 - **The Yard** (3.4 km): summit to village. Wall hits, the Rail Yard, the terrain park with its pipe and rollers, Big Air, the Forest Line rails, a four-table Kicker Line and Last Call.
@@ -29,8 +32,10 @@ Five conditions: Bluebird Morning, Golden Hour, Alpenglow Dusk, Night Session (a
 | Air roll: sideflip, flatspin with a spin | ← → | Right stick |
 | Rodeo (with S) / misty (with W) | ↑ + spin + flip | B |
 | Pop (hold, release) | Space | A |
-| Mute / tail / japan grab | Shift / Q / E | LB / X / Y |
-| Butter (nose, or tail with S) | B | LS |
+| Grabs (skis: mute, tail, japan, safety, critical, nose · board: indy, tail, melon, method, stalefish, nose) | Shift / Q / E / F / X / Z | LB / X / Y / D-pad left, right, down |
+| Shifty / daffy (board: boned), in the air on their own | ↑ / ↓ | Right stick up / down |
+| Butter (nose, or tail with S); hold A/D to pivot 180, 360, 540 | B | LS |
+| Nose / tail press on a rail | W / S | |
 | Camera (chase, action, helmet, TV) | C | D-pad up |
 | Restart (hold) | R | View |
 | Replay | V | |
@@ -39,12 +44,14 @@ Five conditions: Bluebird Morning, Golden Hour, Alpenglow Dusk, Night Session (a
 
 On a rail, A/D swap the slide a quarter turn and Space pops off. Touch controls appear on phones and tablets.
 
+Landing assist: about 0.45 s before touchdown the rider finishes whatever rotation is closest to a clean landing (the nearest half turn of spin, the nearest whole flip, carrying on if well into it). Way off still bails. The Tricks tab is a trick book that ticks off each family the first time you land it; new tricks call out "NEW TRICK" and count on the results card.
+
 ## Scoring
 - Rotation pays by the square of the turns: a 720 is worth four 360s, and flips count as turns. Each inversion adds 15%, riding switch 25%.
-- Air time and height add a little on every jump. A grab held 0.25 s multiplies the trick by 1.25, held a full second by 1.5; two different grabs add x1.3.
+- Air time and height add a little on every jump. A grab held 0.25 s multiplies the trick by 1.25, held a full second by 1.5 (and is called "Tweaked"); switching grabs mid-air ("Mute to Tail") adds x1.3. A shifty adds 350, a daffy 300.
 - Pop at the lip (release Space right at it, or just off it) for a perfect pop: more height and a faster flip. A landing that matches the slope is "stomped" and pays 15% more.
 - Each jump or rail in a row adds x0.25 to the line. Landing on snow banks it with +450 and 15% on top; a sketchy (sideways) landing keeps half; a bail loses it.
-- Rails pay 750 a second, 450 per swap, and more while you press (hold Space). Butters pay 150, or 300 for a 180.
+- Rails pay 750 a second, 450 per swap, and more while you press (hold Space); a nose or tail press held for 40% of the slide pays 30% more. A spin off the end counts in quarters ("270 Out"). Butters pay 150, plus 230 for every half turn of pivot.
 - Repeating the same trick pays 75%, then 55%, then 40%.
 
 ## How it works

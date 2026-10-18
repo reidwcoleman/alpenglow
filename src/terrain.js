@@ -103,6 +103,16 @@ export function makeSnowMaterial(env) {
           float rk = slope + (nM.g - 0.5) * 0.28 + (nL.r - 0.5) * 0.16 - vPiste;
           gRock = smoothstep(0.44, 0.58, rk);
           gRock *= 1.0 - smoothstep(0.62, 0.75, nS.b + (0.55 - slope)); // snow ledges on rock faces
+          // snow-filled gullies streaking down the faces: noise stretched along the fall line
+          if (gRock > 0.01) {
+            vec3 tw = pow(abs(normalize(vWNrm)), vec3(4.0));
+            tw /= tw.x + tw.y + tw.z;
+            // projected on the world planes (stable), stretched tall: snow runs down the face
+            float gully = texture2D(uNoise, vec2(vWPos.z * 0.012, vWPos.y * 0.0018)).g * tw.x
+              + texture2D(uNoise, vec2(vWPos.x * 0.012, vWPos.y * 0.0018 + 0.37)).g * tw.z
+              + 0.5 * tw.y;
+            gRock *= 1.0 - smoothstep(0.6, 0.72, gully) * smoothstep(0.5, 0.85, slope) * 0.8;
+          }
           // scanned snow at two scales, the larger one turned so the repeats never line up
           gSnowUv1 = wp / 3.1;
           gSnowUv2 = rot2(0.61) * wp / 13.7;
@@ -136,6 +146,8 @@ export function makeSnowMaterial(env) {
             vec3 q2 = vWPos / 41.0;
             rock *= 0.75 + 0.5 * (texture2D(uRockC, q2.zy + 0.3).r * gTriW.x + texture2D(uRockC, q2.xz + 0.3).r * gTriW.y + texture2D(uRockC, q2.xy + 0.3).r * gTriW.z);
             rock = mix(rock, rock * vec3(0.85, 0.9, 1.0), 0.3);
+            // alpine limestone and gneiss: greyer and cooler than the scan
+            rock = mix(rock, vec3(dot(rock, vec3(0.3, 0.45, 0.25))) * vec3(0.93, 0.96, 1.02), 0.55);
             gRockRough = texture2D(uRockR, q.xz).g;
           }
           diffuseColor.rgb = mix(snow, rock, gRock);

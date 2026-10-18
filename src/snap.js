@@ -1,7 +1,7 @@
 // One skier's look at one instant, as a flat list of numbers: what the replays record
 // and what multiplayer sends. applySnap() poses a stand-in skier from two of them.
 const TRICK = [null, 'backflip', 'frontflip', 'cork', 'bio', 'rodeo', 'misty', 'sideflip', 'flatspin'];
-const GRAB = [null, 'mute', 'tail', 'japan'];
+const GRAB = [null, 'mute', 'tail', 'japan', 'safety', 'critical', 'nose'];
 const PHASE = [null, 'tumble', 'down', 'up'];
 export const SNAP_N = 52;
 
@@ -21,7 +21,7 @@ export function snap(s, out = new Float32Array(SNAP_N)) {
   w(s.polePlant); w(s.poleSide); w(s.skating); w(s.skatePhase);
   w(s.butter ? s.butter.t : -1); w(s.butter?.tail ? 1 : 0);
   w(s.grind ? 1 : 0); w(s.time); w(s.surf.powder); w(s.skid); w(s.latAcc); w(s.maxAirY ?? 0); w(s.sinkV ?? 0);
-  w(s.spin); w(0);
+  w(s.spin); w((c.up ? 1 : 0) + (c.down ? 2 : 0) + (c.flip > 0 ? 4 : 0) + (c.flip < 0 ? 8 : 0) + (s.boardSwitch ? 16 : 0));
   return out;
 }
 
@@ -46,4 +46,7 @@ export function applySnap(d, a, b = a, t = 0) {
   d.grind = N[43] ? (d.grind ?? { fake: true }) : null;
   d.time = L(44); d.surf.powder = L(45); d.skid = L(46); d.latAcc = L(47); d.maxAirY = L(48); d.sinkV = L(49);
   d.spin = L(50);
+  const bits = N[51] | 0;
+  d.boardSwitch = !!(bits & 16);
+  c.up = !!(bits & 1); c.down = !!(bits & 2); c.flip = bits & 4 ? 1 : bits & 8 ? -1 : 0;
 }

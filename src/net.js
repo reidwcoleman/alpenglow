@@ -159,6 +159,12 @@ export class Room {
     if (kind === 'h') {
       const h = JSON.parse(dec.decode(payload));
       if (!p) { p = this.addPeer(id, h); this.emit('join', p); }
+      else if (!!h.outfit?.board !== p.skier.board) {
+        // switched between skis and a board: a new stand-in
+        p.skier.dispose();
+        p.skier = new Skier({ scene: this.g.scene, tracks: null, skiers: [] }, { outfit: h.outfit, name: h.name });
+        patchTree(p.skier.model.group);
+      }
       p.score = h.score; p.mode = h.mode; p.seen = performance.now();
     } else if (kind === 's' && p) {
       const f = new Float32Array(payload.buffer.slice(payload.byteOffset, payload.byteOffset + (SNAP_N + 1) * 4));

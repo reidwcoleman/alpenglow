@@ -16,7 +16,9 @@ const skiers = [], ais = [];
 const world = { scene, forest, tracks: null, race: mode === 'race', raceStarted: true, skiers, arcade: mode !== 'race', glades: !!MAP.glades };
 const stats = new Map();
 function add(style, z, x) {
-  const s = new Skier(world, { outfit: randomOutfit(rnd, style === 'racer'), name: style + skiers.length, sidecut: style === 'racer' ? 24 : 16 });
+  const outfit = randomOutfit(rnd, style === 'racer');
+  outfit.board = style !== 'racer' && rnd() < Number(process.env.BOARDS ?? 0.35);
+  const s = new Skier(world, { outfit, name: style + skiers.length, sidecut: style === 'racer' ? 24 : 16 });
   const ai = new AIController(s, style, rnd, world);
   s.place(x, z, null, style === 'racer' ? 0 : ai.targetSpeed * 0.7); ai.lastZ = z;
   skiers.push(s); ais.push(ai);
@@ -65,6 +67,6 @@ for (; t < secs; t += H) {
   if (mode === 'race' && [...stats.values()].every((s) => s.finish != null)) break;
 }
 for (const [s, st] of stats) {
-  console.log(`${st.style.padEnd(8)} grip ${s.grip.toFixed(2)} fin ${st.finish?.toFixed(1) ?? '--'.padStart(5)} top ${(st.top * 3.6).toFixed(0)} km/h missed ${st.missed} stuck ${st.stuck} air ${st.maxAir.toFixed(1)} z ${s.pos.z.toFixed(0)} crashes ${st.crashes.length} ${st.crashes.slice(0, 4).join(' ')}`);
+  console.log(`${(s.board ? 'B ' : 'S ') + st.style.padEnd(8)} grip ${s.grip.toFixed(2)} fin ${st.finish?.toFixed(1) ?? '--'.padStart(5)} top ${(st.top * 3.6).toFixed(0)} km/h missed ${st.missed} stuck ${st.stuck} air ${st.maxAir.toFixed(1)} z ${s.pos.z.toFixed(0)} crashes ${st.crashes.length} ${st.crashes.slice(0, 4).join(' ')}`);
 }
 console.log('sim time', t.toFixed(1), 'bumps', bumps);

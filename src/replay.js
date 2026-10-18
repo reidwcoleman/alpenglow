@@ -56,8 +56,10 @@ export class Replay {
     this.t = this.from;
     this.playing = true; this.speed = range === 'last' ? 0.5 : 1;
     // a stand-in skier wearing the player's outfit
+    const outfit = g.outfit();
+    if (this.ghost && this.ghost.board !== !!outfit.board) { this.ghost.dispose(); this.ghost = null; }
     if (!this.ghost) {
-      this.ghost = new Skier({ scene: g.scene, tracks: null, skiers: [] }, { outfit: g.myOutfit, isPlayer: true });
+      this.ghost = new Skier({ scene: g.scene, tracks: null, skiers: [] }, { outfit, isPlayer: true });
       patchTree(this.ghost.model.group);
     }
     this.ghost.model.group.visible = true;

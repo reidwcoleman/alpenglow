@@ -43,7 +43,8 @@ export class Input {
 
   // returns controls for the player's skier this frame.
   // A/D carve (spin in the air), W tuck (front flip), S brake (backflip), arrows roll in the air,
-  // Space load and pop, Shift mute / Q tail / E japan grab, B butter, up arrow for rodeos and mistys
+  // Space load and pop, grabs on Shift / Q / E / F / X / Z, B butter, up arrow for rodeos and
+  // mistys (alone: a shifty), down arrow alone: a daffy
   read(dt, airborne) {
     const t = this.touch;
     let target = 0;
@@ -56,9 +57,11 @@ export class Input {
     let tuck = this.down('KeyW') || (!airborne && this.down('ArrowUp')) || t.tuck ? 1 : 0;
     let brake = this.down('KeyS') || (!airborne && this.down('ArrowDown')) || t.brake ? 1 : 0;
     let jump = this.down('Space') || t.jump;
-    let grabKind = this.down('ShiftLeft', 'ShiftRight') || t.grab ? 'mute' : this.down('KeyQ') ? 'tail' : this.down('KeyE') ? 'japan' : null;
+    let grabKind = this.down('ShiftLeft', 'ShiftRight') || t.grab ? 'mute' : this.down('KeyQ') ? 'tail' : this.down('KeyE') ? 'japan'
+      : this.down('KeyF') ? 'safety' : this.down('KeyX') ? 'critical' : this.down('KeyZ') ? 'nose' : null;
     let roll = airborne ? (this.down('ArrowRight') ? 1 : 0) - (this.down('ArrowLeft') ? 1 : 0) : 0;
     let up = airborne && this.down('ArrowUp');
+    let down = airborne && this.down('ArrowDown');
     let butter = this.down('KeyB');
     let flip = 0;
     const gp = this.pad();
@@ -73,9 +76,15 @@ export class Input {
       if (b(4)) grabKind = 'mute'; // LB
       else if (b(2)) grabKind = 'tail'; // X
       else if (b(3)) grabKind = 'japan'; // Y
+      else if (b(14)) grabKind = 'safety'; // d-pad left
+      else if (b(15)) grabKind = 'critical'; // d-pad right
+      else if (b(13)) grabKind = 'nose'; // d-pad down
       if (b(1)) up = true; // B: rodeo / misty
       if (b(10)) butter = true; // LS
       if (airborne && Math.abs(rx) > 0.45) roll = Math.sign(rx);
+      const ry = gp.axes[3] ?? 0;
+      if (airborne && ry < -0.6 && Math.abs(rx) < 0.45) up = true;
+      if (airborne && ry > 0.6 && Math.abs(rx) < 0.45) down = true;
       gp.buttons.forEach((btn, i) => { if (btn.pressed && !this.padPrev[i]) this.padHit[i] = true; this.padPrev[i] = btn.pressed; });
     }
     if (airborne) {
@@ -83,7 +92,7 @@ export class Input {
       if (brake) flip = -1;
       tuck = 0; brake = 0;
     }
-    return { steer, tuck, brake, jump, grab: !!grabKind, grabKind, flip, roll, up, butter };
+    return { steer, tuck, brake, jump, grab: !!grabKind, grabKind, flip, roll, up, down, butter };
   }
 
   endFrame() { this.pressed.clear(); }

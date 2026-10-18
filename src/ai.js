@@ -59,8 +59,7 @@ export class AIController {
         this.want = J.speed + (this.skill - 0.7) * 1.5;
         const lipX = centerX(J.lip) + J.dx;
         if (z > J.z - 4 && !this.trick) {
-          const spins = [Math.PI * 2, Math.PI * 3, Math.PI * 2, Math.PI, Math.PI * 4, 0];
-          this.trick = { spin: spins[Math.floor(this.rnd() * spins.length)], dir: this.rnd() < 0.5 ? 1 : -1, grab: this.rnd() < 0.7, grabEnd: 0.5 + this.rnd() * 0.5, kind: ['mute', 'tail', 'japan'][Math.floor(this.rnd() * 3)] };
+          this.trick = this.pickTrick([2, 3, 2, 1, 4, 0]);
           if (J.name === 'Small') this.trick.spin = Math.min(this.trick.spin, Math.PI * 2);
           // the big tables get the odd cork or backflip
           if ((J.name === 'Large' || J.name === 'XL') && this.world.arcade && this.rnd() < 0.45) { this.trick.flip = -1; this.trick.spin = this.rnd() < 0.5 ? Math.PI * 4 : this.rnd() < 0.5 ? Math.PI * 2 : 0; }
@@ -116,13 +115,22 @@ export class AIController {
       if (dz > 95) break;
       this.want = J.speed + (this.skill - 0.7) * 1.5;
       if (z > J.z - 4 && !this.trick) {
-        const big = J.h > 3.5, spins = big ? [Math.PI * 2, Math.PI * 3, Math.PI * 4, 0] : [Math.PI, Math.PI * 2, 0, Math.PI * 2];
-        this.trick = { spin: spins[Math.floor(this.rnd() * spins.length)], dir: this.rnd() < 0.5 ? 1 : -1, grab: this.rnd() < 0.7, grabEnd: 0.5 + this.rnd() * 0.6, kind: ['mute', 'tail', 'japan'][Math.floor(this.rnd() * 3)] };
-        if (big && this.rnd() < 0.4) this.trick.flip = -1;
+        const big = J.h > 3.5;
+        this.trick = this.pickTrick(big ? [2, 3, 4, 0, 5] : [1, 2, 0, 2]);
+        if (big && this.rnd() < 0.4) this.trick.flip = this.rnd() < 0.8 ? -1 : 1;
       }
       return { tx: centerX(J.lip) + J.dx, tz: Math.max(J.lip, z + 6) };
     }
     return null;
+  }
+
+  // a trick for the next kicker: half turns to spin, a grab (sometimes two), a shifty or daffy
+  pickTrick(halves) {
+    const R = this.rnd, K = ['mute', 'tail', 'japan', 'safety', 'critical', 'nose'];
+    const t = { spin: halves[Math.floor(R() * halves.length)] * Math.PI, dir: R() < 0.5 ? 1 : -1, grab: R() < 0.7, grabEnd: 0.5 + R() * 0.6, kind: K[Math.floor(R() * K.length)] };
+    if (t.grab && R() < 0.25) t.kind2 = K[Math.floor(R() * K.length)];
+    if (!t.spin && R() < 0.5) { t.style = R() < 0.6 ? 'up' : 'down'; t.grab = R() < 0.3; }
+    return t;
   }
 
   laneAt(z) {
@@ -164,14 +172,17 @@ export class AIController {
       if (this.trick) {
         c.steer = Math.abs(s.spin) < this.trick.spin - 0.35 ? this.trick.dir : 0;
         c.grab = this.trick.grab && s.airTime > 0.15 && s.airTime < this.trick.grabEnd;
-        c.grabKind = this.trick.kind ?? 'mute';
+        const T = this.trick;
+        c.grabKind = T.kind2 && s.airTime > (0.15 + T.grabEnd) / 2 ? T.kind2 : T.kind ?? 'mute';
+        c.up = T.style === 'up' && s.airTime > 0.08 && s.airTime < 0.75 && !c.grab;
+        c.down = T.style === 'down' && s.airTime > 0.08 && s.airTime < 0.75 && !c.grab;
         // one flip: hold it until it's most of the way round
         c.flip = this.trick.flip && s.airTime > 0.05 && Math.abs(s.pitch) < Math.PI * 2 - 1.2 ? this.trick.flip : 0;
         c.roll = 0;
-      } else { c.steer = 0; c.grab = false; c.flip = 0; c.roll = 0; }
+      } else { c.steer = 0; c.grab = false; c.flip = 0; c.roll = 0; c.up = false; c.down = false; }
       return;
     }
-    this.trick = null; c.grab = false; c.flip = 0;
+    this.trick = null; c.grab = false; c.flip = 0; c.up = false; c.down = false;
     this.want = null; this.inPipe = false;
 
     // finished: slow down and stop in the village

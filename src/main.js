@@ -60,6 +60,11 @@ class Game {
     this.quality = params.get('q') ?? store.get('quality', 'high');
     if (!QUALITY[this.quality]) this.quality = 'high';
     this.jacket = Number(store.get('jacket', JACKETS[0]));
+    // skis or a snowboard
+    this.gear = params.get('gear') ?? store.get('gear', 'ski');
+    if (!['ski', 'board'].includes(this.gear)) this.gear = 'ski';
+    // every trick name ever landed on this browser
+    try { this.book = new Set(JSON.parse(store.get('book', '[]'))); } catch { this.book = new Set(); }
     this.selMode = store.get('mode', 'run');
     if (!['run', 'park', 'race'].includes(this.selMode)) this.selMode = 'run';
     this.selPark = PARK_ID;
@@ -215,8 +220,19 @@ class Game {
     const tabs = [...document.querySelectorAll('#tabs button')];
     for (const t of tabs) t.onclick = () => {
       tabs.forEach((x) => x.classList.toggle('on', x === t));
-      for (const k of ['ride', 'locker', 'how']) $('tab-' + k).classList.toggle('hidden', k !== t.dataset.tab);
+      for (const k of ['ride', 'locker', 'tricks', 'how']) $('tab-' + k).classList.toggle('hidden', k !== t.dataset.tab);
+      if (t.dataset.tab === 'tricks') this.showBook();
     };
+    const gears = [...document.querySelectorAll('#gear button')];
+    const setGear = (g) => {
+      this.gear = g; store.set('gear', g);
+      gears.forEach((b) => b.classList.toggle('on', b.dataset.gear === g));
+      document.querySelector('.mchip[data-mode="park"]').firstChild.textContent = g === 'board' ? 'PARK LAPS' : 'SKI PARK';
+      if (this.room) this.room.me.outfit = this.outfit();
+      if (!$('tab-tricks').classList.contains('hidden')) this.showBook();
+    };
+    for (const b of gears) b.onclick = () => setGear(b.dataset.gear);
+    setGear(this.gear);
     // the ride tab: the park, the mode, solo or multiplayer
     const chips = [...document.querySelectorAll('.mchip')];
     const pick = (m) => {
@@ -269,7 +285,41 @@ class Game {
     $('best').innerHTML = best ? (m === 'race' ? `Best Cup time<b>${fmt(best)}</b>` : `Best ${m === 'run' ? MAPS[this.selPark].name : 'park session'}<b>${best.toLocaleString()}</b>`) : 'No score yet<b>Send it</b>';
   }
 
-  outfit() { return { ...this.myOutfit, jacket: this.jacket }; }
+  outfit() {
+    const o = { ...this.myOutfit, jacket: this.jacket, board: this.gear === 'board' };
+    if (o.board && o.boots === 0xf0f0f0) o.boots = 0x2a2d35;
+    return o;
+  }
+
+  // a rider for the mountain: about a third ride a snowboard (more in the park)
+  aiOutfit(style) {
+    const o = randomOutfit(this.rnd);
+    o.board = style !== 'racer' && this.rnd() < (style === 'park' ? 0.45 : style === 'beginner' ? 0.4 : 0.3);
+    if (o.board && o.boots === 0xf0f0f0) o.boots = 0x2a2d35;
+    return o;
+  }
+
+  // the trick book: families of tricks, ticked once one's been landed
+  showBook() {
+    const B = this.gear === 'board';
+    const has = (re) => [...this.book].some((n) => re.test(n));
+    const fam = [
+      ['Spins', B ? [['FS 360', /^(Switch )?FS 360/], ['BS 360', /^(Switch )?BS 360/], ['Half Cab', /Half Cab/], ['540', /\b540\b/], ['720', /\b720\b/], ['900', /\b900\b/], ['1080', /\b1080\b/], ['1260+', /\b(1260|1440|1620|1800)\b/]]
+        : [['360', /\b360\b/], ['540', /\b540\b/], ['720', /\b720\b/], ['900', /\b900\b/], ['1080', /\b1080\b/], ['1260+', /\b(1260|1440|1620|1800)\b/], ['Switch', /^Switch/], ['Spin out of a rail', /Out$/]]],
+      ['Flips', [['Backflip', /Backflip/], ['Frontflip', /Frontflip/], B ? ['Wildcat', /Wildcat/] : ['Sideflip', /Sideflip/], B ? ['Tamedog', /Tamedog/] : ['Flatspin', /Flatspin/], ['Double', /Double/], ['Triple', /Triple|Quad/]]],
+      ['Off-axis', [['Cork', /Cork/], [B ? 'Misty' : 'Bio', B ? /Misty/ : /Bio/], ['Rodeo', /Rodeo/], ['Double Cork', /Double Cork/], [B ? 'Flatspin' : 'Misty', B ? /Flatspin/ : /Misty/]]],
+      ['Grabs', (B ? [['Indy', /Indy/], ['Melon', /Melon/], ['Method', /Method/], ['Stalefish', /Stalefish/], ['Nose Grab', /Nose(?! Butter| Press)/], ['Tail Grab', /Tail(?! Butter| Press)/]]
+        : [['Mute', /Mute/], ['Japan', /Japan/], ['Safety', /Safety/], ['Critical', /Critical/], ['Nose Grab', /Nose(?! Butter| Press)/], ['Tail Grab', /Tail(?! Butter| Press)/]]).concat([['Grab to grab', / to /], ['Tweaked', /Tweaked/]])],
+      ['Style', [['Shifty', /Shifty/], [B ? 'Boned' : 'Daffy', B ? /Boned/ : /Daffy/], ['Butter', /Butter/], ['Butter 360', /Butter 360|Butter 540/]]],
+      ['Rails', [['50-50', /50-50/], ['Lipslide', /Lipslide/], ['Boardslide', /Boardslide/], ['Nose Press', /Nose Press/], ['Tail Press', /Tail Press/], ['Spin on', /\bon /]]],
+    ];
+    let got = 0, all = 0;
+    $('book').innerHTML = fam.map(([h, list]) => `<div class="h">${h}</div>` + list.map(([n, re]) => {
+      const ok = has(re); all++; if (ok) got++;
+      return `<div class="t${ok ? ' got' : ''}"><b>${n}</b>${ok ? 'landed' : 'not yet'}</div>`;
+    }).join('')).join('');
+    $('book-n').textContent = `${got}/${all} · ${this.book.size} tricks`;
+  }
 
   showParkCard() {
     const M = MAPS[this.selPark];
@@ -445,7 +495,7 @@ class Game {
   addSkier(opts, style) {
     const s = new Skier(this.world, opts);
     patchTree(s.model.group);
-    s.on('yardsale', () => { if (this.camera.position.distanceTo(s.pos) < 200) { this.debris.spawn(s); s.model.gearOff = true; } });
+    s.on('yardsale', () => { if (!s.board && this.camera.position.distanceTo(s.pos) < 200) { this.debris.spawn(s); s.model.gearOff = true; } });
     s.on('gear', () => { this.debris.clear(s); s.model.gearOff = false; });
     this.skiers.push(s);
     if (style) { const ai = new AIController(s, style, this.rnd, this.world); s.ai = ai; this.ais.push(ai); }
@@ -461,7 +511,7 @@ class Game {
     // fewer riders on the shorter parks
     const crowd = Math.min(1, Math.max(0.35, MAP.km / 3.4));
     for (const [style, all] of styles) for (let i = 0, count = Math.max(1, Math.round(all * crowd)); i < count; i++) {
-      const s = this.addSkier({ outfit: randomOutfit(this.rnd), name: NAMES[n % NAMES.length] }, style);
+      const s = this.addSkier({ outfit: this.aiOutfit(style), name: NAMES[n % NAMES.length] }, style);
       let z = 60 + this.rnd() * (FINISH_Z - 200);
       if (style === 'park' && PARK_ID === 'yard') z = 900 + this.rnd() * 450;
       if (style === 'beginner') z = FINISH_Z * (0.85 - (i % 2) * 0.75) + this.rnd() * FINISH_Z * 0.1;
@@ -486,13 +536,13 @@ class Game {
     const lines = [['jumps', 6], ['rails', 4], ['pipe', 4]];
     let n = 0;
     for (const [line, count] of lines) for (let i = 0; i < count; i++) {
-      const s = this.addSkier({ outfit: randomOutfit(this.rnd), name: NAMES[n % NAMES.length] }, 'park');
+      const s = this.addSkier({ outfit: this.aiOutfit('park'), name: NAMES[n % NAMES.length] }, 'park');
       s.ai.line = line;
       this.parkSpawn(s, line, this.rnd() * 0.85);
       n++;
     }
     for (let i = 0; i < 4; i++) {
-      const s = this.addSkier({ outfit: randomOutfit(this.rnd), name: NAMES[n++ % NAMES.length] }, i < 2 ? 'cruiser' : 'carver');
+      const s = this.addSkier({ outfit: this.aiOutfit('carver'), name: NAMES[n++ % NAMES.length] }, i < 2 ? 'cruiser' : 'carver');
       this.parkSpawn(s, 'middle', this.rnd() * 0.8);
     }
     const p = this.addSkier({ outfit: this.outfit(), name: 'You', isPlayer: true, grip: 1.75, sidecut: 16 });
@@ -580,16 +630,32 @@ class Game {
   status(txt) { this.statusTxt = txt; this.statusT = 2.2; }
 
   trickName(t) {
-    const N = { cork: 'Cork', bio: 'Bio', rodeo: 'Rodeo', misty: 'Misty', flatspin: 'Flatspin', backflip: 'Backflip', frontflip: 'Frontflip', sideflip: 'Sideflip' };
+    const B = t.board;
+    const N = { cork: 'Cork', bio: B ? 'Misty' : 'Bio', rodeo: 'Rodeo', misty: 'Misty', flatspin: 'Flatspin', backflip: 'Backflip', frontflip: 'Frontflip', sideflip: B ? (t.flipDir < 0 ? 'Wildcat' : 'Tamedog') : 'Sideflip' };
     const mult = ['', '', 'Double ', 'Triple ', 'Quad '][Math.min(t.flips, 4)];
+    // off a rail the spin counts in quarters: 270 out
+    const spin = t.fromRail ? t.spin90 : t.spin;
+    const spun = spin >= (t.fromRail ? 90 : 180);
     let core = '';
-    if (t.flips && t.type) core = `${mult}${N[t.type]}${t.spin >= 180 ? ' ' + t.spin : ''}`;
+    if (t.flips && t.type) core = `${mult}${N[t.type]}${spun ? ' ' + spin : ''}`;
     else if (t.flips) core = `${mult}${t.flipDir > 0 ? 'Frontflip' : 'Backflip'}`;
-    else if (t.spin >= 180) core = String(t.spin);
-    if (core && t.switchIn) core = 'Switch ' + core;
-    const G = { mute: 'Mute', tail: 'Tail', japan: 'Japan' };
-    const grabs = t.grabs.map(([k]) => G[k] ?? 'Grab').join(' + ');
-    let name = core && grabs ? `${core} ${grabs}` : core || (grabs ? `${grabs} Grab` : '');
+    else if (spun) core = String(spin);
+    // snowboarders call a spin by the way it turns: frontside, backside, cab (switch frontside)
+    if (core && B && spun) {
+      // (facing the other edge when switch: the same turn is the other side)
+      const fs = (t.spinDir > 0) !== !!t.switchIn;
+      if (t.switchIn) core = fs ? (core === '180' ? 'Half Cab' : 'Cab ' + core) : 'Switch BS ' + core;
+      else core = (fs ? 'FS ' : 'BS ') + core;
+    } else if (core && t.switchIn) core = 'Switch ' + core;
+    if (core && t.fromRail && spun && !t.flips) core += ' Out';
+    const SHORT = { mute: 'Mute', tail: 'Tail', japan: 'Japan', safety: 'Safety', critical: 'Critical', nose: 'Nose', indy: 'Indy', melon: 'Melon', method: 'Method', stalefish: 'Stalefish' };
+    const LONE = { mute: 'Mute Grab', tail: 'Tail Grab', japan: 'Japan', safety: 'Safety Grab', critical: 'Critical', nose: 'Nose Grab', indy: 'Indy', melon: 'Melon', method: 'Method', stalefish: 'Stalefish' };
+    const gl = t.grabs.map(([k]) => (core || t.grabs.length > 1 ? SHORT : LONE)[k] ?? 'Grab');
+    let grabs = gl.join(' to ');
+    // one grab held a long time is a tweaked one
+    if (t.grabs.length === 1 && t.grabs[0][1] >= 1) grabs = 'Tweaked ' + grabs;
+    const style = [t.shifty && 'Shifty', t.daffy && (B ? 'Boned' : 'Daffy')].filter(Boolean).join(' ');
+    let name = [core, style, grabs].filter(Boolean).join(' ');
     if (!name && t.pipe) name = t.rise > 1.5 ? 'Big Pipe Air' : 'Pipe Air';
     return name;
   }
@@ -611,6 +677,13 @@ class Game {
     if (total <= 0) return;
     sc.score += total; sc.clean++;
     const title = name || (sketchy ? 'SKETCHY LANDING' : stomp ? 'STOMPED' : 'CLEAN LANDING');
+    // a trick never landed before on this browser goes in the book
+    const fresh = [...sc.names, name].filter((n) => n && !this.book.has(n));
+    if (fresh.length && !sketchy) {
+      for (const n of fresh) this.book.add(n);
+      store.set('book', JSON.stringify([...this.book].slice(-400)));
+      sc.fresh = (sc.fresh ?? 0) + fresh.length;
+    }
     if (total > sc.best.pts && name) sc.best = { pts: total, name };
     const prev = name && sc.names[sc.names.length - 1] === name ? sc.names.slice(0, -1) : sc.names.filter((x) => x !== name);
     const line = prev.length ? prev.join(' · ') + ' · ' : '';
@@ -620,17 +693,22 @@ class Game {
     if (this.room && total >= 1500) this.room.event({ type: 'trick', name: title, pts: total });
     if (total >= 2500) this.tipUntil = this.time + 3.5;
     this.say(title, `+${total.toLocaleString()}${mult > 1 ? `<em>×${mult.toFixed(2).replace(/0$/, '')}</em>` : ''}`, sketchy ? 'sketchy' : line ? line.slice(0, -3) : '', big ? 'gold' : '');
-    this.status(sketchy ? 'SKETCHY' : stomp ? 'STOMPED' : 'CLEAN LANDING');
-    if (big) this.audio.chime();
+    this.status(fresh.length && !sketchy ? 'NEW TRICK' : sketchy ? 'SKETCHY' : stomp ? 'STOMPED' : 'CLEAN LANDING');
+    if (big || (fresh.length && !sketchy)) this.audio.chime();
   }
 
   onPlayerGrind(g) {
     const sc = this.sc;
     if (!sc || g.fell || g.t < 0.25) return;
     // a press (skis crossed, Space held) pays a quarter more while it's held
-    let pts = 750 * g.t + 450 * g.swaps + (g.spinIn >= 180 ? 300 : 0) + 190 * Math.min(g.press, g.t);
+    let pts = 750 * g.t + 450 * g.swaps + (g.spinIn >= 180 ? 300 : g.spinIn >= 90 ? 150 : 0) + 190 * Math.min(g.press, g.t);
     if (g.switchIn) pts *= 1.25;
-    const name = `${g.spinIn >= 180 ? g.spinIn + ' on ' : ''}${g.switchIn && g.kind === '50-50' ? 'Switch 50-50' : g.kind}`;
+    // held a nose or tail press for a good part of it
+    const press = g.nose >= g.t * 0.4 ? 'Nose Press' : g.tail >= g.t * 0.4 ? 'Tail Press' : '';
+    if (press) pts *= 1.3;
+    let kind = g.switchIn && g.kind === '50-50' ? 'Switch 50-50' : g.kind;
+    if (press) kind = g.kind === '50-50' ? (g.switchIn ? 'Switch ' : '') + press : `${kind} ${press}`;
+    const name = `${g.spinIn >= 90 ? g.spinIn + ' on ' : ''}${kind}`;
     pts *= this.repeat(name + g.rail);
     this.addFeature(pts, name);
     this.liveCall = false;
@@ -639,8 +717,9 @@ class Game {
   onPlayerButter(b) {
     const sc = this.sc;
     if (!sc) return;
-    const name = `${b.tail ? 'Tail' : 'Nose'} Butter${b.spin ? ' 180' : ''}`;
-    const pts = Math.round((b.spin ? 300 : 150) * this.repeat(name));
+    const name = `${b.tail ? 'Tail' : 'Nose'} Butter${b.spin ? ' ' + b.spin : ''}`;
+    const pts = Math.round((150 + (b.spin / 180) * 230) * this.repeat(name));
+    if (!this.book.has(name)) { this.book.add(name); store.set('book', JSON.stringify([...this.book].slice(-400))); sc.fresh = (sc.fresh ?? 0) + 1; this.status('NEW TRICK'); }
     sc.score += pts;
     this.say(name, `+${pts}`, '', '', 1500);
   }
@@ -653,14 +732,16 @@ class Game {
     const sc = this.sc;
     if (!sc) return;
     sc.air += t.air;
-    const trick = t.spin >= 180 || t.flips > 0 || t.grabs.length > 0;
+    const trick = t.spin >= 180 || t.flips > 0 || t.grabs.length > 0 || t.shifty || t.daffy || (t.fromRail && t.spin90 >= 90);
     // little hops on the flat don't count
     if (t.air < 0.5 && !trick) { if (sc.pend > 0) this.bank(sc.names[sc.names.length - 1] ?? '', t.sketchy, 0); return; }
-    const turns = t.spin / 360 + t.flips;
+    const turns = (t.fromRail ? t.spin90 : t.spin) / 360 + t.flips;
     const rot = turns > 0 ? 900 * turns * turns * (1 + 0.15 * t.flips) * (t.switchIn ? 1.25 : 1) : 0;
     let pts = rot + 135 * t.air + 36 * Math.max(0, t.height);
     if (t.grabs.length) pts *= (1.25 + 0.25 * smoothstep(0.25, 1, t.grabs[0][1])) * (t.grabs.length > 1 ? 1.3 : 1);
     if (t.pipe) pts += Math.max(0, t.rise) * 90;
+    if (t.shifty) pts += 350;
+    if (t.daffy) pts += 300;
     // stomped it: a landing that matched the slope pays 15% more
     if (t.stomp) pts *= 1.15;
     const name = this.trickName(t);
@@ -780,6 +861,7 @@ class Game {
         <div class="stat"><b>${Math.round(sc.top * 3.6)} km/h</b><span>Top speed</span></div>
         <div class="stat"><b>${sc.clean}</b><span>Clean landings</span></div>
         <div class="stat"><b>${sc.crashes}</b><span>Bails</span></div>
+        <div class="stat"><b>${sc.fresh ?? 0}</b><span>New tricks</span></div>
       </div>
       <p class="lead" style="margin-top:16px">Best trick <b style="color:var(--gold)">${sc.best.name}</b>${sc.best.pts ? ' · ' + sc.best.pts.toLocaleString() : ''}</p>
       <div class="row"><button class="btn p" id="r-lift">Ride again</button><button class="btn" id="r-replay">Watch replay</button><button class="btn" id="r-menu">Menu</button></div>`;
@@ -1174,7 +1256,7 @@ class Game {
       }
     }
     if (!tip && this.time < (this.tipUntil ?? 0)) tip = 'V · instant replay';
-    if (!tip && this.sc && this.time - (this.startAt ?? 0) < 10 && !document.body.classList.contains('touch')) tip = 'A/D spin · W/S flip · arrows roll · Shift/Q/E grab · hold Space, release to pop';
+    if (!tip && this.sc && this.time - (this.startAt ?? 0) < 10 && !document.body.classList.contains('touch')) tip = 'A/D spin · W/S flip · arrows roll · Shift Q E F X Z grab · ↑ shifty · hold Space, release to pop';
     const tp = $('tip');
     if (tip !== this.tipTxt) { this.tipTxt = tip; tp.textContent = tip; tp.classList.toggle('hidden', !tip); }
     // hold-to-restart ring

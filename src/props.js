@@ -3,7 +3,7 @@
 // plus rocks and terrain-park dressing.
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { heightAt, centerX, halfWidth, GATES, KICKERS, LIFT, START_Z, FINISH_Z, SECTIONS, slopeAt, MAP } from './course.js';
+import { heightAt, centerX, halfWidth, GATES, KICKERS, LIFT, START_Z, FINISH_Z, SECTIONS, slopeAt, MAP, JUMPS, RAILS } from './course.js';
 import { mulberry32, makeSimplex, smoothstep } from './noise.js';
 import { pbr } from './terrain.js';
 
@@ -108,6 +108,94 @@ export class Props {
     this.buildNets();
     this.buildRocks();
     this.buildPark();
+    this.buildSnowGuns();
+    this.buildSigns();
+  }
+
+  // ---------------- snowmaking ----------------
+  // fan guns on short towers along the piste edge, aimed across the run
+  buildSnowGuns() {
+    const yellow = 0xf2c419, grey = 0x3a3e46, dark = 0x16181d;
+    const housing = colorize(new THREE.CylinderGeometry(0.52, 0.56, 1.15, 20, 1, false).rotateX(Math.PI / 2), yellow);
+    const ring = colorize(new THREE.TorusGeometry(0.5, 0.06, 8, 24).translate(0, 0, 0.6), dark);
+    const grill = colorize(new THREE.CylinderGeometry(0.47, 0.47, 0.02, 20).rotateX(Math.PI / 2).translate(0, 0, 0.6), 0x2a2d33);
+    const back = colorize(new THREE.CylinderGeometry(0.3, 0.45, 0.35, 16).rotateX(Math.PI / 2).translate(0, 0, -0.72), grey);
+    const head = merge([housing, ring, grill, back]);
+    // tilt the barrel up and lift it onto the yoke
+    head.rotateX(-0.42); head.translate(0, 3.25, 0);
+    const tower = colorize(new THREE.CylinderGeometry(0.09, 0.12, 3.0, 8).translate(0, 1.5, 0), grey);
+    const yoke = colorize(new THREE.BoxGeometry(0.16, 0.5, 0.16).translate(0, 3.0, 0), grey);
+    const base = colorize(new THREE.BoxGeometry(1.1, 0.25, 0.9).translate(0, 0.12, 0), grey);
+    const box = colorize(new THREE.BoxGeometry(0.4, 0.55, 0.3).translate(0.45, 0.6, 0), 0xc7c9cc);
+    const hydrant = colorize(new THREE.CylinderGeometry(0.1, 0.1, 0.9, 8).translate(-0.9, 0.45, 0.4), 0xd23a2a);
+    const geo = merge([head, tower, yoke, base, box, hydrant]);
+    const list = [];
+    let side = 1;
+    for (let z = START_Z + 40; z < FINISH_Z - 140; z += 150) {
+      const hw = halfWidth(z);
+      let dx = side * (hw + 4.2);
+      const blocked = (d) => JUMPS.some((J) => z > J.z - 12 && z < J.z + J.len + 8 && Math.abs(d - J.dx) < J.w / 2 + 6)
+        || RAILS.some((R) => z > R.z - 8 && z < R.z + R.len + 6 && Math.abs(d - R.dx) < 6);
+      if (blocked(dx)) dx = -dx;
+      side = -side;
+      if (blocked(dx)) continue;
+      const x = centerX(z) + dx;
+      // pointed back across the run, a little down the hill
+      list.push([x, z, Math.atan2(-Math.sign(dx) * 0.9, 0.45)]);
+    }
+    if (!list.length) return;
+    const im = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.25 }), list.length);
+    list.forEach((p, i) => {
+      tmpM.compose(tmpP.set(p[0], heightAt(p[0], p[1]) - 0.1, p[1]), tmpQ.setFromAxisAngle(new THREE.Vector3(0, 1, 0), p[2]), tmpS.set(1, 1, 1));
+      im.setMatrixAt(i, tmpM);
+    });
+    im.castShadow = true;
+    this.scene.add(im);
+    for (const p of list) this.forest.addCollider(p[0], p[1], 0.7, 'pole');
+  }
+
+  // trail signs at the top of every section: name and difficulty
+  buildSigns() {
+    const diff = (n) => (/Wall|Glacier|Chute|Drop|Pillow|Mega|Steep/.test(n) ? 'black' : /Start|Village|Run-out|Green|Flats|Cat/.test(n) ? 'blue' : 'red');
+    const post = colorize(new THREE.CylinderGeometry(0.06, 0.07, 2.4, 8).translate(0, 1.2, 0), 0x5b3d24);
+    const postM = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 });
+    for (const sec of SECTIONS) {
+      const z = Math.max(sec.z0 + 6, START_Z + 12);
+      if (z > FINISH_Z - 60) continue;
+      const d = diff(sec.name);
+      const tex = canvasTex(512, 160, (g, w, h) => {
+        g.fillStyle = '#f3efe4'; g.fillRect(0, 0, w, h);
+        g.fillStyle = '#5b3d24'; g.fillRect(0, 0, w, 10); g.fillRect(0, h - 10, w, 10);
+        // the difficulty symbol: blue circle, red square, black diamond
+        g.fillStyle = d === 'blue' ? '#1f5fd0' : d === 'red' ? '#d42a2a' : '#111';
+        g.save(); g.translate(78, h / 2);
+        if (d === 'blue') { g.beginPath(); g.arc(0, 0, 44, 0, Math.PI * 2); g.fill(); }
+        else if (d === 'red') g.fillRect(-40, -40, 80, 80);
+        else { g.rotate(Math.PI / 4); g.fillRect(-36, -36, 72, 72); }
+        g.restore();
+        g.fillStyle = '#1b1d22'; g.font = 'bold 58px Helvetica, Arial'; g.textBaseline = 'middle';
+        let t = sec.name.toUpperCase(), fs = 58;
+        while (g.measureText(t).width > w - 160 && fs > 30) { fs -= 4; g.font = `bold ${fs}px Helvetica, Arial`; }
+        g.fillText(t, 140, h / 2 + 3);
+      });
+      const hw = halfWidth(z);
+      for (const s of [-1, 1]) {
+        const x = centerX(z) + s * (hw + 2.4);
+        const y = heightAt(x, z);
+        const grp = new THREE.Group();
+        grp.position.set(x, y - 0.15, z);
+        const p = new THREE.Mesh(post, postM); p.castShadow = true; grp.add(p);
+        const board = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.53, 0.05), [postM, postM, postM, postM, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7 }), postM]);
+        board.position.set(0, 2.1, 0.06); board.castShadow = true;
+        // face the riders coming down, turned a little in toward the run
+        grp.rotation.y = Math.PI + s * 0.35;
+        grp.add(board);
+        // a cap of snow on top of the board
+        const cap = new THREE.Mesh(new THREE.BoxGeometry(1.72, 0.05, 0.1), new THREE.MeshStandardMaterial({ color: 0xf4f6fb, roughness: 0.9 }));
+        cap.position.set(0, 2.39, 0.06); grp.add(cap);
+        this.scene.add(grp);
+      }
+    }
   }
 
   // ---------------- chairlift ----------------

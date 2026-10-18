@@ -63,9 +63,15 @@ export class CameraRig {
       look.y = s.pos.y + (close ? 0.75 : 0.9) - (close ? 0 : sp * 0.004);
       if (close) fov += 8;
     } else if (this.mode === 'helmet') {
-      const fwd = new THREE.Vector3(Math.sin(s.heading), 0, Math.cos(s.heading));
-      tgt.copy(s.pos).addScaledVector(fwd, 0.15);
-      tgt.y += 1.55 - s.controls.tuck * 0.5;
+      // at the rider's goggles (posed last frame, carried along by this frame's motion)
+      const gog = s.model.parts.goggles;
+      if (s.visPos && gog) {
+        gog.getWorldPosition(tgt);
+        tgt.sub(s.visPos).add(s.pos).addScaledVector(this.dir, 0.16);
+      } else {
+        tgt.copy(s.pos).addScaledVector(new THREE.Vector3(Math.sin(s.heading), 0, Math.cos(s.heading)), 0.15);
+        tgt.y += 1.55 - s.controls.tuck * 0.5;
+      }
       look.copy(tgt).addScaledVector(this.dir, 10);
       look.y = heightAt(look.x, look.z) + 1.0;
       fov += 6;
@@ -75,6 +81,7 @@ export class CameraRig {
         const up = new THREE.Vector3(0, 1, 0).applyQuaternion(q);
         const f = new THREE.Vector3(0, 0, 1).applyQuaternion(q);
         tgt.copy(s.model.group.position).addScaledVector(up, 1.55).addScaledVector(f, 0.12);
+        if (s.visPos) tgt.sub(s.visPos).add(s.pos);
         look.copy(tgt).addScaledVector(f, 10).addScaledVector(up, -2.5);
         this.helmUp = up;
       }
@@ -100,6 +107,8 @@ export class CameraRig {
     this.pos.lerp(tgt, k);
     this.look.lerp(look, Math.min(1, dt * 12));
     cam.position.copy(this.pos);
+    // our own helmet would fill the view
+    s.model.hideHead?.(this.mode === 'helmet' && s.crash <= 0);
     // speed buzz + impact shake
     this.shake = Math.max(0, this.shake - dt * 2.2);
     const buzz = smoothstep(18, 40, sp) * 0.012 * (s.onGround ? 1 : 0.2) + this.shake * 0.12;

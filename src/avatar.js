@@ -110,17 +110,19 @@ function kitMaterial(kit, outfit) {
     uLm: { value: new THREE.Vector2(kit.waistY, kit.neckY) },
     // how far the jacket and pants stand off the body (a race suit is skin tight)
     uPuff: { value: racer ? 0.004 : 1 },
+    // snowboard boots are big soft things
+    uFoot: { value: outfit.board ? 0.024 : 0.0 },
   };
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, u);
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>
-attribute float aPart; varying float vPart; varying vec3 vRest; uniform float uPuff;`)
+attribute float aPart; varying float vPart; varying vec3 vRest; uniform float uPuff, uFoot;`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
 vPart = aPart; vRest = position;
 {
   float pp = floor( aPart + 0.5 );
-  float puff = pp == 2.0 ? 0.034 : pp == 3.0 ? 0.03 : pp == 4.0 ? 0.026 : pp == 6.0 ? 0.03 : pp == 7.0 ? 0.034 : pp == 1.0 ? 0.016 : pp == 5.0 ? 0.012 : 0.0;
+  float puff = pp == 2.0 ? 0.034 : pp == 3.0 ? 0.03 : pp == 4.0 ? 0.026 : pp == 6.0 ? 0.03 : pp == 7.0 ? 0.034 : pp == 1.0 ? 0.016 : pp == 5.0 ? 0.012 : pp == 8.0 ? uFoot : 0.0;
   transformed += objectNormal * ( uPuff < 0.5 ? min( puff, uPuff ) : puff );
 }`);
     sh.fragmentShader = sh.fragmentShader
@@ -140,8 +142,8 @@ float gRough; vec4 gNS;`)
   gRough = mix( 0.85, 0.5, gNS.b );
   // keep the fabric's folds, lose its prints: a clamped ratio of two blur levels
   vec3 m3 = texture2D( map, uv, 3.0 ).rgb, m6 = texture2D( map, uv, 6.5 ).rgb;
-  float det = clamp( ( dot( m3, ${LUM} ) + 0.004 ) / ( dot( m6, ${LUM} ) + 0.004 ), 0.82, 1.15 );
-  float fine = clamp( ( dot( a.rgb, ${LUM} ) + 0.004 ) / ( dot( m3, ${LUM} ) + 0.004 ), 0.88, 1.1 );
+  float det = clamp( ( dot( m3, ${LUM} ) + 0.004 ) / ( dot( m6, ${LUM} ) + 0.004 ), 0.9, 1.08 );
+  float fine = clamp( ( dot( a.rgb, ${LUM} ) + 0.004 ) / ( dot( m3, ${LUM} ) + 0.004 ), 0.93, 1.06 );
   vec3 dye = vec3( -1.0 );
   float rough = 0.6;
   if ( bodyHalf || part > 0.5 ) {
