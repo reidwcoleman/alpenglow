@@ -43,6 +43,11 @@ const TRICKS = {
 };
 
 export class Skier {
+  // how far off another rider is still drawn (the phone settings draw less)
+  static drawDist = 1400;
+  // and from how far that's the shared simple figure (FarRiders)
+  static farDist = 200;
+
   constructor(world, opts) {
     this.world = world;
     this.name = opts.name ?? 'Skier';
@@ -1078,7 +1083,9 @@ export class Skier {
     const dist = camPos ? camPos.distanceTo(this.pos) : 0;
     m.setDetail(dist < 70);
     m.setReal?.(dist < 160);
-    m.group.visible = dist < 1400;
+    // a long way off another rider is drawn with the rest of them in one go (main.js)
+    this.far = !this.isPlayer && dist > Skier.farDist && dist < Skier.drawDist;
+    m.group.visible = dist < Skier.drawDist && !this.far;
     if (!m.group.visible) return;
     if (dist > 180 && (Math.floor(this.time * 60) % 3) !== 0) return; // pose far skiers less often
     const sp = this.speed;

@@ -7,8 +7,11 @@
 // little over the body.
 import * as THREE from 'three';
 import { HAIR, KNIT } from './gear.js';
+import { LO } from './gfx.js';
 
 const BASE = (import.meta.env?.BASE_URL ?? '/') + 'people/';
+// the textures at half size on the phone setting (tools/shrink_assets.py)
+const TEXB = BASE + (LO ? 'lo/' : '');
 export const AVATARS = ['Sports_Male_02', 'Sports_Male_03', 'Sports_Male_04', 'Sports_Female_02', 'Male_Adult_05', 'Male_Adult_08', 'Female_Adult_01', 'Female_Adult_03'];
 export const avatarKits = [];
 
@@ -43,7 +46,7 @@ function plain(src) {
 }
 
 async function loadKit(name, loader, tl) {
-  const tex = (f, srgb) => tl.loadAsync(BASE + f).then((t) => {
+  const tex = (f, srgb) => tl.loadAsync(TEXB + f).then((t) => {
     t.flipY = false; t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.anisotropy = 4; return t;
   });
   const [gl, map, normal, mask] = await Promise.all([loader.loadAsync(BASE + name + '.glb'), tex(name + '_c.webp', true), tex(name + '_n.webp', false), tex(name + '_m.png', false)]);
@@ -150,13 +153,16 @@ vRest = position;
   float pp = floor( aPart + 0.5 );
   // ski pants: roomy, wider toward the hem, which sits on the boot cuff
   float hem = 0.165;
-  float flare = smoothstep( 0.46, 0.2, position.y );
+  // (heights on the body at rest: a posed crowd or chair copy is baked already)
+  float flare = smoothstep( 0.46, 0.2, vRest.y );
   // the collar stands up round the neck to just under the chin (lower at the front, where it zips)
-  float cTop = uLmV.y + 0.06 - 0.025 * step( 0.03, position.z );
-  float collar = 1.0 - smoothstep( cTop - 0.012, cTop + 0.002, position.y );
+  float cTop = uLmV.y + 0.06 - 0.025 * step( 0.03, vRest.z );
+  float collar = 1.0 - smoothstep( cTop - 0.012, cTop + 0.002, vRest.y );
   // (the chest's puff eases off up into the collar so the two meet without a step)
-  float puff = pp == 2.0 ? mix( 0.036, 0.013, smoothstep( uLmV.y - 0.1, uLmV.y - 0.01, position.y ) ) : pp == 3.0 ? 0.032 : pp == 4.0 ? 0.03 : pp == 6.0 ? 0.04 : pp == 7.0 ? 0.034 + 0.03 * flare : pp == 5.0 ? 0.012 : pp < 1.5 ? 0.012 * collar : 0.0;
+  float puff = pp == 2.0 ? mix( 0.036, 0.013, smoothstep( uLmV.y - 0.1, uLmV.y - 0.01, vRest.y ) ) : pp == 3.0 ? 0.032 : pp == 4.0 ? 0.03 : pp == 6.0 ? 0.04 : pp == 7.0 ? 0.034 + 0.03 * flare : pp == 5.0 ? 0.012 : pp < 1.5 ? 0.012 * collar : 0.0;
+#ifndef CROWD
   if ( pp == 7.0 && uPuff > 0.5 ) transformed.y = max( transformed.y, hem );
+#endif
   transformed += objectNormal * ( uPuff < 0.5 ? min( puff, uPuff ) : puff );
 #ifndef CROWD
   // feet shrink a little inside the boot shells

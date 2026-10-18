@@ -419,6 +419,9 @@ export class Injuries {
     this.bits = [];
     this.blood = 0; this.pool = null; this.gore = false;
     this.who = null;
+    // (patched up: the view's wiped clean too)
+    const fx = document.getElementById('bloodfx');
+    if (fx) { fx.classList.remove('on'); fx.innerHTML = ''; }
   }
 
   clear() {

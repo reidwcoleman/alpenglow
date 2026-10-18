@@ -127,13 +127,16 @@ void main() {
 }`;
 
 export class ShadeField {
-  constructor(renderer) {
+  // the heights on its grid (gridHeights), worked out on a loading thread
+  static grid() {
+    const box = AG.uShadeBox.value, S = 20;
+    return [box.x, box.y, S, Math.round(box.z / S) + 1, Math.round(box.w / S) + 1];
+  }
+
+  constructor(renderer, data) {
     this.renderer = renderer;
     const box = AG.uShadeBox.value;
-    const S = 20;
-    const nx = Math.round(box.z / S) + 1, nz = Math.round(box.w / S) + 1;
-    const data = new Float32Array(nx * nz);
-    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) data[j * nx + i] = heightAt(box.x + i * S, box.y + j * S);
+    const [, , , nx, nz] = ShadeField.grid();
     const linear = renderer.extensions.has('OES_texture_float_linear');
     this.hTex = new THREE.DataTexture(data, nx, nz, THREE.RedFormat, THREE.FloatType);
     this.hTex.magFilter = this.hTex.minFilter = linear ? THREE.LinearFilter : THREE.NearestFilter;

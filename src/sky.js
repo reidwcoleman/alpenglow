@@ -139,22 +139,30 @@ export class Environment {
     this.envRT = null;
     this.meta = null;
     this.tex = new Map();
+    this.loading = new Map();
     this.time = 0;
   }
 
-  async load() {
-    this.meta = await (await fetch(BASE + 'sky.json')).json();
-    const tl = new THREE.TextureLoader();
-    await Promise.all([...new Set(Object.values(PRESETS).map((p) => p.hdri))].map(async (h) => {
-      const t = await tl.loadAsync(BASE + h + '_bg.jpg');
+  // the sky you start under (the others load when the weather turns to them)
+  async load(name) {
+    const [meta] = await Promise.all([fetch(BASE + 'sky.json').then((r) => r.json()), this.ensure((PRESETS[name] ?? PRESETS.bluebird).hdri)]);
+    this.meta = meta;
+  }
+
+  ensure(h) {
+    if (!this.loading.has(h)) this.loading.set(h, new THREE.TextureLoader().loadAsync(BASE + h + '_bg.jpg').then((t) => {
       t.colorSpace = THREE.NoColorSpace; // decoded by hand in the shader
       t.minFilter = THREE.LinearFilter; t.generateMipmaps = false; t.anisotropy = 4;
       this.tex.set(h, t);
     }));
+    return this.loading.get(h);
   }
 
   apply(name) {
     const p = PRESETS[name] ?? PRESETS.bluebird;
+    // not fetched yet: keep the sky there is till it's in
+    if (!this.tex.has(p.hdri)) { this.want = name; this.ensure(p.hdri).then(() => { if (this.want === name) this.apply(name); }); return; }
+    this.want = name;
     this.preset = p; this.presetName = name;
     const m = this.meta[p.hdri];
     const u = this.mat.uniforms;

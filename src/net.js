@@ -302,7 +302,7 @@ export class Room {
     for (const [id, p] of this.peers) {
       if (now - p.seen > 9000) { this.dropPeer(id); continue; }
       const F = p.frames;
-      if (!F.length) { p.skier.model.group.visible = false; p.tag.visible = false; continue; }
+      if (!F.length) { p.skier.model.group.visible = false; p.skier.far = false; p.tag.visible = false; continue; }
       let i = F.length - 1;
       while (i > 0 && F[i - 1].t > rt) i--;
       const a = F[Math.max(0, i - 1)], b = F[i];

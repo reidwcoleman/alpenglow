@@ -100,7 +100,8 @@ export class Park {
   }
 
   async build() {
-    // the snow first: it's most of the work, so give the loading screen a breath between pieces
+    // the snow first: it's most of the work, so give the loading screen a breath now and then
+    let t = performance.now();
     for (const f of PARK_FEET) {
       const isPipe = f.dx0 < PIPE.dx && f.dx1 > PIPE.dx;
       const isRoll = f.dx0 < ROLLERS.dx && f.dx1 > ROLLERS.dx;
@@ -108,7 +109,7 @@ export class Park {
       const m = new THREE.Mesh(g, this.snowMat);
       m.receiveShadow = true;
       this.group.add(m);
-      await nextFrame();
+      if (performance.now() - t > 45) { await nextFrame(); t = performance.now(); }
     }
     this.buildRails();
     this.buildLines();
@@ -244,24 +245,26 @@ export class Park {
     flagG.computeVertexNormals();
     const poleM = new THREE.MeshStandardMaterial({ color: 0xdedede, roughness: 0.5 });
     const flagMs = COLS.map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.8, side: THREE.DoubleSide }));
-    let k = 0;
-    const flag = (x, z, out) => {
-      const y = heightAt(x, z);
-      const p = new THREE.Mesh(poleG, poleM);
-      p.position.set(x, y - 0.1, z);
-      p.castShadow = true;
-      const f = new THREE.Mesh(flagG, flagMs[k++ % flagMs.length]);
-      f.position.copy(p.position);
-      f.rotation.y = out > 0 ? 0.4 : Math.PI - 0.4;
-      f.castShadow = true;
-      this.group.add(p, f);
-      this.smash?.add(x, z, 0.2, [p, f], { h: 2.3, slow: 0.015 });
-    };
+    // every pole one instanced mesh, the flags one per colour; each a slot the smash can tip
+    const spots = [];
     for (const J of JUMPS) for (const s of [-1, 1]) {
-      flag(centerX(J.lip) + J.dx + s * (J.w / 2 + 1.6), J.lip - 0.5, s);
-      flag(centerX(J.lip + J.table) + J.dx + s * (J.w / 2 + 2.2), J.lip + J.table, s);
+      spots.push([centerX(J.lip) + J.dx + s * (J.w / 2 + 1.6), J.lip - 0.5, s]);
+      spots.push([centerX(J.lip + J.table) + J.dx + s * (J.w / 2 + 2.2), J.lip + J.table, s]);
     }
-    for (const R of RAILS) for (const s of [-1, 1]) flag(R.a.x + s * 1.6, R.a.z - 3.5, s);
+    for (const R of RAILS) for (const s of [-1, 1]) spots.push([R.a.x + s * 1.6, R.a.z - 3.5, s]);
+    if (spots.length) {
+      const poles = new THREE.InstancedMesh(poleG, poleM, spots.length);
+      const flags = flagMs.map((m, c) => new THREE.InstancedMesh(flagG, m, Math.ceil((spots.length - c) / flagMs.length)));
+      const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
+      spots.forEach(([x, z, out], k) => {
+        p.set(x, heightAt(x, z) - 0.1, z);
+        poles.setMatrixAt(k, m4.compose(p, q.identity(), one));
+        const f = flags[k % flagMs.length], fi = Math.floor(k / flagMs.length);
+        f.setMatrixAt(fi, m4.compose(p, q.setFromAxisAngle(Y, out > 0 ? 0.4 : Math.PI - 0.4), one));
+        this.smash?.add(x, z, 0.2, [{ im: poles, i: k }, { im: f, i: fi }], { h: 2.3, slow: 0.015 });
+      });
+      for (const im of [poles, ...flags]) { im.castShadow = true; im.computeBoundingSphere(); this.group.add(im); }
+    }
     // banner fences along both pipe decks
     const bannerT = signTexture(['SHREDLINE', 'PARK · PIPE'], '#0f1420', '#fff', '#ff8a3d');
     bannerT.wrapS = THREE.RepeatWrapping;

@@ -233,6 +233,9 @@ export class Props {
     const diff = trailDiff;
     const post = colorize(new THREE.CylinderGeometry(0.06, 0.07, 2.4, 8).translate(0, 1.2, 0), 0x5b3d24);
     const postM = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 });
+    // the post, the board's timber and its cap of snow in one; the painted face on the front
+    const frame = merge([post, colorize(new THREE.BoxGeometry(2.6, 0.81, 0.06), 0x5b3d24).translate(0, 2.0, 0.06), colorize(new THREE.BoxGeometry(2.62, 0.05, 0.1), 0xf4f6fb).translate(0, 2.43, 0.06)]);
+    const face = new THREE.PlaneGeometry(2.6, 0.81).translate(0, 2.0, 0.092);
     for (const sec of SECTIONS) {
       const z = Math.max(sec.z0 + 6, START_Z + 12);
       if (z > FINISH_Z - 60) continue;
@@ -253,20 +256,16 @@ export class Props {
         g.fillText(t, 140, h / 2 + 3);
       });
       const hw = halfWidth(z);
+      const faceM = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7 });
       for (const s of [-1, 1]) {
         const x = centerX(z) + s * (hw + 2.4);
         const y = heightAt(x, z);
         const grp = new THREE.Group();
         grp.position.set(x, y - 0.15, z);
-        const p = new THREE.Mesh(post, postM); p.castShadow = true; grp.add(p);
-        const board = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.81, 0.06), [postM, postM, postM, postM, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7 }), postM]);
-        board.position.set(0, 2.0, 0.06); board.castShadow = true;
+        const p = new THREE.Mesh(frame, postM); p.castShadow = true; grp.add(p);
+        grp.add(new THREE.Mesh(face, faceM));
         // face the riders coming down, turned a little in toward the run
         grp.rotation.y = Math.PI + s * 0.35;
-        grp.add(board);
-        // a cap of snow on top of the board
-        const cap = new THREE.Mesh(new THREE.BoxGeometry(2.62, 0.05, 0.1), new THREE.MeshStandardMaterial({ color: 0xf4f6fb, roughness: 0.9 }));
-        cap.position.set(0, 2.43, 0.06); grp.add(cap);
         this.scene.add(grp);
         this.smash?.add(x, z, 0.45, [grp], { h: 2.5, slow: 0.08, kind: 'sign' });
       }
@@ -462,12 +461,34 @@ export class Props {
     this.chairs = [];
     for (const li of [0, 1]) for (let d = 0; d < totalLen[li]; d += spacing) this.chairs.push({ li, d, ride: this.rnd() < 0.55 });
     this.chairMesh = new THREE.InstancedMesh(chairGeo, this.vc, this.chairs.length);
+    // off in the distance a chair is a few boxes: the whole line of them in one cheap draw
+    const fp = [];
+    const fb = (w, h, d, c, x, y, z, rx = 0) => { const g = colorize(new THREE.BoxGeometry(w, h, d).rotateX(rx), c); g.translate(x, y, z); fp.push(g); };
+    fb(0.34, 0.3, 0.8, 0x2b2f36, 0, -0.06, 0);
+    fb(0.1, 1.6, 0.1, frameC, 0, -0.95, -0.25, 0.3);
+    fb(2.78, 0.09, 0.09, frameC, 0, -1.7, -0.5);
+    for (const sx of [-1.39, 1.39]) fb(0.08, 0.9, 0.08, frameC, sx, -2.1, -0.3, 0.35);
+    fb(2.7, 0.16, 0.62, pad, 0, -2.45, 0.1);
+    fb(2.7, 0.66, 0.12, padD, 0, -2.03, -0.24, -0.22);
+    fb(2.86, 0.07, 0.07, steelC, 0, -1.25, 0.42);
+    fb(2.4, 0.05, 0.22, steelC, 0, -1.0, 0.72);
+    this.chairFar = new THREE.InstancedMesh(merge(fp), this.vc, this.chairs.length);
+    this.chairFar.receiveShadow = true;
     this.riderMesh = new THREE.InstancedMesh(riderGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7 }), this.chairs.length);
-    const jackets = [0xd8342c, 0xf2b705, 0x2a7de1, 0x18a868, 0xf06d1a, 0x8e3fd1, 0x1d1f26, 0xff4f8b];
-    this.chairs.forEach((c, i) => this.riderMesh.setColorAt(i, new THREE.Color(jackets[i % jackets.length])));
+    this.riderMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(this.chairs.length * 3), 3);
+    this.jackets = [0xd8342c, 0xf2b705, 0x2a7de1, 0x18a868, 0xf06d1a, 0x8e3fd1, 0x1d1f26, 0xff4f8b].map((c) => new THREE.Color(c));
     this.chairMesh.castShadow = this.riderMesh.castShadow = true;
-    this.chairMesh.frustumCulled = this.riderMesh.frustumCulled = false;
-    this.scene.add(this.chairMesh, this.riderMesh);
+    this.chairMesh.frustumCulled = this.riderMesh.frustumCulled = this.chairFar.frustumCulled = false;
+    this.scene.add(this.chairMesh, this.chairFar, this.riderMesh);
+    // each chair's pose this frame (the riders on it and the rescue read it)
+    this.chairM = new Float32Array(this.chairs.length * 16);
+    // the cable as distances along each line, for finding a point on it quickly
+    this.cline = [0, 1].map((li) => {
+      const pts = li === 0 ? this.cableLines[0] : [...this.cableLines[1]].reverse();
+      const cum = new Float32Array(pts.length);
+      for (let k = 1; k < pts.length; k++) cum[k] = cum[k - 1] + pts[k - 1].distanceTo(pts[k]);
+      return { pts, cum };
+    });
     this.totalLen = totalLen;
     this.liftDir = dir;
     this.liftV = 4.6; // m/s along the cable
@@ -479,51 +500,58 @@ export class Props {
   chairD(i) { const c = this.chairs[i]; return (c.d + (this.liftT ?? 0) * this.liftV) % this.totalLen[c.li]; }
 
   cablePoint(li, d, out) {
-    const pts = this.cableLines[li];
-    const n = pts.length;
     // line 0 runs bottom -> top, line 1 returns top -> bottom
-    for (let k = 0; k < n - 1; k++) {
-      const i = li === 0 ? k : n - 1 - k, j = li === 0 ? k + 1 : n - 2 - k;
-      const l = pts[i].distanceTo(pts[j]);
-      if (d <= l) return out.lerpVectors(pts[i], pts[j], d / l);
-      d -= l;
-    }
-    return out.copy(pts[li === 0 ? n - 1 : 0]);
+    const { pts, cum } = this.cline[li];
+    const n = pts.length;
+    if (d >= cum[n - 1]) return out.copy(pts[n - 1]);
+    if (d <= 0) return out.copy(pts[0]);
+    let lo = 0, hi = n - 1;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (cum[m] <= d) lo = m; else hi = m; }
+    return out.lerpVectors(pts[lo], pts[hi], (d - cum[lo]) / Math.max(1e-6, cum[hi] - cum[lo]));
   }
 
   updateLift(time, cam) {
     this.liftT = time;
+    if (cam) this.updateRocks(cam);
     const v = this.liftV;
     const yawUp = Math.atan2(this.liftDir.x, this.liftDir.z);
-    let ri = 0;
+    // close chairs in full detail, the rest as the simple ones; the stand-in riders only where
+    // the real ones aren't sitting and not so far off that they'd be a pixel
+    const near2 = 210 * 210, real2 = 280 * 280, far2 = 1100 * 1100;
+    let nN = 0, nF = 0, nR = 0;
+    const one = tmpS.set(1, 1, 1);
     this.chairs.forEach((c, i) => {
       const d = (c.d + time * v) % this.totalLen[c.li];
       this.cablePoint(c.li, d, tmpP);
       tmpQ.setFromAxisAngle(UP, c.li === 0 ? yawUp : yawUp + Math.PI);
+      tmpM.compose(tmpP, tmpQ, one);
+      tmpM.toArray(this.chairM, i * 16);
+      const d2 = cam ? tmpP.distanceToSquared(cam) : 0;
+      c.near = !!(this.seats && cam && d2 < real2);
       // (the chair you're riding is drawn by the rescue, with you on it)
-      tmpS.setScalar(i === this.mine ? 0 : 1);
-      tmpM.compose(tmpP, tmpQ, tmpS);
-      this.chairMesh.setMatrixAt(i, tmpM);
-      // (close up the real riders sit there instead of the stand-ins)
-      c.near = !!(this.seats && cam && tmpP.distanceToSquared(cam) < 280 * 280);
-      if (!c.ride || c.li === 1 || c.near || i === this.mine) tmpS.set(0, 0, 0);
-      tmpM.compose(tmpP, tmpQ, tmpS);
-      this.riderMesh.setMatrixAt(i, tmpM);
+      if (i === this.mine) { c.near = false; return; }
+      if (d2 < near2) this.chairMesh.setMatrixAt(nN++, tmpM); else this.chairFar.setMatrixAt(nF++, tmpM);
+      if (c.ride && c.li === 0 && !c.near && d2 < far2) { this.riderMesh.setMatrixAt(nR, tmpM); this.riderMesh.setColorAt(nR++, this.jackets[i % 8]); }
     });
-    this.chairMesh.instanceMatrix.needsUpdate = true;
-    this.riderMesh.instanceMatrix.needsUpdate = true;
+    const done = (im, n) => {
+      im.count = n;
+      im.instanceMatrix.clearUpdateRanges(); im.instanceMatrix.addUpdateRange(0, n * 16); im.instanceMatrix.needsUpdate = true;
+      if (im.instanceColor) { im.instanceColor.clearUpdateRanges(); im.instanceColor.addUpdateRange(0, n * 3); im.instanceColor.needsUpdate = true; }
+    };
+    done(this.chairMesh, nN); done(this.chairFar, nF); done(this.riderMesh, nR);
     if (this.seats) {
       const off = new THREE.Matrix4();
-      this.seats.forEach((st, i) => {
-        this.chairMesh.getMatrixAt(st.ci, tmpM);
-        tmpM.multiply(off.makeTranslation(st.dx, 0, 0));
-        if (!this.chairs[st.ci].near || st.ci === this.mine) tmpM.multiply(off.makeScale(0, 0, 0));
-        st.im.setMatrixAt(st.k, tmpM);
-        this.seatSkis.setMatrixAt(i, tmpM);
-      });
-      for (const im of this.seatMeshes) if (im) { im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); }
-      this.seatSkis.instanceMatrix.needsUpdate = true;
-      this.seatSkis.computeBoundingSphere();
+      for (const im of this.seatMeshes) if (im) im.userData.n = 0;
+      let nS = 0;
+      for (const st of this.seats) {
+        if (!this.chairs[st.ci].near || st.ci === this.mine) continue;
+        tmpM.fromArray(this.chairM, st.ci * 16).multiply(off.makeTranslation(st.dx, 0, 0));
+        const k = st.im.userData.n++;
+        st.im.setMatrixAt(k, tmpM); st.im.setColorAt(k, st.col);
+        this.seatSkis.setMatrixAt(nS, tmpM); this.seatSkis.setColorAt(nS++, st.skiCol);
+      }
+      for (const im of this.seatMeshes) if (im) done(im, im.userData.n);
+      done(this.seatSkis, nS);
     }
   }
 
@@ -661,9 +689,10 @@ export class Props {
     this.scene.add(bm);
 
     // crowd behind the fences near the finish
-    const body = new THREE.CapsuleGeometry(0.22, 0.75, 4, 8); body.translate(0, 0.62 + 0.22, 0);
-    const head = new THREE.SphereGeometry(0.14, 10, 8); head.translate(0, 1.55, 0);
-    const hat = new THREE.SphereGeometry(0.15, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2); hat.translate(0, 1.6, 0);
+    // (seen from up the hill only: close up the real spectators stand there instead)
+    const body = new THREE.CapsuleGeometry(0.22, 0.75, 2, 6); body.translate(0, 0.62 + 0.22, 0);
+    const head = new THREE.SphereGeometry(0.14, 6, 5); head.translate(0, 1.55, 0);
+    const hat = new THREE.SphereGeometry(0.15, 6, 3, 0, Math.PI * 2, 0, Math.PI / 2); hat.translate(0, 1.6, 0);
     const person = merge([colorize(body, 0xffffff), colorize(head, 0xe0b89a), colorize(hat, 0xffffff)]);
     const people = [];
     for (const s of [-1, 1]) for (let zz = z - 150; zz < z + 30; zz += 1.1) {
@@ -750,20 +779,20 @@ export class Props {
       this.scene.add(im);
       return im;
     });
-    const used = B.map(() => 0);
-    const jackets = [0xd8342c, 0xf2b705, 0x2a7de1, 0x18a868, 0xf06d1a, 0x8e3fd1, 0x1d1f26, 0xff4f8b];
-    for (const st of seats) {
-      st.im = this.seatMeshes[st.b]; st.k = used[st.b]++;
-      st.im.setColorAt(st.k, new THREE.Color(jackets[Math.floor(rnd() * jackets.length)]));
-    }
-    this.seatMeshes.forEach((im) => im && (im.instanceColor.needsUpdate = true));
+    const skiCols = [0xd8342c, 0x1d1f26, 0xf2b705, 0x2a7de1].map((c) => new THREE.Color(c));
+    seats.forEach((st, i) => {
+      st.im = this.seatMeshes[st.b];
+      st.col = this.jackets[Math.floor(rnd() * this.jackets.length)];
+      st.skiCol = skiCols[i % 4];
+    });
+    for (const im of this.seatMeshes) if (im) { im.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(im.instanceMatrix.count * 3), 3); im.frustumCulled = false; }
     this.seats = seats;
     // their skis hanging off the boots
     const ski = colorize(new THREE.BoxGeometry(0.09, 0.03, 1.65), 0xffffff);
     const skis = merge([ski.clone().translate(0.11, seatY - 0.56, 0.62), ski.clone().translate(-0.11, seatY - 0.56, 0.62)]);
     this.seatSkis = new THREE.InstancedMesh(skis, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4 }), seats.length);
-    seats.forEach((st, i) => this.seatSkis.setColorAt(i, new THREE.Color([0xd8342c, 0x1d1f26, 0xf2b705, 0x2a7de1][i % 4])));
-    this.seatSkis.castShadow = true;
+    this.seatSkis.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(seats.length * 3), 3);
+    this.seatSkis.castShadow = true; this.seatSkis.frustumCulled = false;
     this.scene.add(this.seatSkis);
     this.updateLift(this.liftT ?? 0);
   }
@@ -1177,19 +1206,24 @@ export class Props {
   // ---------------- rocks ----------------
   buildRocks() {
     const noise = makeSimplex(31);
-    const ico = new THREE.IcosahedronGeometry(1, 4);
-    ico.deleteAttribute('normal'); ico.deleteAttribute('uv');
-    const base = mergeVertices(ico); // shared vertices: smooth normals, not facets
-    const p = base.attributes.position;
-    for (let i = 0; i < p.count; i++) {
-      tmpP.fromBufferAttribute(p, i);
-      // craggy: broad lumps, then facets
-      let n = 1 + noise(tmpP.x * 1.3, tmpP.z * 1.3 + tmpP.y) * 0.3 + noise(tmpP.x * 3, tmpP.y * 3 + tmpP.z) * 0.12;
-      n += Math.abs(noise(tmpP.x * 6 + 5, tmpP.z * 6 - tmpP.y * 4)) * 0.06;
-      tmpP.multiplyScalar(n); tmpP.y *= 0.68;
-      p.setXYZ(i, tmpP.x, tmpP.y, tmpP.z);
-    }
-    base.computeVertexNormals();
+    // the same craggy lump at two densities: close up and off in the distance
+    const lump = (detail) => {
+      const ico = new THREE.IcosahedronGeometry(1, detail);
+      ico.deleteAttribute('normal'); ico.deleteAttribute('uv');
+      const base = mergeVertices(ico); // shared vertices: smooth normals, not facets
+      const p = base.attributes.position;
+      for (let i = 0; i < p.count; i++) {
+        tmpP.fromBufferAttribute(p, i);
+        // craggy: broad lumps, then facets
+        let n = 1 + noise(tmpP.x * 1.3, tmpP.z * 1.3 + tmpP.y) * 0.3 + noise(tmpP.x * 3, tmpP.y * 3 + tmpP.z) * 0.12;
+        n += Math.abs(noise(tmpP.x * 6 + 5, tmpP.z * 6 - tmpP.y * 4)) * 0.06;
+        tmpP.multiplyScalar(n); tmpP.y *= 0.68;
+        p.setXYZ(i, tmpP.x, tmpP.y, tmpP.z);
+      }
+      base.computeVertexNormals();
+      return base;
+    };
+    this.rockGeo = [lump(4), lump(1)];
     const list = [];
     for (let i = 0; i < 2600 && list.length < 900; i++) {
       const z = -200 + this.rnd() * (FINISH_Z + 180);
@@ -1202,15 +1236,34 @@ export class Props {
       list.push([x, z, size]);
       if (off < halfWidth(z) + 150 && size > 0.7) this.forest.addCollider(x, z, size * 0.8, 'rock');
     }
-    const im = new THREE.InstancedMesh(base, rockMaterial(), list.length);
-    list.forEach((r, i) => {
-      tmpM.compose(tmpP.set(r[0], heightAt(r[0], r[1]) - r[2] * 0.25, r[1]),
-        tmpQ.setFromEuler(new THREE.Euler((this.rnd() - 0.5) * 0.5, this.rnd() * 6, (this.rnd() - 0.5) * 0.5)),
-        tmpS.set(r[2] * (0.8 + this.rnd() * 0.5), r[2], r[2] * (0.8 + this.rnd() * 0.5)));
-      im.setMatrixAt(i, tmpM);
-    });
-    im.castShadow = true; im.receiveShadow = true;
-    this.scene.add(im);
+    // in blocks down the hill, so the ones out of view aren't drawn at all
+    const mat = rockMaterial(), blocks = new Map();
+    for (const r of list) { const k = Math.floor(r[1] / 260) * 2 + (r[0] > centerX(r[1]) ? 1 : 0); (blocks.get(k) ?? blocks.set(k, []).get(k)).push(r); }
+    this.rockBlocks = [];
+    for (const rs of blocks.values()) {
+      const im = new THREE.InstancedMesh(this.rockGeo[0], mat, rs.length);
+      rs.forEach((r, i) => {
+        tmpM.compose(tmpP.set(r[0], heightAt(r[0], r[1]) - r[2] * 0.25, r[1]),
+          tmpQ.setFromEuler(new THREE.Euler((this.rnd() - 0.5) * 0.5, this.rnd() * 6, (this.rnd() - 0.5) * 0.5)),
+          tmpS.set(r[2] * (0.8 + this.rnd() * 0.5), r[2], r[2] * (0.8 + this.rnd() * 0.5)));
+        im.setMatrixAt(i, tmpM);
+      });
+      im.computeBoundingSphere();
+      im.castShadow = true; im.receiveShadow = true;
+      im.matrixAutoUpdate = false;
+      this.scene.add(im);
+      this.rockBlocks.push(im);
+    }
+  }
+
+  // rocks far off as the plain lumps (called with the lift, every frame)
+  updateRocks(cam) {
+    if (!this.rockBlocks) return;
+    for (const im of this.rockBlocks) {
+      const d = im.boundingSphere.center.distanceTo(cam) - im.boundingSphere.radius;
+      im.geometry = this.rockGeo[d > 240 ? 1 : 0];
+      im.castShadow = d < 240;
+    }
   }
 
   // ---------------- terrain park dressing ----------------

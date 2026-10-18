@@ -12,6 +12,10 @@ import { Music } from './music.js';
 import { Tracks } from './tracks.js';
 import { Particles, Snowfall } from './particles.js';
 import { Skier } from './skier.js';
+import { FarRiders } from './farriders.js';
+import { batchStatic } from './batch.js';
+import { QUALITY_NAME } from './gfx.js';
+import { Pool } from './pool.js';
 import { AIController } from './ai.js';
 import { randomOutfit } from './skiermodel.js';
 import { Input } from './input.js';
@@ -38,6 +42,10 @@ import { START_Z, FINISH_Z, GATES, centerX, halfWidth, sectionName, heightAt, PA
 
 const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
+// hidden things (far riders, race gates outside a race) skip the per-frame matrix walk; they
+// catch up the frame they're shown, or whenever their parent moves
+const umw = THREE.Object3D.prototype.updateMatrixWorld;
+THREE.Object3D.prototype.updateMatrixWorld = function (force) { if (this.visible || force) umw.call(this, force); };
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
 const _v = new THREE.Vector3();
 const store = {
@@ -47,9 +55,9 @@ const store = {
 
 const NAMES = ['Ana Berg', 'Jonas Falk', 'Lena Moser', 'Marco Valli', 'Ingrid Dahl', 'Felix Gruber', 'Sofia Rinaldi', 'Kai Lindqvist', 'Elin Strand', 'Theo Baumann', 'Mila Novak', 'Nils Eriksen', 'Clara Huber', 'Luca Ferrari', 'Hanna Aas', 'Emil Steiner'];
 const QUALITY = {
-  low: { label: 'Fast', dpr: 1, shadow: 2048, msaa: 0, bloom: false, smaa: true },
-  high: { label: 'High', dpr: 1.25, shadow: 4096, msaa: 0, bloom: true, smaa: true },
-  ultra: { label: 'Ultra', dpr: 2, shadow: 4096, msaa: 4, bloom: true, smaa: false },
+  low: { label: 'Fast', dpr: 1, shadow: 2048, msaa: 0, bloom: false, smaa: true, riders: 650, far: 140 },
+  high: { label: 'High', dpr: 1.25, shadow: 4096, msaa: 0, bloom: true, smaa: true, riders: 1000, far: 200 },
+  ultra: { label: 'Ultra', dpr: 2, shadow: 4096, msaa: 4, bloom: true, smaa: false, riders: 1400, far: 280 },
 };
 
 function fmt(t) {
@@ -71,8 +79,7 @@ class Game {
     // a sky asked for in the address (screenshots, shared links) holds for the first run
     this.wxPinned = params.has('tod');
     if (!PRESETS[this.tod]) this.tod = 'golden';
-    this.quality = params.get('q') ?? store.get('quality', matchMedia('(pointer: coarse)').matches ? 'low' : 'high');
-    if (!QUALITY[this.quality]) this.quality = 'high';
+    this.quality = QUALITY_NAME;
     // the wallet, the pass, the kit; the shared server keeps a copy of it all
     this.meta = new Meta();
     this.cloud = new Cloud();
@@ -108,7 +115,7 @@ class Game {
   }
 
   async boot() {
-    const setLoad = (p, m) => { $('loadbar').style.width = p + '%'; if (m) $('loadmsg').textContent = m; };
+    const setLoad = (p, m) => { if (m) $('loadmsg').textContent = m; this.loadPart('steps', p / 100); (window.__loadT ??= []).push([Math.round(performance.now()), p, m ?? '']); };
     const canvas = $('gl');
     const r = (this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false }));
     r.toneMapping = { aces: THREE.ACESFilmicToneMapping, agx: THREE.AgXToneMapping, neutral: THREE.NeutralToneMapping }[params.get('tm') ?? 'aces'];
@@ -116,31 +123,33 @@ class Game {
     r.shadowMap.enabled = true;
     r.shadowMap.type = THREE.PCFShadowMap;
     this.maxDpr = Math.min(window.devicePixelRatio || 1, QUALITY[this.quality].dpr);
+    Skier.drawDist = QUALITY[this.quality].riders;
+    Skier.farDist = QUALITY[this.quality].far;
     r.setPixelRatio(this.maxDpr);
     r.setSize(innerWidth, innerHeight, false);
     const scene = (this.scene = new THREE.Scene());
     this.camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 70000);
     this.env = new Environment(r, scene);
     this.env.sun.shadow.mapSize.setScalar(QUALITY[this.quality].shadow);
-    setLoad(4, 'Loading the sky…');
-    await this.env.load();
-    this.env.apply(this.tod);
-    setLoad(8, 'Shaping the mountain…');
-    await nextFrame();
+    // everything that's only arithmetic goes out to the loading threads now, all at once, and
+    // the downloads start with it; the rest is built here while they work
+    const pool = new Pool();
+    const treesP = pool.job({ kind: 'trees' });
+    const shadeP = pool.job({ kind: 'grid', args: ShadeField.grid() });
+    const avatarsP = preloadAvatars((k) => this.loadPart('riders', k)).catch((e) => console.warn('avatars', e));
     this.terrain = new Terrain(scene, this.env);
-    setLoad(30, 'Grooming the piste…');
-    await nextFrame();
-    this.terrain.prime(centerX(START_Z), START_Z);
-    setLoad(55, 'Growing the forest…');
-    await nextFrame();
-    this.forest = new Forest(scene);
-    setLoad(62, 'Planting the forest…');
+    const terrainP = this.terrain.prime(centerX(START_Z), START_Z, pool, (k) => this.loadPart('mountain', k));
+    setLoad(4, 'Loading the sky…');
+    await this.env.load(this.tod);
+    this.env.apply(this.tod);
+    setLoad(20, 'Growing the forest…');
+    this.forest = new Forest(scene, await treesP);
     await this.forest.buildRender(r, patchMaterial, this.quality);
-    setLoad(75, 'Building the lift and the village…');
+    setLoad(40, 'Building the lift and the village…');
     await nextFrame();
     this.smash = new Smash(this.forest);
     this.props = new Props(scene, this.forest, this.env, this.smash);
-    setLoad(80, 'Shaping the park…');
+    setLoad(55, 'Shaping the park…');
     this.park = new Park(scene, this.terrain.material, this.smash);
     await this.park.build();
     this.lights = new Floodlights(scene, this.quality);
@@ -153,13 +162,14 @@ class Game {
     // a pole or a sign goes down: a knock, a puff of snow (and a jolt if it was you)
     this.injuries = new Injuries(scene);
     this.trail = new Trail(scene);
+    this.farRiders = new FarRiders(scene);
     this.rescue = new Rescue(this);
     this.smash.onHit = (o, sp) => {
       const d = this.camera.position.distanceTo(_v.set(o.x, heightAt(o.x, o.z), o.z));
       if (d < 60) this.audio.clack(Math.min(1, 0.4 + sp / 25) * (1 - d / 60), o.kind === 'sign');
       if (d < 120) this.particles.emit(o.x, heightAt(o.x, o.z) + 0.3, o.z, 0, 1.2, 0, 2.5, 0.45, 1, 18);
     };
-    this.shade = new ShadeField(r);
+    this.shade = new ShadeField(r, (await shadeP).data);
     patchTree(scene);
     this.post = new Post(r, scene, this.camera, { ...QUALITY[this.quality], ...JSON.parse(params.get('post') ?? '{}') });
     this.post.setPixelRatio(this.maxDpr);
@@ -174,23 +184,54 @@ class Game {
     this.music.on = store.get('music', 'on') !== 'off';
     this.rig = new CameraRig(this.camera);
     this.applyConditions();
+    setLoad(75, 'Grooming the piste…');
+    await terrainP;
     setLoad(86, 'Waking up the skiers…');
-    await preloadAvatars((k) => setLoad(86 + k * 8)).catch((e) => console.warn('avatars', e));
-    await nextFrame();
-    try { this.props.buildPeople(); } catch (e) { console.warn('people', e); }
-    this.populateFree(true);
-    // compile shaders before the first visible frame
-    this.rig.menu(0.016, 0, this.skiers);
-    this.terrain.update(this.camera.position.x, this.camera.position.z, 1e9);
-    this.forest.update(this.camera, 0, this.env.sunDir);
-    this.renderer.compile(scene, this.camera);
+    await avatarsP;
+    pool.close();
+    const direct = params.get('event') || (params.get('menu') === '0' && params.get('mode')) || params.get('watch') || params.get('cwatch');
+    // the people on the hill, the riders, the park's batching and the shaders: none of it shows
+    // on the front page (it's art over the world), so that opens now and this finishes behind
+    // it; going straight into a run waits for it here
+    const warm = async () => {
+      await nextFrame();
+      try { this.props.buildPeople(); } catch (e) { console.warn('people', e); }
+      this.populateFree(true);
+      // the park never moves (bar what you knock over): its matrices are worked out once
+      const live = new Set();
+      for (const o of this.smash.all) for (const q of o.parts) q.obj?.traverse((x) => live.add(x));
+      batchStatic(this.park.group, live);
+      this.park.group.updateMatrixWorld(true);
+      this.park.group.traverse((o) => { if (!live.has(o)) o.matrixAutoUpdate = false; });
+      await nextFrame();
+      // compile the shaders (in parallel where the browser can) before the first frame of a run
+      this.rig.menu(0.016, 0, this.skiers);
+      this.terrain.update(this.camera.position.x, this.camera.position.z, 1e9);
+      this.forest.update(this.camera, 0, this.env.sunDir);
+      await this.renderer.compileAsync(scene, this.camera).catch(() => this.renderer.compile(scene, this.camera));
+      // and every texture up to the GPU a few at a time (the first frame would otherwise do the
+      // lot at once, a second or more of nothing on a phone)
+      await this.uploadTextures();
+      // behind the front page, one whole frame unseen: whatever's left to set up (the shadow
+      // pass's shaders, the post-processing's) happens now, not on the first frame of a run
+      if (!direct) {
+        await nextFrame();
+        this.post.render(0.016);
+      }
+      // and the other skies, for when the weather turns
+      setTimeout(() => { for (const p of Object.values(PRESETS)) this.env.ensure(p.hdri); }, 2500);
+    };
+    if (direct) { setLoad(92, 'Waking up the skiers…'); await warm(); }
+    else this.warming = warm().catch((e) => console.warn('warm', e)).finally(() => { this.warming = null; });
     setLoad(100, 'Ready');
     addEventListener('resize', () => this.resize());
     this.bindUI();
     this.replay = new Replay(this);
     this.clock = new THREE.Timer();
     this.renderer.setAnimationLoop(() => this.frame());
-    setTimeout(() => { $('loading').style.opacity = 0; setTimeout(() => $('loading').classList.add('hidden'), 800); }, 150);
+    // the loading screen goes once there's something to see: straight into a run, after its
+    // first few frames (the slow ones, setting up); otherwise with the front page
+    this.unveil = direct ? 4 : 1;
     const mode = params.get('mode');
     if (params.get('event') && EVENT[params.get('event')]) this.startEvent(params.get('event'), Math.max(0, Math.min(2, Number(params.get('tier') ?? 1))));
     else if (params.get('menu') === '0' && mode) this.start(mode === 'race' ? 'race' : mode === 'park' ? 'park' : 'run');
@@ -208,6 +249,37 @@ class Game {
     window.__h = heightAt;
     window.__lift = this.props.liftPoints;
     window.__ready = true;
+    this.cloud.start();
+  }
+
+  async uploadTextures() {
+    const seen = new Set();
+    const take = (v) => { if (v?.isTexture && !seen.has(v)) seen.add(v); };
+    this.scene.traverse((o) => {
+      for (const m of [o.material].flat()) {
+        if (!m) continue;
+        for (const k in m) take(m[k]);
+        if (m.uniforms) for (const k in m.uniforms) take(m.uniforms[k]?.value);
+        if (m.userData?.shared) for (const k in m.userData.shared) take(m.userData.shared[k]?.value);
+      }
+    });
+    let t = performance.now();
+    for (const tex of seen) {
+      // (not downloaded yet: it goes up when it arrives)
+      const img = tex.image;
+      if (!img || (img.width ?? img.data?.length) === undefined || (img.complete === false)) continue;
+      this.renderer.initTexture(tex);
+      if (performance.now() - t > 24) { await nextFrame(); t = performance.now(); }
+    }
+  }
+
+  // the loading bar: the steps here, the mountain on the loading threads and the riders
+  // downloading all count towards it
+  loadPart(k, v) {
+    const P = (this.parts ??= { steps: 0, mountain: 0, riders: 0 });
+    P[k] = Math.max(P[k], v);
+    const all = P.steps * 0.45 + P.mountain * 0.35 + P.riders * 0.2;
+    window.__loadProgress?.(all);
   }
 
   resize() {
@@ -1004,6 +1076,8 @@ class Game {
   // ---------------- modes ----------------
   // opts: { online: race start time (server clock) }; this.event: { ev, tier } for an event
   start(mode, opts = {}) {
+    // (still finishing the mountain behind the front page: in a moment)
+    if (this.warming) { this.warming.then(() => this.start(mode, opts)); return; }
     this.rescue?.abort(); this.injuries?.clear();
     if (mode === 'free') mode = 'run';
     if (mode === 'trial' || mode === 'contest') mode = mode === 'trial' ? 'race' : 'run';
@@ -1475,6 +1549,10 @@ class Game {
 
   // ---------------- frame ----------------
   frame() {
+    if (this.unveil && --this.unveil === 0) {
+      window.__loadProgress?.(1);
+      setTimeout(() => { $('loading').classList.add('out'); setTimeout(() => $('loading').classList.add('hidden'), 460); }, 120);
+    }
     this.clock.update();
     const dtRaw = this.clock.getDelta();
     const dt = Math.min(dtRaw, 1 / 20);
@@ -1609,6 +1687,7 @@ class Game {
     else if (this.player) this.rig.update(dt, this.player);
     if (window.__freeCam) { const f = window.__freeCam; cam.position.set(...f.pos); cam.lookAt(...f.look); cam.fov = f.fov ?? 55; cam.updateProjectionMatrix(); }
     if (!replaying) for (const s of this.skiers) if (!s.held) s.updateVisual(dt, cam.position);
+    this.farRiders.update(replaying ? [] : this.skiers);
     this.room?.update(dt, this.state === 'menu' || replaying ? null : this.player, cam.position);
     // never let another skier block the view of the player
     if (!replaying && this.player && this.state !== 'menu' && this.rig.mode !== 'tv') {
@@ -1656,24 +1735,42 @@ class Game {
 
   trackFps(dt) {
     this.fpsAcc += dt; this.fpsN++;
-    if (this.fpsAcc >= 1) {
-      this.fps = this.fpsN / this.fpsAcc;
-      window.__fps = this.fps;
-      this.fpsAcc = 0; this.fpsN = 0;
-      // adaptive resolution
-      if (params.get('fixdpr') !== '1') {
-        const prev = this.dprScale;
-        // ignore throttled/background tabs (a few fps) - that's the browser, not the GPU
-        if (this.fps < 48 && this.fps > 15) this.dprScale = Math.max(0.55, this.dprScale - 0.1);
-        else if (this.fps > 58 && this.dprScale < 1) this.dprScale = Math.min(1, this.dprScale + 0.05);
-        if (prev !== this.dprScale) {
-          const r = this.maxDpr * this.dprScale;
-          this.renderer.setPixelRatio(r);
-          this.post.setPixelRatio(r);
-          this.resize();
-        }
-      }
+    if (this.fpsAcc < 1) return;
+    this.fps = this.fpsN / this.fpsAcc;
+    window.__fps = this.fps;
+    this.fpsAcc = 0; this.fpsN = 0;
+    // adaptive resolution, slow and steady: every change of size is a hitch of its own, so it
+    // drops only after two slow seconds, comes back up only after five smooth ones, and if a
+    // drop didn't buy any frames (the processor's the limit, not the pixels) it goes back up
+    // and leaves it alone for a while
+    if (params.get('fixdpr') === '1' || this.state === 'menu') return;
+    // ignore throttled/background tabs (a few fps): that's the browser, not the GPU
+    if (this.fps < 15) return;
+    const A = (this.dprA ??= { slow: 0, fast: 0, hold: 0, before: 0, judge: 0 });
+    A.hold = Math.max(0, A.hold - 1);
+    if (A.judge > 0 && --A.judge === 0 && this.fps < A.before + 3) {
+      this.setDprScale(Math.min(1, this.dprScale + 0.1));
+      A.hold = 30;
+      return;
     }
+    A.slow = this.fps < 50 ? A.slow + 1 : 0;
+    A.fast = this.fps > 58 ? A.fast + 1 : 0;
+    if (A.slow >= 2 && A.hold === 0 && this.dprScale > 0.6) {
+      A.before = this.fps; A.judge = 2; A.slow = 0;
+      this.setDprScale(Math.max(0.6, this.dprScale - 0.1));
+    } else if (A.fast >= 5 && this.dprScale < 1) {
+      A.fast = 0;
+      this.setDprScale(Math.min(1, this.dprScale + 0.05));
+    }
+  }
+
+  setDprScale(k) {
+    if (k === this.dprScale) return;
+    this.dprScale = k;
+    const r = this.maxDpr * k;
+    this.renderer.setPixelRatio(r);
+    this.post.setPixelRatio(r);
+    this.resize();
   }
 
   hud(dt) {

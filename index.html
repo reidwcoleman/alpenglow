@@ -30,18 +30,35 @@
   .shadow { text-shadow: 0 2px 0 rgba(0,0,0,.18), 0 4px 22px rgba(0,0,0,.28); }
 
   /* ---------- loading ---------- */
-  #loading { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: linear-gradient(180deg, #8fb2d8 0%, #c9d8ea 55%, #eef2f7 100%); background-size: cover; background-position: center; color: #fff; transition: opacity .8s ease; }
-  #loading.art { background-image: linear-gradient(180deg, rgba(10,14,24,.15), rgba(10,14,24,.55)), var(--art); }
-  #loading.art .msg { color: #fff; }
-  #loading.art .bar { background: rgba(255,255,255,.25); }
-  #loading.art .bar i { background: #fff; }
-  #loading.art .ridge { display: none; }
-  #loading .pk { text-align: center; font: 400 22px var(--disp); margin-top: 6px; text-shadow: 0 2px 0 rgba(0,0,0,.2); }
-  #loading .t { font-family: var(--disp); font-size: clamp(54px, 11vw, 130px); line-height: .9; text-shadow: 0 4px 0 rgba(20,30,50,.25), 0 10px 40px rgba(20,30,50,.25); }
-  #loading .bar { width: min(320px, 70vw); height: 6px; background: rgba(255,255,255,.4); border-radius: 6px; margin: 26px auto 12px; overflow: hidden; }
-  #loading .bar i { display: block; height: 100%; width: 0%; background: var(--ink); transition: width .25s ease; }
-  #loading .msg { text-align: center; font: 700 12px Inter; color: #34465f; letter-spacing: .12em; text-transform: uppercase; }
-  #loading .ridge { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 34vh; pointer-events: none; }
+  #loading { position: fixed; inset: 0; z-index: 50; overflow: hidden; background: #0d1422; color: #fff; transition: opacity .45s ease, transform .45s ease; }
+  #loading.out { opacity: 0; transform: scale(1.03); pointer-events: none; }
+  #loading .art { position: absolute; inset: -4%; background: var(--art, none) center/cover no-repeat, linear-gradient(180deg, #33476a, #8fa6c8 60%, #dfe7f2); animation: ld-drift 24s ease-in-out infinite alternate; }
+  #loading .art::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(8,12,22,.55) 0%, rgba(8,12,22,.05) 34%, rgba(8,12,22,.1) 55%, rgba(8,12,22,.86) 100%); }
+  @keyframes ld-drift { from { transform: scale(1) translate(0, 0); } to { transform: scale(1.09) translate(-1.5%, -1%); } }
+  #loading .snow { position: absolute; inset: 0; pointer-events: none; background-image: radial-gradient(2px 2px at 20% 30%, rgba(255,255,255,.8), transparent 60%), radial-gradient(1.5px 1.5px at 70% 20%, rgba(255,255,255,.7), transparent 60%), radial-gradient(2.5px 2.5px at 40% 70%, rgba(255,255,255,.6), transparent 60%), radial-gradient(1.5px 1.5px at 85% 60%, rgba(255,255,255,.8), transparent 60%), radial-gradient(2px 2px at 10% 85%, rgba(255,255,255,.6), transparent 60%), radial-gradient(1.5px 1.5px at 55% 45%, rgba(255,255,255,.7), transparent 60%); background-size: 340px 340px; animation: ld-snow 9s linear infinite; opacity: .7; }
+  @keyframes ld-snow { from { background-position: 0 0; } to { background-position: -60px 340px; } }
+  #loading .top { position: absolute; left: max(28px, env(safe-area-inset-left)); top: max(24px, env(safe-area-inset-top)); right: 28px; }
+  #loading .t { font-family: var(--disp); font-size: clamp(44px, 9vw, 112px); line-height: .9; letter-spacing: .01em; text-shadow: 0 4px 0 rgba(10,16,28,.35), 0 12px 40px rgba(10,16,28,.35); }
+  #loading .pk { margin-top: 10px; display: inline-flex; align-items: center; gap: 10px; font: 800 13px Inter; letter-spacing: .16em; text-transform: uppercase; color: rgba(255,255,255,.92); }
+  #loading .pk::before { content: ''; width: 26px; height: 3px; border-radius: 2px; background: var(--sun); }
+  #loading .foot { position: absolute; left: max(28px, env(safe-area-inset-left)); right: max(28px, env(safe-area-inset-right)); bottom: max(22px, env(safe-area-inset-bottom)); }
+  #loading .tip { min-height: 40px; max-width: 640px; font: 600 15px/1.4 Inter; color: rgba(255,255,255,.94); text-shadow: 0 1px 8px rgba(0,0,0,.4); transition: opacity .35s ease, transform .35s ease; }
+  #loading .tip.fade { opacity: 0; transform: translateY(6px); }
+  #loading .tip b { display: block; font: 800 11px Inter; letter-spacing: .18em; color: var(--sun); margin-bottom: 4px; }
+  #loading .run { position: relative; height: 34px; margin-top: 16px; }
+  #loading .track { position: absolute; left: 0; right: 0; bottom: 6px; height: 4px; border-radius: 4px; background: rgba(255,255,255,.22); overflow: hidden; }
+  #loading .track i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 4px; background: linear-gradient(90deg, rgba(255,138,61,.35), var(--sun) 60%, #ffd36b); box-shadow: 0 0 12px rgba(255,160,80,.7); }
+  #loading .rider { position: absolute; bottom: 4px; left: 0; width: 34px; height: 30px; margin-left: -17px; filter: drop-shadow(0 2px 3px rgba(0,0,0,.35)); }
+  #loading .rider svg { width: 100%; height: 100%; animation: ld-bob .7s ease-in-out infinite alternate; transform-origin: 50% 90%; }
+  @keyframes ld-bob { from { transform: rotate(-6deg) translateY(0); } to { transform: rotate(5deg) translateY(-1.5px); } }
+  #loading .row { display: flex; justify-content: space-between; align-items: baseline; margin-top: 8px; }
+  #loading .msg { font: 700 11px Inter; letter-spacing: .16em; text-transform: uppercase; color: rgba(255,255,255,.78); }
+  #loading .pct { font: 800 italic 22px 'Barlow Condensed', Inter; letter-spacing: .02em; font-variant-numeric: tabular-nums; }
+  @media (max-height: 500px) {
+    #loading .t { font-size: clamp(40px, 8vw, 70px); }
+    #loading .tip { font-size: 13px; min-height: 34px; }
+    #loading .run { margin-top: 8px; }
+  }
 
   /* ---------- menu ---------- */
   #menu { position: fixed; inset: 0; z-index: 20; padding: clamp(16px, 2.6vw, 38px) clamp(16px, 6.5vw, 84px) clamp(14px, 2vw, 26px); display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto 1fr auto; overflow: hidden; }
@@ -703,29 +720,74 @@
 <body>
 <canvas id="gl"></canvas>
 <script>
-  // the park being loaded paints the loading screen
+  // the park being loaded paints the loading screen; tips cycle; the bar eases toward what's
+  // done (main.js calls __loadProgress) and the rider carves along it
   (function () {
     var names = { yard: 'The Yard', slope: 'Trick Zone', forest: 'Forest Line', bigair: 'Big Air', timber: 'Timberline', grand: 'Grand Descent', mega: 'Mega Park', canyon: 'Shred Canyon' };
     var id = null;
     try { id = new URLSearchParams(location.search).get('park') || localStorage.getItem('alpenglow.park'); } catch (e) {}
     if (!names[id]) id = 'yard';
+    var touch = matchMedia('(pointer: coarse)').matches;
+    var TIPS = touch ? [
+      'Tap the arrows in the air for combos: down, down is a grab.',
+      'Left, left in the air is a 360. Down, down, down is a backflip.',
+      'Hold the up arrow to tuck and pick up speed.',
+      'Hold POP to load, let go at the lip to fly higher.',
+      'Finish the rotation before you touch down, or you go down.',
+      'Chain tricks without stopping to build your line multiplier.',
+      'Spend flakes in the Shop: jackets, boards, trails and more.',
+      'TURN hops you round to ride backwards: land switch for bonus points.'
+    ] : [
+      'Tap arrows in the air for combos: down, down is a grab.',
+      'Left, left in the air is a 360. Down, down, down is a backflip.',
+      'Hold the up arrow to tuck and pick up speed.',
+      'Hold Space to load, let go at the lip to fly higher.',
+      'Finish the rotation before you touch down, or you go down.',
+      'Chain tricks without stopping to build your line multiplier.',
+      'Spend flakes in the Shop: jackets, boards, trails and more.',
+      'Press G to hop round and ride switch for bonus points.'
+    ];
+    var shown = 0, target = 0, raf = 0;
+    window.__loadProgress = function (f) { target = Math.max(target, Math.min(1, f)); if (!raf) raf = requestAnimationFrame(step); };
+    function step() {
+      raf = 0;
+      shown += (target - shown) * 0.14 + (target > shown ? 0.002 : 0);
+      if (shown > target) shown = target;
+      var bar = document.getElementById('loadbar'), rider = document.getElementById('loadrider'), pct = document.getElementById('loadpct');
+      if (bar) { bar.style.width = (shown * 100).toFixed(2) + '%'; rider.style.left = (shown * 100).toFixed(2) + '%'; pct.textContent = Math.round(shown * 100) + '%'; }
+      if (shown < target) raf = requestAnimationFrame(step);
+    }
     document.addEventListener('DOMContentLoaded', function () {
       var l = document.getElementById('loading');
-      l.classList.add('art');
       l.style.setProperty('--art', 'url(art/' + id + '.webp)');
       document.getElementById('loadpark').textContent = names[id];
+      var tip = document.getElementById('loadtip'), k = Math.floor(Math.random() * TIPS.length);
+      var put = function () { tip.innerHTML = '<b>TIP</b>' + TIPS[k % TIPS.length]; k++; };
+      put();
+      var iv = setInterval(function () {
+        if (l.classList.contains('hidden')) return clearInterval(iv);
+        tip.classList.add('fade');
+        setTimeout(function () { put(); tip.classList.remove('fade'); }, 350);
+      }, 3200);
     });
   })();
 </script>
 
 <div id="loading">
-  <div style="position:relative;z-index:1">
+  <div class="art"></div>
+  <div class="snow"></div>
+  <div class="top">
     <div class="t">SHREDLINE</div>
-    <div class="pk" id="loadpark"></div>
-    <div class="bar"><i id="loadbar"></i></div>
-    <div class="msg" id="loadmsg">Shaping the mountain…</div>
+    <div class="pk" id="loadpark">The Yard</div>
   </div>
-  <svg class="ridge" viewBox="0 0 1000 300" preserveAspectRatio="none"><path d="M0 300 L0 210 L90 150 L160 190 L260 90 L330 150 L420 60 L520 170 L600 120 L690 200 L780 110 L860 170 L940 130 L1000 160 L1000 300Z" fill="rgba(255,255,255,.55)"/><path d="M0 300 L0 250 L120 210 L230 245 L360 190 L470 240 L600 200 L720 250 L850 215 L1000 240 L1000 300Z" fill="#fff"/></svg>
+  <div class="foot">
+    <div class="tip" id="loadtip"></div>
+    <div class="run">
+      <div class="track"><i id="loadbar"></i></div>
+      <div class="rider" id="loadrider"><svg viewBox="0 0 34 30"><g fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 25.5 L28 22.5" stroke="#fff" stroke-width="2.6"/><path d="M14.5 24 L17 17.5 L13 13 L18.5 8.5" stroke="#10141c" stroke-width="3.4"/><path d="M19.5 23.5 L21 18 L17 17.5" stroke="#10141c" stroke-width="3.4"/><path d="M18.5 8.5 L23 12 M18 9.5 L13.5 12.5" stroke="#ff8a3d" stroke-width="3"/><path d="M13 13 L18.5 8.5" stroke="#ff8a3d" stroke-width="4.2"/></g><circle cx="20.3" cy="5.4" r="3.2" fill="#fff"/><path d="M9 21 Q5 22 2 20" stroke="#fff" stroke-width="1.4" fill="none" opacity=".7"/></svg></div>
+    </div>
+    <div class="row"><div class="msg" id="loadmsg">Shaping the mountain…</div><div class="pct" id="loadpct">0%</div></div>
+  </div>
 </div>
 
 <div id="menu" class="hidden">
@@ -944,7 +1006,7 @@
 <button id="tc-cam" class="hidden" style="z-index:13;border-radius:50%;border:2px solid rgba(255,255,255,.5);background:rgba(16,22,34,.35);color:#fff;font:400 11px Knewave">CAM</button>
 
 <div id="parks" class="hidden">
-  <div id="pk-stage"><img id="pk-img" src="art/map.webp" alt="" /><div id="pk-pins"></div></div>
+  <div id="pk-stage"><img id="pk-img" src="art/map.webp" alt="" loading="lazy" /><div id="pk-pins"></div></div>
   <div class="pk-head"><div class="logo" style="font-size:40px">SHREDLINE</div><div class="t">CHOOSE YOUR PARK</div><button class="pk-back" id="pk-back">← Back</button></div>
   <div class="pk-panel">
     <h3 id="pk-name">The Yard</h3><span class="tag" id="pk-tag">Open session</span>

@@ -230,11 +230,10 @@ function boughTree(v, detail) {
 }
 
 // far: tiered opaque skirts with snow on their shoulders
-function skirtTree(v) {
+function skirtTree(v, tiers = 5, segs = 10) {
   const sh = shapeFor(v);
   const b = new Builder();
   const rnd = sh.rnd;
-  const tiers = 5, segs = 10;
   for (let t = 0; t < tiers; t++) {
     const f = t / tiers;
     const yRim = sh.y0 + (SPRUCE_H - sh.y0) * f * 0.92;
@@ -314,9 +313,11 @@ function spruceMaterial(tex, U, bough) {
 }
 
 // ---------- the instanced forest ----------
+// near cards / wider cards / skirts / (far off, a few pixels tall) three-tier cones; how far it draws
 const LODS = {
-  low: [55, 200], high: [85, 320], ultra: [120, 450],
+  low: [55, 200, 520, 2300], high: [85, 320, 800, 3200], ultra: [120, 450, 1150, 3600],
 };
+const NL = 4;
 
 export class SpruceForest {
   /** trees: [{x, y, z, v, s, rot, tint}] */
@@ -325,7 +326,7 @@ export class SpruceForest {
     this.U = { uTime: { value: 0 }, uTreeSnow: snow };
     const tex = boughTextures();
     const geos = [];
-    for (let v = 0; v < VARIANTS; v++) geos.push([boughTree(v, 0), boughTree(v, 1), skirtTree(v)]);
+    for (let v = 0; v < VARIANTS; v++) geos.push([boughTree(v, 0), boughTree(v, 1), skirtTree(v), skirtTree(v, 2, 3)]);
     const mats = [spruceMaterial(tex, this.U, true), spruceMaterial(tex, this.U, true), spruceMaterial(tex, this.U, false)];
     for (const m of mats) patch(m);
     this.tris = geos.map((g) => g.map((x) => x.index.count / 3));
@@ -361,10 +362,10 @@ export class SpruceForest {
     });
     // one instanced mesh per (lod, variant)
     this.meshes = [];
-    for (let l = 0; l < 3; l++) {
+    for (let l = 0; l < NL; l++) {
       const row = [];
       for (let v = 0; v < VARIANTS; v++) {
-        const im = new THREE.InstancedMesh(geos[v][l], mats[l], Math.max(1, perVar[v]));
+        const im = new THREE.InstancedMesh(geos[v][l], mats[Math.min(l, 2)], Math.max(1, perVar[v]));
         im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
         im.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, perVar[v]) * 3), 3);
         im.instanceColor.setUsage(THREE.DynamicDrawUsage);
@@ -379,7 +380,7 @@ export class SpruceForest {
       this.meshes.push(row);
     }
     this.lod = LODS[quality] ?? LODS.high;
-    this.maxD = 3200;
+    this.maxD = this.lod[3];
     this.last = new THREE.Vector3(1e9, 0, 0);
     this.lastDir = new THREE.Vector3();
     this.frust = new THREE.Frustum();
@@ -399,7 +400,7 @@ export class SpruceForest {
     camera.updateMatrixWorld();
     this.pm.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     this.frust.setFromProjectionMatrix(this.pm);
-    const n2 = this.lod[0] ** 2, m2 = this.lod[1] ** 2, f2 = this.maxD ** 2;
+    const n2 = this.lod[0] ** 2, m2 = this.lod[1] ** 2, s2 = this.lod[2] ** 2, f2 = this.maxD ** 2;
     const cnt = this.meshes.map((r) => r.map(() => 0));
     const S = new THREE.Sphere();
     const cx = cp.x, cy = cp.y, cz = cp.z;
@@ -411,7 +412,7 @@ export class SpruceForest {
         const dx = this.pos[i * 3] - cx, dy = this.pos[i * 3 + 1] - cy, dz = this.pos[i * 3 + 2] - cz;
         const d2 = dx * dx + dy * dy + dz * dz;
         if (d2 > f2) continue;
-        const l = d2 < n2 ? 0 : d2 < m2 ? 1 : 2;
+        const l = d2 < n2 ? 0 : d2 < m2 ? 1 : d2 < s2 ? 2 : 3;
         const v = this.var[i];
         const im = this.meshes[l][v];
         const k = cnt[l][v]++;
@@ -419,7 +420,7 @@ export class SpruceForest {
         im.instanceColor.array.set(this.cols.subarray(i * 3, i * 3 + 3), k * 3);
       }
     }
-    for (let l = 0; l < 3; l++) for (let v = 0; v < VARIANTS; v++) {
+    for (let l = 0; l < NL; l++) for (let v = 0; v < VARIANTS; v++) {
       const im = this.meshes[l][v], k = cnt[l][v];
       im.count = k;
       im.instanceMatrix.clearUpdateRanges(); im.instanceMatrix.addUpdateRange(0, k * 16); im.instanceMatrix.needsUpdate = true;

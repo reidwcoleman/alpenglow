@@ -106,6 +106,8 @@ export class Cloud {
     this.status = 'loading'; // loading | online | offline
     this.listeners = {};
     this.cache = new Map();
+    // (the game loads first: the server's code waits till the mountain's up)
+    this.go = new Promise((r) => { this.start = r; });
     this.ready = this.init().catch((e) => { console.warn('cloud', e); this.status = 'offline'; this.emit('status', this.status); return false; });
   }
 
@@ -113,6 +115,7 @@ export class Cloud {
   emit(e, d) { for (const f of this.listeners[e] ?? []) f(d); }
 
   async init() {
+    await this.go;
     const [A, U, F, D] = await Promise.all([import('firebase/app'), import('firebase/auth'), import('firebase/firestore'), import('firebase/database')]);
     this.A = A; this.U = U; this.F = F; this.D = D;
     const app = (this.app = A.initializeApp(CONFIG));

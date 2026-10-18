@@ -1,6 +1,6 @@
 // After a crash you don't get up from: the run stops, the rescue helicopter comes in low,
 // lowers its orange stretcher, winches you up and flies you to the mountain hospital. You
-// walk out patched up, pick where you want to ride from, and take the chairlift there: 30
+// walk out patched up, pick where you want to ride from, and take the chairlift there: 15
 // seconds on the chair, while the terrain at the other end is built so you drop straight in.
 import * as THREE from 'three';
 import { heightAt, centerX, centerSlope, ZONES, START_Z, FINISH_Z } from './course.js';
@@ -11,7 +11,7 @@ import { trailDiff } from './props.js';
 const $ = (id) => document.getElementById(id);
 const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _q = new THREE.Quaternion();
 const ease = (t) => (t < 0 ? 0 : t > 1 ? 1 : t * t * (3 - 2 * t));
-export const RIDE = 30; // seconds on the chairlift
+export const RIDE = 15; // seconds on the chairlift
 
 export class Rescue {
   constructor(game) {

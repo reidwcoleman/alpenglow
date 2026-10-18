@@ -4,6 +4,8 @@
 import * as THREE from 'three';
 import { heightAt, PARK_ID, EXTENT_Z } from './course.js';
 import { buildChunkArrays } from './chunkbuild.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { LO } from './gfx.js';
 import { makeSimplex, smoothstep } from './noise.js';
 
 export const CHUNK = 128;
@@ -13,46 +15,23 @@ const MID_Z1 = Math.max(8800, Z1 + 4300), FAR_Z1 = Math.max(19000, MID_Z1 + 1020
 const LODS = [96, 48, 24, 12];
 const LOD_DIST = [190, 430, 950];
 
-// tileable multi-channel noise texture used by the snow/rock shader
+// tileable multi-channel noise texture used by the snow/rock shader (its texels are worked out
+// on a loading thread when there is one: fill() puts them in)
 function makeNoiseTexture(size = 256) {
-  const data = new Uint8Array(size * size * 4);
-  const nA = makeSimplex(3), nB = makeSimplex(5), nC = makeSimplex(11), nD = makeSimplex(13);
-  const TAU = Math.PI * 2;
-  // periodic noise via sampling a torus in 4D-ish: blend two 2D lookups
-  const per = (n, x, y, f) => {
-    const a = (x / size) * TAU, b = (y / size) * TAU;
-    const r = f / TAU;
-    return (n(Math.cos(a) * r + 10, Math.sin(a) * r + 10) + n(Math.cos(b) * r + 40, Math.sin(b) * r + 40) +
-      n((Math.cos(a) + Math.sin(b)) * r * 0.7 + 70, (Math.sin(a) + Math.cos(b)) * r * 0.7 + 70)) / 3;
-  };
-  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-    const i = (y * size + x) * 4;
-    let r = 0, g = 0, b = 0, a = 0, amp = 1, tot = 0;
-    for (let o = 0; o < 4; o++) {
-      const f = 4 * Math.pow(2, o);
-      r += per(nA, x, y, f) * amp; g += per(nB, x, y, f) * amp;
-      b += per(nC, x, y, f * 2) * amp; a += per(nD, x, y, f * 1.5) * amp;
-      tot += amp; amp *= 0.5;
-    }
-    data[i] = Math.max(0, Math.min(255, (r / tot * 1.6 + 0.5) * 255));
-    data[i + 1] = Math.max(0, Math.min(255, (g / tot * 1.6 + 0.5) * 255));
-    data[i + 2] = Math.max(0, Math.min(255, (b / tot * 1.6 + 0.5) * 255));
-    data[i + 3] = Math.max(0, Math.min(255, (a / tot * 1.6 + 0.5) * 255));
-  }
-  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  const tex = new THREE.DataTexture(new Uint8Array(size * size * 4), size, size, THREE.RGBAFormat);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.magFilter = THREE.LinearFilter;
   tex.minFilter = THREE.LinearMipmapLinearFilter;
   tex.generateMipmaps = true;
   tex.anisotropy = 8;
-  tex.needsUpdate = true;
+  tex.fill = (data) => { tex.image.data.set(data); tex.needsUpdate = true; tex.filled = true; };
   return tex;
 }
 
 export const noiseTex = makeNoiseTexture();
 
 // scanned PBR textures (Poly Haven, CC0; tools/build_assets.py)
-const TEX = import.meta.env.BASE_URL + 'tex/';
+const TEX = import.meta.env.BASE_URL + (LO ? 'tex/lo/' : 'tex/');
 const texLoader = new THREE.TextureLoader();
 export function pbr(name, srgb) {
   const t = texLoader.load(TEX + name);
@@ -274,7 +253,14 @@ export class Terrain {
       mesh.matrixAutoUpdate = false;
       this.chunks.push({ cx, cz, lod: -1, want: 3, geos: [], mesh });
     }
-    this.buildFar();
+    // far off, a block of 4 x 4 coarse chunks is drawn as one mesh (a few hundred draws fewer)
+    const blocks = new Map();
+    for (const c of this.chunks) {
+      const k = Math.floor((c.cx + NEAR_X) / (CHUNK * 4)) + ',' + Math.floor((c.cz - Z0) / (CHUNK * 4));
+      if (!blocks.has(k)) blocks.set(k, { chunks: [], mesh: null, on: false });
+      blocks.get(k).chunks.push(c);
+    }
+    this.blocks = [...blocks.values()];
     // fine chunks are built off the main thread
     this.inflight = new Map();
     try {
@@ -296,38 +282,19 @@ export class Terrain {
 
   // surrounding ranges: a finer middle ring and a coarse outer ring, each sunk
   // under the finer mesh it surrounds
-  buildFar() {
-    const ring = (S, X0, X1, ZA, ZB, holeX, holeZ0, holeZ1) => {
-      const nx = Math.floor((X1 - X0) / S) + 1, nz = Math.floor((ZB - ZA) / S) + 1;
-      const pos = new Float32Array(nx * nz * 3);
-      const pst = new Float32Array(nx * nz);
-      for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
-        const x = X0 + i * S, z = ZA + j * S;
-        let y = heightAt(x, z);
-        if (x > -holeX + S && x < holeX - S && z > holeZ0 + S && z < holeZ1 - S) y -= 40;
-        // the band where it meets the finer mesh sits just under it: no two surfaces fighting
-        else if (x >= -holeX && x <= holeX && z >= holeZ0 && z <= holeZ1) y -= 2.5;
-        const k = (j * nx + i) * 3;
-        pos[k] = x; pos[k + 1] = y; pos[k + 2] = z;
-      }
-      const idx = [];
-      for (let j = 0; j < nz - 1; j++) for (let i = 0; i < nx - 1; i++) {
-        const a = j * nx + i, b = a + 1, c = a + nx, d = c + 1;
-        idx.push(a, c, b, b, c, d);
-      }
-      const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-      g.setAttribute('aPiste', new THREE.BufferAttribute(pst, 1));
-      g.setAttribute('aIce', new THREE.BufferAttribute(new Float32Array(nx * nz), 1));
-      g.setIndex(idx);
-      g.computeVertexNormals();
-      const m = new THREE.Mesh(g, this.material);
-      m.matrixAutoUpdate = false;
-      this.scene.add(m);
-      return m;
-    };
-    this.mid = ring(36, -5200, 5200, -4400, MID_Z1, NEAR_X, Z0, Z1);
-    this.far = ring(160, -16000, 16000, -14000, FAR_Z1, 5200, -4400, MID_Z1);
+  static RINGS = [[36, -5200, 5200, -4400, MID_Z1, NEAR_X, Z0, Z1], [160, -16000, 16000, -14000, FAR_Z1, 5200, -4400, MID_Z1]];
+  buildRing(a) {
+    const n = a.nx * a.nz;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(a.pos, 3));
+    g.setAttribute('aPiste', new THREE.BufferAttribute(new Float32Array(n), 1));
+    g.setAttribute('aIce', new THREE.BufferAttribute(new Float32Array(n), 1));
+    g.setIndex(new THREE.BufferAttribute(a.idx, 1));
+    g.computeVertexNormals();
+    const m = new THREE.Mesh(g, this.material);
+    m.matrixAutoUpdate = false;
+    this.scene.add(m);
+    return m;
   }
 
   lodFor(c, px, pz) {
@@ -339,13 +306,30 @@ export class Terrain {
     return l;
   }
 
-  // build everything coarse up front (fast), then refine around the camera
-  prime(px, pz) {
+  // build everything coarse up front, then refine around the camera: the whole lot as jobs for
+  // the loading threads (pool.js), the snow's noise texture and the far ranges with them
+  async prime(px, pz, pool, onProgress) {
+    const L = LODS.length - 1;
+    const jobs = [];
+    let done = 0;
+    const tick = () => onProgress?.(++done / jobs.length);
+    if (!noiseTex.filled) jobs.push(pool.job({ kind: 'noise', size: 256 }).then((r) => noiseTex.fill(r.data)));
+    jobs.push(...Terrain.RINGS.map((args, i) => pool.job({ kind: 'ring', args }).then((r) => { this[i ? 'far' : 'mid'] = this.buildRing(r); })));
     for (const c of this.chunks) {
       c.want = this.lodFor(c, px, pz);
-      const l = Math.max(c.want, 2);
-      this.ensure(c, l);
-      this.show(c, l);
+      for (const l of new Set([Math.max(c.want, 2), L])) {
+        jobs.push(pool.job({ kind: 'chunk', cx: c.cx, cz: c.cz, segs: LODS[l], size: CHUNK, lod: l, coarsest: l === L }).then((r) => { c.geos[l] = toGeometry(r); }));
+      }
+    }
+    for (const j of jobs) j.then(tick);
+    await Promise.all(jobs);
+    for (const c of this.chunks) this.show(c, Math.max(c.want, 2));
+    for (const b of this.blocks) {
+      const g = mergeGeometries(b.chunks.map((c) => c.geos[L]));
+      g.computeBoundingSphere();
+      b.mesh = new THREE.Mesh(g, this.material);
+      b.mesh.receiveShadow = true; b.mesh.matrixAutoUpdate = false; b.mesh.visible = false;
+      this.scene.add(b.mesh);
     }
     this.update(px, pz, 1e9);
   }
@@ -403,6 +387,16 @@ export class Terrain {
       if (performance.now() - t0 > budgetMs) break;
       this.ensure(c, c.want);
       this.show(c, c.want);
+    }
+    // whole blocks out at the coarsest detail: their one mesh instead of the sixteen
+    const L = LODS.length - 1;
+    for (const b of this.blocks) {
+      if (!b.mesh) continue;
+      const on = b.chunks.every((c) => c.want === L);
+      if (on === b.on) continue;
+      b.on = on;
+      b.mesh.visible = on;
+      for (const c of b.chunks) c.mesh.visible = !on;
     }
     // free very fine geometry we've moved far from
     for (const c of this.chunks) {
