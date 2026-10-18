@@ -128,7 +128,7 @@ export function kitMaterial(kit, outfit, crowd = false) {
     uFootL: { value: kit.feet[0] }, uFootR: { value: kit.feet[1] },
     uHandL: { value: kit.hands[0] }, uHandR: { value: kit.hands[1] },
     // injuries (injury.js): blood on the head, and where a limb came off (rest-pose point, w on)
-    uBlood: { value: 0 }, uCut: { value: new THREE.Vector4(0, 0, 0, 0) }, uCut2: { value: new THREE.Vector4(0, 0, 0, 0) }, uStain: { value: 0 },
+    uBlood: { value: 0 }, uCut: { value: new THREE.Vector4(0, 0, 0, 0) }, uCut2: { value: new THREE.Vector4(0, 0, 0, 0) }, uCut3: { value: new THREE.Vector4(0, 0, 0, 0) }, uCut4: { value: new THREE.Vector4(0, 0, 0, 0) }, uStain: { value: 0 },
   };
   m.userData.u = u;
   m.onBeforeCompile = (sh) => {
@@ -173,7 +173,7 @@ vRest = position;
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
 uniform sampler2D uMask; uniform vec3 uJacket, uPants, uGloves, uBoots, uJacket2, uPants2, uHandL, uHandR; uniform vec2 uLm, uPat;
-uniform float uBlood, uStain; uniform vec4 uCut, uCut2;
+uniform float uBlood, uStain; uniform vec4 uCut, uCut2, uCut3, uCut4;
 #ifdef CROWD
 #define JK vColor.rgb
 #else
@@ -293,8 +293,8 @@ vec3 agPat(vec3 a, vec3 b, float pat, float part, vec3 p, vec2 lm) {
     gRough = mix( gRough, 0.2, bm );
   }
   // where a limb came away: raw and red round the break, soaked further up the sleeve or leg
-  for ( int ci = 0; ci < 2; ci++ ) {
-    vec4 cut = ci == 0 ? uCut : uCut2;
+  for ( int ci = 0; ci < 4; ci++ ) {
+    vec4 cut = ci == 0 ? uCut : ci == 1 ? uCut2 : ci == 2 ? uCut3 : uCut4;
     if ( cut.w <= 0.0 ) continue;
     float d = distance( vRest, cut.xyz );
     float cm = 1.0 - smoothstep( 0.05, 0.11, d );

@@ -21,17 +21,19 @@ export class Input {
     this.bindTouch();
   }
 
+  // the on-screen buttons press the same keys a keyboard would (so taps make combos too)
   bindTouch() {
-    const map = { 'tc-left': 'left', 'tc-right': 'right', 'tc-tuck': 'tuck', 'tc-brake': 'brake', 'tc-jump': 'jump', 'tc-grab': 'grab' };
-    for (const [id, k] of Object.entries(map)) {
+    const map = { 'tc-left': 'ArrowLeft', 'tc-right': 'ArrowRight', 'tc-tuck': 'ArrowUp', 'tc-brake': 'ArrowDown', 'tc-jump': 'Space', 'tc-grab': 'ShiftLeft', 'tc-turn': 'KeyG' };
+    for (const [id, code] of Object.entries(map)) {
       const el = document.getElementById(id);
       if (!el) continue;
-      const on = (e) => { e.preventDefault(); this.touch[k] = true; el.classList.add('on'); };
-      const off = (e) => { e.preventDefault(); this.touch[k] = false; el.classList.remove('on'); };
+      const on = (e) => { e.preventDefault(); el.setPointerCapture?.(e.pointerId); if (!this.keys.has(code)) this.pressed.add(code); this.keys.add(code); el.classList.add('on'); navigator.vibrate?.(8); };
+      const off = (e) => { e.preventDefault(); this.keys.delete(code); el.classList.remove('on'); };
       el.addEventListener('pointerdown', on);
       el.addEventListener('pointerup', off);
-      el.addEventListener('pointerleave', off);
       el.addEventListener('pointercancel', off);
+      el.addEventListener('lostpointercapture', off);
+      el.addEventListener('contextmenu', (e) => e.preventDefault());
     }
   }
 

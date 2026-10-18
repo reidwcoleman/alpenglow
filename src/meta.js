@@ -35,6 +35,7 @@ export const ITEMS = [
   I('d-white', 'deck', 'Blank', 'free', 0, 0xffffff, 0x15161a, 0, { design: 'logo' }), I('d-black', 'deck', 'Shadow', 'free', 0, 0x111111, 0x8a8f99, 0, { design: 'stripe' }),
   I('gl-black', 'gloves', 'Black', 'free', 0, 0x15161a),
   I('po-alu', 'poles', 'Alloy', 'free', 0, 0x9ea5b0),
+  I('t-none', 'trail', 'Fresh Powder', 'free', 0, 0xffffff, 0xdfeaff, 0, { fx: 'snow' }),
   // riders (all lads; the face is the rider's own)
   I('r-kai', 'rider', 'Kai', 'free', 0, 0xe8b796, null, 0, { body: 0 }), I('r-finn', 'rider', 'Finn', 'free', 0, 0x8d5a3b, null, 0, { body: 1 }),
   I('r-leo', 'rider', 'Leo', 'free', 0, 0xf1c7a8, null, 0, { body: 2 }),
@@ -139,6 +140,13 @@ SKIS.forEach(([n, r, d, a, b], i) => ITEMS.push(I('sx-' + slug(n), 'skis', n, r,
 DECKS.forEach(([n, r, d, a, b], i) => ITEMS.push(I('dx-' + slug(n), 'deck', n, r, cost(r, i % 4), C(a), C(b), 0, { design: d })));
 GLOVES.forEach(([n, r, a, b], i) => ITEMS.push(I('glx-' + slug(n), 'gloves', n, r, cost(r, i % 2) - 100, C(a), C(b))));
 POLES.forEach(([n, r, a], i) => ITEMS.push(I('pox-' + slug(n), 'poles', n, r, cost(r, i % 2) - 100, C(a))));
+// trails: what your skis leave in the air behind you (fx: solid, fade, rainbow, sparkle, fire)
+const TRAILS = [
+  ['Ice Blue', 'rare', 'Sky', 'Chalk', 'fade'], ['Neon Volt', 'rare', 'Volt', 'Lime', 'fade'], ['Bubblegum', 'rare', 'Flamingo', 'Chalk', 'fade'], ['Tangerine', 'rare', 'Tangerine', 'Mustard', 'fade'],
+  ['Inferno', 'epic', 'Mustard', 'Crimson', 'fire'], ['Toxic Smoke', 'epic', 'Lime', 'Pine', 'fire'], ['Royal', 'epic', 'Violet', 'Gold', 'sparkle'], ['Frostbite', 'epic', 'Ice', 'Cobalt', 'sparkle'],
+  ['Rainbow Road', 'legendary', 'Crimson', 'Violet', 'rainbow'], ['Gold Dust', 'legendary', 'Gold', 'Mustard', 'sparkle'], ['Aurora', 'legendary', 'Mint', 'Violet', 'fade'], ['Comet', 'legendary', 'Chalk', 'Sky', 'sparkle'],
+];
+TRAILS.forEach(([n, r, a, b, fx], i) => ITEMS.push(I('tx-' + slug(n), 'trail', n, r, cost(r, i % 3) + 100, C(a), C(b), 0, { fx })));
 
 // pass exclusives: one every fifth level
 const PASS_DEFS = [
@@ -150,6 +158,20 @@ const PASS_DEFS = [
   ['head', 'Tiger Beanie', 0xff8a1e, null, 0, { beanie: true }], ['deck', 'Aurora', 0x22e0a0, 0x5b4bd8, 0, { design: 'fade' }], ['skis', 'Gold Rush Pro', 0xffd21e, 0x15161a, 0, { design: 'tiger' }], ['jacket', 'Alpenglow Pro', 0xff6f61, 0xffd36b, 1],
 ];
 PASS_DEFS.forEach(([cat, name, c, c2 = null, pat = 0, extra = {}], i) => ITEMS.push(I('pass-' + (i + 1), cat, name, 'pass', 0, c, c2, pat, { ...extra, level: (i + 1) * 5 })));
+// the Gold Pass track: an exclusive every fourth level for riders who bought it
+export const GOLD_PRICE = 950;
+const GOLD_DEFS = [
+  ['trail', 'Glacier Glow', 0x9fe8ff, 0x5b8cff, 0, { fx: 'sparkle' }], ['jacket', 'Gold Rush', 0xd9a520, 0x1b1d24, 14], ['deck', 'Solar Flare', 0xff8a1e, 0xffe14d, 0, { design: 'flames' }],
+  ['goggles', 'Liquid Gold', 0xffd21e, 0x1b1d24], ['pants', 'Midnight Fade', 0x1b1d24, 0x5b4bd8, 5], ['head', 'Gold Chrome Lid', 0xffd36b, null, 0, { helmet: true, fin: 2 }],
+  ['skis', 'Aurora Pro', 0x22e0a0, 0x5b4bd8, 0, { design: 'galaxy' }], ['trail', 'Phoenix', 0xffe14d, 0xff3d1f, 0, { fx: 'fire' }], ['jacket', 'Neon Grid', 0x111214, 0x22f0ff, 10],
+  ['gloves', 'Gold Mitts', 0xd9a520, 0x1b1d24], ['deck', 'Deep Space', 0x0b0d2a, 0xb39ddb, 0, { design: 'stars' }], ['pants', 'Gold Pin', 0x1b1d24, 0xd9a520, 11],
+  ['trail', 'Prism', 0xff4f8b, 0x22e0ff, 0, { fx: 'rainbow' }], ['jacket', 'Vapor', 0xff7ad9, 0x5bd8ff, 5], ['skis', 'Tiger King', 0xffd21e, 0x1b1d24, 0, { design: 'tiger' }],
+  ['head', 'Halo Beanie', 0xfff2b0, null, 0, { beanie: true, pom: true }], ['goggles', 'Prism Mirror', 0xb39ddb, 0x22e0ff], ['deck', 'Molten', 0x1b1d24, 0xff6a12, 0, { design: 'split' }],
+  ['jacket', 'Royal Puffer', 0x3b2a8a, 0xd9a520, 13], ['pants', 'Royal Camo', 0x3b2a8a, 0x1b1d24, 2], ['trail', 'Supernova', 0xffffff, 0xffd36b, 0, { fx: 'sparkle' }],
+  ['skis', 'Gold Standard Pro', 0xd9a520, 0xffffff, 0, { design: 'chevron' }], ['jacket', 'Shredline Gold', 0xd9a520, 0xffffff, 1], ['deck', 'Crown', 0xd9a520, 0x1b1d24, 0, { design: 'logo' }],
+  ['trail', 'Legend', 0xffd21e, 0xff4f8b, 0, { fx: 'rainbow' }],
+];
+GOLD_DEFS.forEach(([cat, name, c, c2 = null, pat = 0, extra = {}], i) => ITEMS.push(I('gold-' + (i + 1), cat, name, 'gold', 0, c, c2, pat, { ...extra, level: i * 4 + 2 })));
 // event medals unlock a few things too (see events.js)
 ITEMS.push(
   I('ev-gold-j', 'jacket', 'Podium Gold', 'event', 0, 0xd9a520, 0x1b1d24, 9, { how: 'Win any event on Pro' }),
@@ -159,8 +181,8 @@ ITEMS.push(
 );
 for (const it of ITEMS) if (it.cat === 'head' && !it.beanie) it.helmet = true;
 export const ITEM = Object.fromEntries(ITEMS.map((x) => [x.id, x]));
-export const CATS = [['rider', 'Rider'], ['jacket', 'Jackets'], ['pants', 'Pants'], ['head', 'Headwear'], ['goggles', 'Goggles'], ['skis', 'Skis'], ['deck', 'Snowboards'], ['gloves', 'Gloves'], ['poles', 'Poles']];
-export const RARITY = { free: 'Starter', rare: 'Rare', epic: 'Epic', legendary: 'Legendary', pass: 'Season Pass', event: 'Event' };
+export const CATS = [['rider', 'Rider'], ['jacket', 'Jackets'], ['pants', 'Pants'], ['head', 'Headwear'], ['goggles', 'Goggles'], ['skis', 'Skis'], ['deck', 'Snowboards'], ['gloves', 'Gloves'], ['poles', 'Poles'], ['trail', 'Trails']];
+export const RARITY = { free: 'Starter', rare: 'Rare', epic: 'Epic', legendary: 'Legendary', pass: 'Season Pass', gold: 'Gold Pass', event: 'Event' };
 // the outfit sets in the shop: a whole look for less than its parts
 export const SETS = [
   { id: 'set-patrol', name: 'Ski Patrol', items: ['jx-patrol-trim', 'p-coal', 'hx-patrol', 'glx-crimson'] },
@@ -171,10 +193,15 @@ export const SETS = [
   { id: 'set-checker', name: 'Checkmate', items: ['jx-checkmate', 'px-check', 'sx-checkers', 'dx-chessboard'] },
   { id: 'set-tiger', name: 'Big Cat', items: ['jx-bumblebee', 'sx-tiger', 'dx-bengal', 'bx-mustard-beanie'] },
   { id: 'set-puffer', name: 'Puffer Club', items: ['jx-puffer-tangerine', 'px-quilted', 'bx-chalk-beanie', 'glx-chalk'] },
+  { id: 'set-inferno', name: 'Inferno', items: ['jx-ember-fade', 'px-lava-fade', 'gx-blood-orange', 'dx-flame-job', 'tx-inferno'], blurb: 'Leave the mountain on fire behind you.' },
+  { id: 'set-rainbow', name: 'Rainbow Road', items: ['jx-sunrise-stripes', 'px-sunset-stripes', 'gx-pink-mirror', 'sx-lava-lamp', 'tx-rainbow-road'], blurb: 'Every colour at once, and a rainbow trail.' },
+  { id: 'set-frost', name: 'Frostbite', items: ['jx-puffer-ice', 'px-glacier-fade', 'hx-ocean-chrome', 'gx-ice-mirror', 'sx-glacier-pixel', 'tx-frostbite'], blurb: 'Ice blue head to toe, frost sparkling behind.' },
+  { id: 'set-gold', name: 'Gold Dust', items: ['jx-pageant', 'px-check', 'hx-chrome', 'gx-gold-rim', 'glx-gold-cuff', 'tx-gold-dust'], blurb: 'Gold everything. Gold dust in the air.' },
+  { id: 'set-aurora', name: 'Northern Lights', items: ['jx-ocean-fade', 'px-glacier-fade', 'gx-aurora', 'dx-night-owl', 'tx-aurora'], blurb: 'The night sky, worn.' },
 ].map((s) => ({ ...s, price: Math.round(s.items.reduce((a, id) => a + (ITEM[id]?.price ?? 0), 0) * 0.7 / 50) * 50 }));
 
 // ---------------------------------------------------------------- the profile
-const KIT0 = { rider: 'r-kai', jacket: 'j-ember', pants: 'p-coal', head: 'h-white', goggles: 'g-amber', skis: 's-red', deck: 'd-white', gloves: 'gl-black', poles: 'po-alu' };
+const KIT0 = { rider: 'r-kai', jacket: 'j-ember', pants: 'p-coal', head: 'h-white', goggles: 'g-amber', skis: 's-red', deck: 'd-white', gloves: 'gl-black', poles: 'po-alu', trail: 't-none' };
 export class Meta {
   constructor() {
     this.load();
@@ -194,13 +221,14 @@ export class Meta {
     const oldJ = ITEMS.find((x) => x.cat === 'jacket' && x.r === 'free' && x.c === old);
     this.kit = { ...KIT0, jacket: oldJ?.id ?? 'j-ember', ...store.json('kit', {}) };
     this.day = store.json('day', { d: '', xp: 0, done: false });
+    this.gold = store.get('gold', '0') === '1';
     this.fix();
   }
 
   // free things are always yours, pass items up to your level; the kit only holds what you own
   fix() {
     for (const it of ITEMS) if (it.r === 'free') this.owned.add(it.id);
-    for (const it of ITEMS) if (it.r === 'pass' && it.level <= this.level) this.owned.add(it.id);
+    for (const it of ITEMS) if ((it.r === 'pass' || (it.r === 'gold' && this.gold)) && it.level <= this.level) this.owned.add(it.id);
     for (const [k, v] of Object.entries(this.kit)) if (!ITEM[v] || !this.owned.has(v) || ITEM[v].cat !== k) delete this.kit[k];
     this.kit = { ...KIT0, ...this.kit };
     if (this.day.d !== today()) this.day = { d: today(), xp: 0, done: false };
@@ -212,13 +240,13 @@ export class Meta {
     this.rev = Date.now();
     store.set('flakes', String(this.flakes)); store.set('xp', String(this.xp)); store.set('rev', String(this.rev));
     store.put('owned', [...this.owned].filter((id) => ITEM[id]?.r !== 'free')); store.put('kit', this.kit); store.put('day', this.day); store.put('medals', this.medals);
-    store.put('lessons', [...this.lessons]); store.put('quick', this.quick);
+    store.put('lessons', [...this.lessons]); store.put('quick', this.quick); store.set('gold', this.gold ? '1' : '0');
     this.onSave?.();
   }
 
   // the cloud save: what goes up, and taking one back
   export() {
-    return { flakes: this.flakes, xp: this.xp, owned: [...this.owned].filter((id) => ITEM[id]?.r !== 'free'), kit: this.kit, day: this.day, medals: this.medals, rev: this.rev,
+    return { gold: this.gold, flakes: this.flakes, xp: this.xp, owned: [...this.owned].filter((id) => ITEM[id]?.r !== 'free'), kit: this.kit, day: this.day, medals: this.medals, rev: this.rev,
       lessons: [...this.lessons], quick: this.quick,
       runs: Object.fromEntries(['yard', 'slope', 'forest', 'bigair'].map((p) => [p, this.runs(p).slice(0, 10).map(({ rid, ...r }) => r)])) };
   }
@@ -229,13 +257,14 @@ export class Meta {
     if (merge) {
       this.flakes = Math.max(this.flakes, d.flakes ?? 0);
       this.xp = Math.max(this.xp, d.xp ?? 0);
+      this.gold = this.gold || !!d.gold;
       for (const id of d.owned ?? []) this.owned.add(id);
       for (const [k, v] of Object.entries(d.medals ?? {})) this.medals[k] = Math.max(this.medals[k] ?? 0, v);
       for (const id of d.lessons ?? []) this.lessons.add(id);
     } else {
       this.lessons = new Set(d.lessons ?? []);
       this.quick = d.quick ?? null;
-      this.flakes = d.flakes ?? 300; this.xp = d.xp ?? 0;
+      this.flakes = d.flakes ?? 300; this.xp = d.xp ?? 0; this.gold = !!d.gold;
       this.owned = new Set(d.owned ?? []);
       this.kit = { ...KIT0, ...(d.kit ?? {}) };
       this.day = d.day ?? { d: '', xp: 0, done: false };
@@ -253,7 +282,7 @@ export class Meta {
 
   // a brand new rider (after signing out)
   reset() {
-    for (const k of ['flakes', 'xp', 'owned', 'kit', 'day', 'medals', 'lessons', 'quick', 'rev', 'runs.yard', 'runs.slope', 'runs.forest', 'runs.bigair']) { try { localStorage.removeItem('alpenglow.' + k); } catch { /* */ } }
+    for (const k of ['gold', 'flakes', 'xp', 'owned', 'kit', 'day', 'medals', 'lessons', 'quick', 'rev', 'runs.yard', 'runs.slope', 'runs.forest', 'runs.bigair']) { try { localStorage.removeItem('alpenglow.' + k); } catch { /* */ } }
     this.load();
     this.changed();
   }
@@ -266,6 +295,26 @@ export class Meta {
     const item = ITEMS.find((x) => x.r === 'pass' && x.level === L);
     if (item) return { item };
     return { flakes: L % 10 === 0 ? 150 : 25 };
+  }
+
+  // the Gold Pass track: an exclusive every fourth level, flakes between
+  goldReward(L) {
+    const item = ITEMS.find((x) => x.r === 'gold' && x.level === L);
+    if (item) return { item };
+    return { flakes: L % 10 === 0 ? 200 : 40 };
+  }
+
+  // buy the Gold Pass: everything on its track up to your level is yours at once
+  buyGold() {
+    if (this.gold || this.flakes < GOLD_PRICE) return null;
+    this.flakes -= GOLD_PRICE;
+    this.gold = true;
+    const gifts = [];
+    let back = 0;
+    for (let L = 2; L <= this.level; L++) { const r = this.goldReward(L); if (r.item) { this.owned.add(r.item.id); gifts.push(r.item); } else back += r.flakes; }
+    this.flakes += back;
+    this.save(); this.changed();
+    return { gifts, flakes: back };
   }
 
   // a run is over: XP (three levels a day at full rate, a quarter after that) and flakes
@@ -281,6 +330,7 @@ export class Meta {
     for (let L = before + 1; L <= this.level; L++) {
       const r = this.reward(L);
       if (r.item) { this.owned.add(r.item.id); gifts.push(r.item); } else flakes += r.flakes;
+      if (this.gold) { const gr = this.goldReward(L); if (gr.item) { this.owned.add(gr.item.id); gifts.push(gr.item); } else flakes += gr.flakes; }
     }
     this.flakes += flakes;
     this.save(); this.changed();
@@ -291,7 +341,7 @@ export class Meta {
 
   buy(id) {
     const it = ITEM[id], price = it && this.price(id);
-    if (!it || this.owned.has(id) || it.r === 'pass' || it.r === 'event' || this.flakes < price) return false;
+    if (!it || this.owned.has(id) || it.r === 'pass' || it.r === 'gold' || it.r === 'event' || this.flakes < price) return false;
     this.flakes -= price; this.owned.add(id);
     this.kit[it.cat] = id;
     this.save(); this.changed();
@@ -312,6 +362,12 @@ export class Meta {
     for (const id of set.items) { this.owned.add(id); this.kit[ITEM[id].cat] = id; }
     this.save(); this.changed();
     return true;
+  }
+
+  // the spotlight set this week (the shop's banner)
+  spotlight() {
+    const w = Math.floor(Date.now() / 6048e5);
+    return SETS[(w * 7 + 3) % SETS.length];
   }
 
   // six things on offer today, 20% off
@@ -348,13 +404,14 @@ export class Meta {
   }
 
   // the kit as a rider outfit (skin and body come from the rider you picked)
-  outfit(base, board) {
-    const k = (c) => ITEM[this.kit[c]] ?? ITEM[KIT0[c]];
+  outfit(base, board, over = null) {
+    const kit = over ? { ...this.kit, ...over } : this.kit;
+    const k = (c) => ITEM[kit[c]] ?? ITEM[KIT0[c]];
     const j = k('jacket'), p = k('pants'), h = k('head'), sk = k('skis'), dk = k('deck'), gg = k('goggles'), gl = k('gloves'), r = k('rider');
     const o = { ...base, jacket: j.c, jacket2: j.c2 ?? j.c, jpat: j.pat, pants: p.c, pants2: p.c2 ?? p.c, ppat: p.pat,
       goggles: gg.c, goggles2: gg.c2 ?? 0x16171c, skis: sk.c, skis2: sk.c2 ?? 0xffffff, skiDesign: sk.design ?? 'logo',
       deck: dk.c, deck2: dk.c2 ?? 0x15161a, deckDesign: dk.design ?? 'logo', gloves: gl.c, gloves2: gl.c2 ?? gl.c, poles: k('poles').c,
-      board: !!board, skin: r.c, avatar: r.body, male: true };
+      board: !!board, skin: r.c, avatar: r.body, male: true, trail: k('trail').fx === 'snow' ? null : { c: k('trail').c, c2: k('trail').c2, fx: k('trail').fx } };
     if (h.beanie) { o.beanie = h.c; o.pom = !!h.pom; } else { o.beanie = 0; o.helmet = h.c; o.helmet2 = h.c2 ?? null; o.helmetFin = h.fin ?? 0; }
     if (o.board && o.boots === 0xf0f0f0) o.boots = 0x2a2d35;
     return o;

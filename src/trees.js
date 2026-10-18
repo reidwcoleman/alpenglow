@@ -57,7 +57,7 @@ export class Forest {
       if (along > -20 && along < liftLen + 20 && Math.abs(lx * ldz - lz * ldx) < 9) continue;
       if (noise(px / 30, pz / 30) < -0.35 && rnd() < 0.6) continue;
       // and the hospital and its helipad
-      if (Math.hypot(px - HOSPITAL.x, pz - HOSPITAL.z) < 44) continue;
+      if (Math.hypot(px - HOSPITAL.x, pz - HOSPITAL.z) < 56) continue;
       const h = 9 + rnd() * 12 + (d > 0.8 ? 3 : 0);
       const v = Math.floor(rnd() * 4);
       const g = 0.8 + rnd() * 0.35;

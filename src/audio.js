@@ -88,6 +88,20 @@ export class Audio {
     o.connect(og).connect(this.master); o.start(t); o.stop(t + 0.32);
   }
 
+  // bones going: a dry snap and a crunch under the thud
+  crack(k = 1) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    for (const [dt, f, v, d] of [[0, 2600, 1, 0.05], [0.035, 1700, 0.8, 0.09], [0.09, 1100, 0.6, 0.14]]) {
+      const src = ctx.createBufferSource(); src.buffer = this.noise;
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f; bp.Q.value = 1.4;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t + dt); g.gain.exponentialRampToValueAtTime(v * k, t + dt + 0.003); g.gain.exponentialRampToValueAtTime(0.0001, t + dt + d);
+      src.connect(bp).connect(g).connect(this.master); src.start(t + dt, Math.random()); src.stop(t + dt + d + 0.02);
+    }
+    this.thump(k);
+  }
+
   // a pole or a sign whacked: a hollow knock with a rattle (wood: lower and duller)
   clack(k = 1, wood = false) {
     if (!this.ctx) return;

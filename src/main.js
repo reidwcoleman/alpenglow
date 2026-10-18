@@ -6,9 +6,9 @@ import { Forest } from './trees.js';
 import { Props, trailDiff } from './props.js';
 import { Smash } from './smash.js';
 import { Injuries } from './injury.js';
+import { Trail } from './trail.js';
 import { Rescue } from './rescue.js';
 import { Music } from './music.js';
-import { Tokens } from './tokens.js';
 import { Tracks } from './tracks.js';
 import { Particles, Snowfall } from './particles.js';
 import { Skier } from './skier.js';
@@ -71,7 +71,7 @@ class Game {
     // a sky asked for in the address (screenshots, shared links) holds for the first run
     this.wxPinned = params.has('tod');
     if (!PRESETS[this.tod]) this.tod = 'golden';
-    this.quality = params.get('q') ?? store.get('quality', 'high');
+    this.quality = params.get('q') ?? store.get('quality', matchMedia('(pointer: coarse)').matches ? 'low' : 'high');
     if (!QUALITY[this.quality]) this.quality = 'high';
     // the wallet, the pass, the kit; the shared server keeps a copy of it all
     this.meta = new Meta();
@@ -152,7 +152,7 @@ class Game {
       smash: this.smash, netHit: (s, z, pen) => this.props.netHit(s, z, pen) };
     // a pole or a sign goes down: a knock, a puff of snow (and a jolt if it was you)
     this.injuries = new Injuries(scene);
-    this.tokens = new Tokens(scene);
+    this.trail = new Trail(scene);
     this.rescue = new Rescue(this);
     this.smash.onHit = (o, sp) => {
       const d = this.camera.position.distanceTo(_v.set(o.x, heightAt(o.x, o.z), o.z));
@@ -493,8 +493,8 @@ class Game {
     $('parks').classList.remove('hidden');
     const pins = $('pk-pins');
     if (!pins.children.length) {
-      const POS = { yard: [15, 40], slope: [45, 47], forest: [57, 38], bigair: [76, 17], timber: [48, 80], grand: [30, 14], mega: [36, 64] };
-      const COL = { yard: '#7fe0c4', slope: '#ff8a5c', forest: '#9fd36b', bigair: '#ff5c7a', timber: '#c6e36b', grand: '#8ec8ff', mega: '#d68cff' };
+      const POS = { yard: [15, 40], slope: [45, 47], forest: [57, 38], bigair: [76, 17], timber: [48, 80], grand: [30, 14], mega: [36, 64], canyon: [62, 62] };
+      const COL = { yard: '#7fe0c4', slope: '#ff8a5c', forest: '#9fd36b', bigair: '#ff5c7a', timber: '#c6e36b', grand: '#8ec8ff', mega: '#d68cff', canyon: '#ffb347' };
       MAP_IDS.forEach((id, i) => {
         const M = MAPS[id];
         const b = document.createElement('button');
@@ -808,7 +808,9 @@ class Game {
       // a crash you don't get up from: injuries (unless they're turned off) and the rescue
       if (e.injured) {
         if (sc) { sc.crashes++; sc.pend = 0; sc.n = 0; sc.names = []; }
-        this.injuries.hurt(p, store.get('gore', 'on') !== 'off');
+        const gore = store.get('gore', 'on') !== 'off';
+        this.injuries.hurt(p, gore);
+        if (gore) this.audio.crack(0.6 + (e.severity ?? 0.5) * 0.4);
         this.rescue.start(p);
         return;
       }
@@ -1002,8 +1004,7 @@ class Game {
   // ---------------- modes ----------------
   // opts: { online: race start time (server clock) }; this.event: { ev, tier } for an event
   start(mode, opts = {}) {
-    this.rescue?.abort(); this.injuries?.clear(); this.tokens?.reset();
-    if (this.tokens) $('tok').textContent = `★ 0/${this.tokens.list.length}`;
+    this.rescue?.abort(); this.injuries?.clear();
     if (mode === 'free') mode = 'run';
     if (mode === 'trial' || mode === 'contest') mode = mode === 'trial' ? 'race' : 'run';
     if (mode !== 'run' && PARK_ID !== 'yard') mode = 'run';
@@ -1160,17 +1161,6 @@ class Game {
   }
 
   // ---------------- trick school ----------------
-  collect(k) {
-    const T = this.tokens, n = T.list.length;
-    if (this.sc) this.sc.score += k.pts;
-    this.audio.beep(1320 + (T.got % 5) * 120, 0.08, 0.12, 'triangle');
-    this.particles.emit(k.x, k.y, k.z, 0, 1.5, 0, 3, 0.25, 0.6, 14);
-    $('tok').textContent = `★ ${T.got}/${n}`;
-    $('tok').classList.add('on'); clearTimeout(this.tokT); this.tokT = setTimeout(() => $('tok').classList.remove('on'), 2500);
-    if (T.got === n) { if (this.sc) this.sc.score += 10000; this.say('EVERY STAR', '', '+10,000', 'gold', 2400); this.audio.chime(); }
-    else this.status(`★ +${k.pts}`);
-  }
-
   // combos: quick arrow taps in the air. A match fires the trick (sized to the air left);
   // if a longer combo starts the same way it waits a beat for more taps first
   combos(inp, dt) {
@@ -1209,7 +1199,7 @@ class Game {
     const name = (this.gear === 'board' ? l?.board : l?.name)?.toUpperCase() ?? '';
     if (!spec) { this.comboHud(); return; }
     if (P.auto || P.trickType) this.status('ONE AT A TIME');
-    else if (P.flightTime() < 0.45) this.status('TOO LATE · ' + name);
+    else if (P.flightTime() < (P.strict ? 0.12 : 0.45)) this.status('TOO LATE · ' + name);
     else {
       P.auto = { ...spec, id: c.id, dir: c.dir ?? spec.dir };
       if (c.secret) this.status('SECRET COMBO · ' + name);
@@ -1526,11 +1516,8 @@ class Game {
     if (this.audio.ctx && !this.music.timer) this.music.start();
     this.music.setMood(this.rescue.active ? (this.rescue.phase === 'lift' || this.rescue.phase === 'hospital' ? 'chill' : 'calm') : this.state === 'menu' || this.state === 'loading' ? 'chill' : 'ride');
     if (!this.paused) this.injuries.update(dt);
-    // gold stars: through one and it's yours
-    if (!this.paused && this.tokens) {
-      const live = this.player && !this.rescue.active && this.state === 'free';
-      for (const k of this.tokens.update(dt, live ? this.player.pos : null)) this.collect(k);
-    }
+    // your trail (a Shop item) in the air behind you
+    if (!this.paused) { const P = this.player; this.trail.update(dt, P && this.state !== 'menu' && !this.rescue.active ? P : null, P?.model?.outfit?.trail); }
     // breath in the cold air, every couple of seconds
     const BP = this.player;
     if (BP && !this.paused && BP.crash <= 0 && !BP.held && this.state !== 'menu' && BP.model.rig && BP.model.real && ((this.breathT = (this.breathT ?? 1) - dt) <= 0)) {
@@ -1744,7 +1731,7 @@ class Game {
       if (Math.abs(sc.score - sc.shown) < 1) sc.shown = sc.score;
       $('score').textContent = Math.round(sc.shown).toLocaleString();
       const live = sc.n > 0 && (sc.pend > 0 || this.time - sc.last < 6);
-      $('combo').textContent = live && sc.n > 1 ? `LINE ×${this.lineMult().toFixed(2).replace(/0$/, '')}` : this.mode === 'park' && sc.laps ? `LAP ${sc.laps + 1}` : '';
+      $('linex').textContent = live && sc.n > 1 ? `LINE ×${this.lineMult().toFixed(2).replace(/0$/, '')}` : this.mode === 'park' && sc.laps ? `LAP ${sc.laps + 1}` : '';
       // on a rail: the slide and its points tick up live
       if (p.grind && p.grind.t > 0.12) {
         const g = p.grind;

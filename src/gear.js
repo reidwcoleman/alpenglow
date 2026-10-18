@@ -530,17 +530,36 @@ export function skiBindingGeometry() {
   });
 }
 
-// a snowboard binding: base plate, heel cup, highback, ankle and toe straps (toes along +Z)
+// a snowboard binding: a disc screwed to the board, a base plate with a heel cup, a tall
+// contoured highback leaning forward, a padded ankle strap and a toe cap strap, each with a
+// metal ratchet (toes along +Z)
 export function boardBindingGeometry() {
   return once('boardbind', () => {
-    const body = new THREE.Color(0.14, 0.15, 0.17), strap = new THREE.Color(1, 1, 1);
-    const hb = new THREE.CylinderGeometry(0.085, 0.08, 0.2, 16, 1, true, Math.PI * 0.62, Math.PI * 0.76).translate(0, 0.14, -0.005).rotateX(-0.22);
-    const cup = new THREE.CylinderGeometry(0.078, 0.078, 0.06, 16, 1, true, Math.PI * 0.55, Math.PI * 0.9).translate(0, 0.045, -0.02);
-    const ankle = new THREE.CylinderGeometry(0.078, 0.078, 0.05, 16, 1, true, -Math.PI * 0.45, Math.PI * 0.9).translate(0, 0.17, 0.0).rotateX(0.35);
-    const toe = new THREE.CylinderGeometry(0.075, 0.075, 0.035, 14, 1, true, -Math.PI * 0.42, Math.PI * 0.84).translate(0, 0.075, 0.1).scale(1, 1, 0.8);
+    const body = new THREE.Color(0.14, 0.15, 0.17), strap = new THREE.Color(1, 1, 1), pad = new THREE.Color(0.22, 0.23, 0.26), metal = new THREE.Color(0.75, 0.77, 0.8);
+    const disc = new THREE.CylinderGeometry(0.058, 0.06, 0.012, 24).translate(0, 0.006, 0.02);
+    const plate = new THREE.BoxGeometry(0.14, 0.014, 0.3, 1, 1, 1).translate(0, 0.016, 0.02);
+    // heel cup: a wall round the back of the heel
+    const cup = new THREE.CylinderGeometry(0.08, 0.078, 0.075, 20, 1, true, Math.PI * 0.5, Math.PI).translate(0, 0.05, -0.045);
+    const cupI = new THREE.CylinderGeometry(0.074, 0.072, 0.075, 20, 1, true, Math.PI * 0.5, Math.PI).translate(0, 0.05, -0.045);
+    cupI.index.array.reverse();
+    // side rails from the cup to the toe
+    const railL = new THREE.BoxGeometry(0.008, 0.045, 0.2).translate(0.074, 0.04, 0.05);
+    const railR = new THREE.BoxGeometry(0.008, 0.045, 0.2).translate(-0.074, 0.04, 0.05);
+    // the highback: a curved shell up the back of the calf, leaning forward
+    const hb = new THREE.CylinderGeometry(0.075, 0.084, 0.25, 20, 4, true, Math.PI * 0.6, Math.PI * 0.8);
+    { const p = hb.attributes.position; for (let k = 0; k < p.count; k++) { const y = p.getY(k); p.setX(k, p.getX(k) * (1 - (y + 0.125) * 0.5)); } }
+    hb.translate(0, 0.2, -0.05).rotateX(0.24);
+    const hbI = hb.clone(); hbI.index.array.reverse();
+    // straps: padded arcs over the ankle and the toe
+    const ankle2 = new THREE.TorusGeometry(0.075, 0.016, 6, 18, Math.PI).rotateX(-Math.PI / 2 + 0.55).translate(0, 0.13, 0.04);
+    const toe = new THREE.TorusGeometry(0.068, 0.013, 6, 16, Math.PI).rotateX(-Math.PI / 2 + 1.1).scale(1, 1, 0.75).translate(0, 0.06, 0.15);
     const parts = [
-      stock(new THREE.BoxGeometry(0.135, 0.016, 0.29).translate(0, 0.008, 0.02), body),
-      stock(cup, body), stock(hb, body), stock(ankle, strap), stock(toe, strap),
+      stock(disc, metal), stock(plate, body), stock(cup, body), stock(cupI, pad), stock(railL, body), stock(railR, body),
+      stock(hb, body), stock(hbI, pad), stock(ankle2, strap), stock(toe, strap),
+      // ratchets on the outside of each strap, and the forward-lean adjuster on the highback
+      stock(new THREE.BoxGeometry(0.014, 0.022, 0.045).rotateX(-0.6).translate(0.085, 0.14, 0.07), metal),
+      stock(new THREE.BoxGeometry(0.014, 0.018, 0.035).rotateX(-1.1).translate(0.075, 0.07, 0.17), metal),
+      stock(new THREE.BoxGeometry(0.03, 0.05, 0.008).translate(0, 0.27, -0.155).rotateX(0.24), metal),
     ];
     const g = toGeo(parts);
     g.computeVertexNormals();

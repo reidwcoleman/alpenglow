@@ -9,6 +9,7 @@ import { clamp, smoothstep } from './noise.js';
 
 const GRAV = 9.81;
 const UP = new THREE.Vector3(0, 1, 0);
+const BLOB = {}; const _bn = new THREE.Vector3(), _bq = new THREE.Quaternion();
 const _n = new THREE.Vector3(), _f = new THREE.Vector3(), _s = new THREE.Vector3(), _a = new THREE.Vector3();
 const _t = new THREE.Vector3(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _m = new THREE.Matrix4();
 const near = [];
@@ -68,7 +69,7 @@ export class Skier {
     this.surf = { powder: 0, ice: 0 };
     this.onGround = true;
     this.airTime = 0;
-    this.spin = 0; this.pitch = 0; this.flipAcc = 0; this.grabTime = 0;
+    this.spin = 0; this.pitch = 0; this.flipAcc = 0; this.flipVel = 0; this.grabTime = 0;
     this.crash = 0; this.crashPhase = null; this.crashT = 0;
     this.tumble = 0; this.tumbleAxis = new THREE.Vector3(1, 0, 0); this.lie = 0;
     this.lean = 0; this.latAcc = 0; this.skid = 0; this.skidYaw = 0; this.compress = 0;
@@ -91,6 +92,8 @@ export class Skier {
 
   get speed() { return this.vel.length(); }
   // only the player rides switch on skis (the computer riders always turn round)
+  // the player riding himself: no landing assist, no auto-finished spins
+  get strict() { return this.isPlayer && !this.ai && this.world.arcade; }
   get canSwitch() { return this.isPlayer && !this.board && !this.ai; }
 
   place(x, z, heading = null, speed = 0) {
@@ -331,7 +334,7 @@ export class Skier {
     const gy = heightAt(this.pos.x, this.pos.z);
     let gInst = 1;
     if (this.pos.y > gy + 0.03) {
-      this.onGround = false; this.airTime = 0; this.spin = 0; this.pitch = 0; this.flipAcc = 0;
+      this.onGround = false; this.airTime = 0; this.spin = 0; this.pitch = 0; this.flipAcc = 0; this.flipVel = 0;
       this.trickType = null; this.flipAxis.set(1, 0, 0); this.flipDir = 0; this.grabs = {}; this.butter = null;
       this.grabTime = 0; this.maxAirY = this.pos.y - gy; this.takeoffZ = this.pos.z; this.popped = pop > 0;
       this.shiftyT = 0; this.daffyT = 0; this.assist = null; this.tLand = 9; this.landProbe = 0;
@@ -427,9 +430,14 @@ export class Skier {
       // the body has inertia: spins build up and wind down instead of switching on and off
       const maxR = 7.4 * (c.grab ? 1.12 : 1) * (this.popped ? 1.06 : 1);
       if (this.assist) { /* the landing assist has the rotation now */ }
+      else if (this.strict && this.auto && !this.auto.turn) { /* a combo is flying the spin */ }
       else if (Math.abs(c.steer) > 0.15) {
         const tgt = -Math.sign(c.steer) * maxR * Math.min(1, Math.abs(c.steer) * 1.2);
         this.spinVel += clamp(tgt - this.spinVel, -dt * 30, dt * 30);
+      } else if (this.strict) {
+        // the player's own spin: let go and it stops where it is (a little run-on). Nothing
+        // finishes it for him; land it crooked and he goes down
+        this.spinVel -= Math.sign(this.spinVel) * Math.min(Math.abs(this.spinVel), dt * 62);
       } else if (this.airTime > 0.08) {
         // let go: carry on to the next half turn if well past the last one, then stop on it
         const hor = Math.atan2(v.x, v.z);
@@ -461,10 +469,17 @@ export class Skier {
       if (T.roll) this.flipAxis.set(0, 0, 1);
       else this.flipAxis.set(Math.cos(T.a), 0, Math.sin(T.a) * sd * (fIn < 0 ? 1 : -1)).normalize();
     }
-    if (this.trickType && this.airTime > 0.08 && !this.assist) {
+    if (this.trickType && this.airTime > 0.08 && !this.assist && !(this.strict && this.auto)) {
       const T = TRICKS[this.trickType];
       const held = T.roll ? rIn : fIn;
-      if (held && Math.sign(held) === Math.sign(this.flipDir)) {
+      if (this.strict) {
+        // the same for flips: held it turns over, let go and it slows to a stop where it is
+        const r = T.rate * (this.perfectPop ? 1.08 : 1) * (c.grab ? 1.12 : 1);
+        const want = held && Math.sign(held) === Math.sign(this.flipDir) ? this.flipDir * r : 0;
+        this.flipVel += clamp(want - this.flipVel, -dt * r * 9, dt * r * 9);
+        this.pitch += this.flipVel * dt;
+        this.flipAcc += this.flipVel * dt;
+      } else if (held && Math.sign(held) === Math.sign(this.flipDir)) {
         // tucked up (grabbing) the body turns over faster, like a diver
         const r = T.rate * (this.perfectPop ? 1.08 : 1) * (c.grab ? 1.12 : 1);
         this.pitch += this.flipDir * r * dt;
@@ -505,7 +520,7 @@ export class Skier {
       if (c.up) this.shiftyT += dt;
       if (c.down) this.daffyT += dt;
     }
-    if (arc) this.landAssist(dt);
+    if (arc && !this.strict) this.landAssist(dt);
     if (this.pipeAir) {
       // never drift out over the deck
       const off = pipeAt(this.pos.x, this.pos.z);
@@ -533,7 +548,12 @@ export class Skier {
     // how far off straight (forward or switch) the skis come down
     const off = Math.min(mis, Math.PI - mis);
     let crash, sketchy = false;
-    if (arc) {
+    if (this.strict) {
+      // the player: no help. Come down more than ~35 degrees off either way, or still turning
+      // over, and he goes down
+      crash = big && (pErr > 0.75 || off > 0.7 || vn > 22);
+      sketchy = !crash && big && (off > 0.32 || pErr > 0.36);
+    } else if (arc) {
       // forgiving: a bit sideways still rides away, just sketchy
       crash = big && (pErr > 1.15 || off > 1.25 || vn > 26);
       sketchy = !crash && big && (off > 0.55 || pErr > 0.6);
@@ -575,7 +595,9 @@ export class Skier {
     this.springV -= Math.min(vn, 14) * 0.16;
     if (!crash) { this.pitch = 0; this.spin = 0; this.flipAcc = 0; this.trickType = null; }
     if (this.trackSlot) this.trackSlot.break();
-    if (crash) this.startCrash('landing', vn + (pErr > 1.6 ? v.length() * 0.35 : 0)); else this.emit('land', trick);
+    // how hard: on the head (upside down) is what really hurts
+    const hit = vn + (pErr > 2.2 ? v.length() * 0.5 : pErr > 1.6 ? v.length() * 0.3 : 0);
+    if (crash) this.startCrash('landing', hit); else this.emit('land', trick);
   }
 
   // The last moments before touchdown: whatever rotation is closest to a clean landing gets
@@ -638,8 +660,9 @@ export class Skier {
     if (!A.plan) {
       const T = this.flightTime(), avail = Math.max(0.05, T - 0.3);
       let spin = A.spin ?? 0, flips = A.flips ?? 0;
-      while (spin > 0 && !A.turn && (spin / 180) * Math.PI / avail > 13.5) spin -= 180;
-      while (flips > 0 && (flips * TAU) / avail > 12.5) flips--;
+      // (the player gets the trick he asked for, whether there's the air for it or not)
+      while (!this.strict && spin > 0 && !A.turn && (spin / 180) * Math.PI / avail > 13.5) spin -= 180;
+      while (!this.strict && flips > 0 && (flips * TAU) / avail > 12.5) flips--;
       const sd = A.dir ?? 1;
       const f0 = (this.heading - hor) / Math.PI;
       let type = flips ? A.type : null;
@@ -659,7 +682,18 @@ export class Skier {
     c.steer = 0; c.flip = 0; c.roll = 0;
     const a = this.assist;
     const tl = A.plan.end - this.airTime;
-    if (a && (A.turn || (tl > 0.45 && this.tLand > 0.45))) {
+    if (a && this.strict && !A.turn) {
+      // the body turns at its own pace: done before touchdown, or a crash
+      const sr = 7.4 * (A.grab ? 1.12 : 1) * (this.popped ? 1.06 : 1);
+      const dS = clamp(a.spin * Math.PI + hor - this.heading, -sr * dt, sr * dt);
+      this.heading += dS; this.spin += dS; this.spinVel = dS / dt;
+      if (a.pitch != null) {
+        const fr = TRICKS[this.trickType]?.rate ?? 5.6;
+        const pr = fr * (this.perfectPop ? 1.08 : 1) * (A.grab ? 1.12 : 1);
+        const dP = clamp(a.pitch - this.pitch, -pr * dt, pr * dt);
+        this.pitch += dP; this.flipAcc += dP;
+      }
+    } else if (a && (A.turn || (tl > 0.45 && this.tLand > 0.45))) {
       const left = Math.max(A.turn ? 0.05 : 0.12, tl - (A.turn ? 0.12 : 0.4));
       const dS = clamp((a.spin * Math.PI + hor - this.heading) / left * dt, -14 * dt, 14 * dt);
       this.heading += dS; this.spin += dS;
@@ -722,8 +756,11 @@ export class Skier {
   startCrash(reason, hit = 0) {
     if (this.crash > 0) return;
     const sp = this.speed;
-    const hard = { tree: 12, rock: 12, tower: 12, station: 11, chalet: 11, arch: 12, pole: 15, sign: 14, snowgun: 12, skier: 16, net: 15, boards: 13, landing: 17, rail: 16 }[reason] ?? 99;
+    // (it takes a lot: a crash is usually just a crash)
+    const hard = { tree: 17, rock: 17, tower: 17, station: 16, chalet: 16, arch: 17, pole: 23, sign: 22, snowgun: 18, skier: 22, net: 23, boards: 19, landing: 24, rail: 22 }[reason] ?? 99;
     this.injured = this.isPlayer && !this.ai && !this.world.noRescue && hit >= hard;
+    // how bad, 0 (just over) .. 1 (catastrophic)
+    this.severity = this.injured ? Math.min(1, (hit - hard) / (hard * 0.6)) : 0;
     this.crash = 1; this.crashPhase = 'tumble'; this.crashT = 0; this.crashSpeed = sp;
     this.ragSeed = Math.random() * 6; this.halfTurns = 0;
     // tumble around the horizontal axis across the direction of travel
@@ -736,7 +773,7 @@ export class Skier {
     this.lie = 0;
     this.onGround = true;
     if (this.trackSlot) this.trackSlot.break();
-    this.emit('crash', { reason, speed: sp, hit, injured: this.injured });
+    this.emit('crash', { reason, speed: sp, hit, injured: this.injured, severity: this.severity });
     if (sp > 10) this.emit('yardsale', { speed: sp });
   }
 
@@ -908,7 +945,7 @@ export class Skier {
     const g = this.grind;
     this.grind = null; this.grindCool = 0.35;
     const dist = Math.max(0, g.s - g.d0);
-    this.onGround = false; this.airTime = 0.13; this.spin = 0; this.pitch = 0; this.flipAcc = 0; this.grabTime = 0;
+    this.onGround = false; this.airTime = 0.13; this.spin = 0; this.pitch = 0; this.flipAcc = 0; this.flipVel = 0; this.grabTime = 0;
     this.takeoffY = this.maxY = this.pos.y; this.maxAirY = 0;
     this.takeoffSwitch = this.board ? !!this.boardSwitch : Math.abs(wrapAngle(this.heading - g.R.yaw)) > Math.PI / 2;
     this.fromRail = true;
@@ -984,6 +1021,7 @@ export class Skier {
 
   // ---- visuals ----
   updateVisual(dt, camPos) {
+    this.contact(camPos);
     const m = this.model;
     const g = m.group;
     const airK = this.onGround ? 0 : smoothstep(0.05, 0.35, this.airTime);
@@ -1093,7 +1131,37 @@ export class Skier {
     });
   }
 
+  // a soft dark patch on the snow under the rider: the sky light the body and skis block.
+  // Fades as he leaves the ground
+  contact(camPos) {
+    if (typeof document === 'undefined') return;
+    if (!this.blob) {
+      if (!BLOB.tex) {
+        const c = document.createElement('canvas'); c.width = c.height = 64;
+        const g = c.getContext('2d'), r = g.createRadialGradient(32, 32, 2, 32, 32, 31);
+        r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(0.45, 'rgba(255,255,255,0.55)'); r.addColorStop(1, 'rgba(255,255,255,0)');
+        g.fillStyle = r; g.fillRect(0, 0, 64, 64);
+        BLOB.tex = new THREE.CanvasTexture(c);
+        BLOB.geo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+      }
+      this.blob = new THREE.Mesh(BLOB.geo, new THREE.MeshBasicMaterial({ color: 0x000000, alphaMap: BLOB.tex, transparent: true, opacity: 0.4, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+      this.blob.renderOrder = 1;
+      this.world.scene.add(this.blob);
+    }
+    const b = this.blob;
+    const gy = heightAt(this.pos.x, this.pos.z), h = Math.max(0, this.pos.y - gy);
+    b.visible = !this.hidden && !this.held && !this.frozen && h < 4 && (!camPos || this.pos.distanceToSquared(camPos) < 70 * 70);
+    if (!b.visible) return;
+    normalAt(this.pos.x, this.pos.z, _bn);
+    b.position.set(this.pos.x, gy + 0.03, this.pos.z);
+    b.quaternion.setFromUnitVectors(UP, _bn).multiply(_bq.setFromAxisAngle(UP, this.heading));
+    const lying = this.crash > 0 ? 1 : 0;
+    b.scale.set(0.95 + h * 0.5 + lying * 0.6, 1, (this.board ? 1.5 : 1.9) + h * 0.5 + lying * 0.2);
+    b.material.opacity = 0.32 * Math.max(0, 1 - h / 3);
+  }
+
   dispose() {
+    if (this.blob) this.world.scene.remove(this.blob);
     this.world.scene.remove(this.model.group);
   }
 }

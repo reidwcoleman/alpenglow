@@ -2,7 +2,7 @@
 // School and Updates, the rider sticker with its lift pass, the account and the little
 // panels behind the top buttons. Game state stays in main.js / meta.js / cloud.js; this
 // draws it and passes clicks back.
-import { ITEMS, ITEM, CATS, RARITY, LEVELS, LEVEL_XP, SEASON, RIVALS, SETS, store } from './meta.js';
+import { ITEMS, ITEM, CATS, RARITY, LEVELS, LEVEL_XP, SEASON, RIVALS, SETS, GOLD_PRICE, store } from './meta.js';
 import { EVENTS, TIERS, field, prize, MEDAL } from './events.js';
 import { LESSONS, LESSON, FAMS, comboFor, comboSteps, ARROW } from './school.js';
 import { SERVERS, errText } from './cloud.js';
@@ -67,6 +67,13 @@ export function itemIcon(it) {
       return S(`<path d="M16 68 Q16 18 50 18 Q84 18 84 68 Z" fill="${a}" stroke="${dark}" stroke-width="3"/><path d="M30 30 Q50 22 70 30" stroke="#fff" stroke-width="4" opacity=".35" fill="none"/><rect x="14" y="62" width="72" height="10" rx="5" fill="${dark}"/>`);
     case 'goggles':
       return S(`<rect x="6" y="44" width="88" height="10" rx="4" fill="${dark}"/><rect x="14" y="30" width="72" height="38" rx="18" fill="${dark}"/><rect x="19" y="35" width="62" height="28" rx="14" fill="${a}"/><path d="M26 42 Q40 36 52 40" stroke="#fff" stroke-width="4" opacity=".5" fill="none"/>`);
+    case 'trail': {
+      const stops = it.fx === 'rainbow' ? ['#ff3d5a', '#ffb02e', '#ffe14d', '#3ddc84', '#2aa8ff', '#8e3fd1'] : [a, b];
+      const gd = `<linearGradient id="${id}t" x1="0" y1="1" x2="1" y2="0">${stops.map((c, i) => `<stop offset="${i / (stops.length - 1)}" stop-color="${c}"/>`).join('')}</linearGradient>`;
+      const dots = it.fx === 'sparkle' ? [[70, 22, 3], [80, 34, 2], [60, 16, 2], [86, 20, 2.5], [74, 44, 1.6]].map(([x, y, r]) => `<path d="M${x} ${y - r * 2}L${x + r * 0.6} ${y - r * 0.6}L${x + r * 2} ${y}L${x + r * 0.6} ${y + r * 0.6}L${x} ${y + r * 2}L${x - r * 0.6} ${y + r * 0.6}L${x - r * 2} ${y}L${x - r * 0.6} ${y - r * 0.6}Z" fill="#fff"/>`).join('')
+        : it.fx === 'fire' ? `<path d="M74 40 Q70 26 80 14 Q82 26 90 30 Q92 44 80 48 Q72 48 74 40Z" fill="${b}" opacity=".9"/>` : '';
+      return `<svg viewBox="0 0 100 100"><defs>${gd}</defs><path d="M8 88 Q30 82 46 62 Q60 44 82 24" stroke="url(#${id}t)" stroke-width="16" stroke-linecap="round" fill="none" opacity=".35"/><path d="M8 88 Q30 82 46 62 Q60 44 82 24" stroke="url(#${id}t)" stroke-width="8" stroke-linecap="round" fill="none"/>${dots}<circle cx="84" cy="22" r="6" fill="#fff"/></svg>`;
+    }
     case 'gloves':
       return S(`<path d="M30 92 V48 Q30 20 52 20 Q74 20 74 46 V92 Z" fill="${a}" stroke="${dark}" stroke-width="3" stroke-linejoin="round"/><path d="M30 56 Q14 50 16 36 Q18 28 28 34" fill="${a}" stroke="${dark}" stroke-width="3"/><rect x="28" y="76" width="48" height="16" fill="${dark}" opacity=".35"/>`);
   }
@@ -77,7 +84,8 @@ function shortDate(t) { const d = new Date(t); return d.toLocaleDateString(undef
 function clock(s) { const m = Math.floor(s / 60); return `${String(m).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`; }
 
 const NOTES = [
-  { d: '19 OCT', t: 'Bigger parks, stars and boosts', p: 'Trick Zone is now 3 km: a Hip Garden, Jib Street with 16 rails and boxes and a long tube, a Step-Down Line and a Final Jib round the big air. Gold stars float over every kicker, along every rail, above the pipe and down every run: collect them all for a bonus. Land a trick clean and it boosts you out of it. Carving no longer costs speed, only braking does. Crashes are wilder, with limbs flying and the body slamming the snow, and bad ones are a lot bloodier (Settings › Injuries). Your rider now wears a pack and a hood, and you can see his breath.', tags: ['TRICK ZONE 3 KM', 'STARS', 'BOOST', 'CARVING', 'CRASHES'] },
+  { d: '19 OCT', t: 'Shred Canyon, no more hand-holding, the app', p: 'A new run, Shred Canyon: ten whoops, a gully of side hits, a canyon pipe, three gaps, a pillow forest, a speed chute and the biggest air on the mountain. Nothing lands your tricks for you any more: let go of a spin where you want it to stop, and if you can\'t finish it you crash. It takes a lot more to get hurt, but when you do it\'s far worse. The stars are gone. A new rescue helicopter, a mountain clinic and better chairs that ride the line with the others. A new Shop with a spotlight set and try-on, Trails that follow you down the hill, and a Gold Pass. Snowboard bindings with highbacks and ratchets. And Shredline is now an app for your phone.', tags: ['SHRED CANYON', 'NO ASSISTS', 'TRAILS', 'GOLD PASS', 'PHONE APP'] },
+  { d: '19 OCT', t: 'Bigger parks and boosts', p: 'Trick Zone is now 3 km: a Hip Garden, Jib Street with 16 rails and boxes and a long tube, a Step-Down Line and a Final Jib round the big air. Land a trick clean and it boosts you out of it. Carving no longer costs speed, only braking does. Crashes are wilder, with limbs flying and the body slamming the snow, and bad ones are a lot bloodier (Settings › Injuries). Your rider now wears a pack and a hood, and you can see his breath.', tags: ['TRICK ZONE 3 KM', 'BOOST', 'CARVING', 'CRASHES'] },
   { d: '18 OCT', t: 'Combos, the rescue chopper and music', p: 'Tricks are combos now: tap the arrows in the air. Down down is a mute grab, left left a 360 (more taps, more spin), down down down a backflip, left down right a cork 720, and the biggest ones are secret until you find them. Crash hard enough and you are not getting up: the rescue helicopter winches you onto its orange stretcher and flies you to the mountain hospital, then you pick where to ride and take the chairlift there (Settings has Injuries: Realistic or Off). Tree trunks and poles take you down now, branches drag you back, the snow is faster, the chairlift is all new and there is a soundtrack.', tags: ['COMBOS', 'RESCUE', 'HOSPITAL', 'CHAIRLIFT', 'MUSIC', 'SPEED'] },
   { d: '18 OCT', t: 'Shredline: smash, ride switch, get back up', p: 'Alpenglow is now Shredline. Ride into a piste pole, a gate or a sign and it goes flying; ride into the side nets and they stretch, catch you and throw you back. Keypad . (or G) hops you round to ride backwards, and your rider looks back over his shoulder to see. Wipe out and you are back up in a couple of seconds, still moving. Every part of every run has its name sprayed on the snow, Mega Park is now 4.3 km with Rainbow Road, Triple Threat and a Slopestyle Final, the finish crowd and the chairlift riders are real people, and the mountains have snowy ledges and layered rock.', tags: ['NEW NAME', 'SMASH', 'SWITCH', 'MEGA PARK', 'REAL CROWD'] },
   { d: '18 OCT', t: 'Real ski runs and a new day every drop', p: 'Three new places to ride: Timberline, 5.7 km of glades where you weave through the trees; Grand Descent, 8.5 km and 2.5 km of vertical from a north face and a glacier through a couloir, a giant bowl and treeline steeps down to the village; and Mega Park, 2.8 km with a jib garden, a two-line kicker alley up to XXL, a pipe and a step-down gap. The weather is different every time you drop in, and the snow with it: fresh powder is slow and floaty, hardpack is fast and skates out, spring slush grabs. Tricks are now on the number keys: hold one on the way up a kicker and let go right at the lip. The arrows steer, tuck and brake on the snow and spin and flip in the air. Less glare and more snow-like snow, too.', tags: ['NEW RUNS', 'MEGA PARK', 'WEATHER', 'TRICK KEYS', 'ARROWS'] },
@@ -138,6 +146,8 @@ export class Menu {
 
   setTab(k) {
     this.tab = k;
+    if (k === 'pass') { this.passPick = null; this.passScrolled = false; }
+    if (this.dlg) { this.dlg = null; $('itemdlg')?.classList.add('hidden'); }
     for (const t of document.querySelectorAll('#tabs button')) t.classList.toggle('on', t.dataset.tab === k);
     for (const s of document.querySelectorAll('#menu .tab')) s.classList.toggle('hidden', s.id !== 'tab-' + k);
     $('menu').classList.toggle('deep', k !== 'ride');
@@ -152,7 +162,7 @@ export class Menu {
     const g = this.g;
     for (const s of document.querySelectorAll('#gearflip span')) s.classList.toggle('on', s.dataset.g === g.gear);
     for (const b of document.querySelectorAll('#lk-gear button')) b.classList.toggle('on', b.dataset.g === g.gear);
-    if (this.preview) this.preview.setOutfit(g.outfit());
+    if (this.preview) this.preview.setOutfit(this.tryOn());
     this.chip();
     const t = this.tab;
     if (t === 'ride') this.ride();
@@ -169,7 +179,10 @@ export class Menu {
 
   render(dt) {
     if (!this.preview) return;
-    if (this.tab === 'ride') this.preview.mount($('stick'), { spin: 0.35, zoom: 1 });
+    if (this.dlg && $('it-rider')) this.preview.mount($('it-rider'), { spin: 0.5, zoom: 1.1 });
+    else if (this.tab === 'shop' && $('sh-hero-rider')) this.preview.mount($('sh-hero-rider'), { spin: 0.45, zoom: 1.05 });
+    else if (this.tab === 'pass' && $('ps-rider')) this.preview.mount($('ps-rider'), { spin: 0.45, zoom: 1.05 });
+    else if (this.tab === 'ride') this.preview.mount($('stick'), { spin: 0.35, zoom: 1 });
     else if (this.tab === 'locker') this.preview.mount($('turn'), { spin: 0, zoom: 1.05 });
     else if (this.tab === 'tricks') this.preview.mount($('demo'), { spin: 0, zoom: 1 });
     this.preview.render(dt);
@@ -356,15 +369,17 @@ export class Menu {
   card(it, where) {
     const m = this.meta, own = m.owned.has(it.id), on = m.kit[it.cat] === it.id;
     const p = m.price(it.id), deal = p < it.price;
-    const price = !own && it.r === 'pass' ? `<span class="pr">TIER ${it.level}</span>` : !own && it.r === 'event' ? '<span class="pr">EVENT</span>' : !own ? `<span class="pr">${FLAKE}${deal ? `<s>${it.price.toLocaleString()}</s>` : ''}${p.toLocaleString()}</span>` : '';
+    const price = !own && (it.r === 'pass' || it.r === 'gold') ? `<span class="pr">${it.r === 'gold' ? 'GOLD ' : ''}TIER ${it.level}</span>` : !own && it.r === 'event' ? '<span class="pr">EVENT</span>' : !own ? `<span class="pr">${FLAKE}${deal ? `<s>${it.price.toLocaleString()}</s>` : ''}${p.toLocaleString()}</span>` : '';
     const tag = on ? '<span class="ow">WEARING</span>' : own && where !== 'locker' ? '<span class="ow">OWNED</span>' : deal && !own ? '<span class="off">-20%</span>' : '';
-    return `<button class="item ${it.r}${on ? ' on' : ''}${own ? '' : ' locked'}" data-id="${it.id}">${price}${tag}<div class="ic">${itemIcon(it)}</div><span class="rr">${RARITY[it.r]}</span><span class="nm">${esc(it.name)}</span></button>`;
+    return `<button class="item ${it.r}${on ? ' on' : ''}${own ? '' : ' locked'}${where === 'shop' && !own ? ' buyable' : ''}" data-id="${it.id}"><i class="shine"></i>${price}${tag}<div class="ic">${itemIcon(it)}</div><span class="rr">${RARITY[it.r]}</span><span class="nm">${esc(it.name)}</span></button>`;
   }
 
   pick(id, where) {
     const m = this.meta, it = ITEM[id];
     if (m.owned.has(id)) { m.wear(id); this.g.kitChanged(); return; }
+    if (where === 'shop') { this.detail(id); return; }
     if (it.r === 'pass') { this.g.toast(`${esc(it.name)} unlocks at Season Pass tier ${it.level}`); return; }
+    if (it.r === 'gold') { this.g.toast(`${esc(it.name)} is on the Gold Pass at tier ${it.level}`); return; }
     if (it.r === 'event') { this.g.toast(`${esc(it.name)}: ${esc(it.how)}`); return; }
     if (where === 'locker') { this.setTab('shop'); return; }
     const p = m.price(id);
@@ -374,42 +389,118 @@ export class Menu {
     if (m.buy(id)) { this.g.toast(`${esc(it.name)} is yours`); this.g.kitChanged(); }
   }
 
+  // what the rider in the preview wears: your kit, or the thing you're looking at in the shop
+  tryOn() {
+    const g = this.g, m = this.meta;
+    let over = null;
+    if (this.dlg) { const it = ITEM[this.dlg]; if (it && it.cat !== 'rider') over = { [it.cat]: it.id }; }
+    else if (this.tab === 'shop') { over = {}; for (const id of m.spotlight().items) over[ITEM[id].cat] = id; }
+    else if (this.tab === 'pass') { const it = this.passShow(); if (it) over = { [it.cat]: it.id }; }
+    // a board item on a skier (or skis on a boarder) is shown on the gear it's for
+    const board = over && (over.deck ? true : over.skis ? false : g.gear === 'board');
+    return over ? m.outfit(g.myOutfit, over.deck || over.skis ? board : g.gear === 'board', over) : g.outfit();
+  }
+
   // ---------------------------------------------- shop
   shopTimer() {
     const el = $('sh-timer');
     if (!el) return;
     const ms = 864e5 - (Date.now() % 864e5), h = Math.floor(ms / 36e5), mn = Math.floor((ms % 36e5) / 6e4);
     el.textContent = `NEW DEALS IN ${h}H ${mn}M`;
+    const wk = $('sh-week');
+    if (wk) { const w = 6048e5 - (Date.now() % 6048e5); wk.textContent = `${Math.floor(w / 864e5)}D ${Math.floor((w % 864e5) / 36e5)}H LEFT`; }
   }
 
   shop() {
     const m = this.meta;
     $('sh-wallet').innerHTML = `${FLAKE}${m.flakes.toLocaleString()} flakes`;
+    const cat = (this.shopCat ??= 'all');
+    const chips = [['all', 'EVERYTHING'], ['deals', 'DEALS'], ['sets', 'SETS'], ['trail', 'TRAILS'], ...CATS.filter(([c]) => c !== 'rider' && c !== 'trail').map(([c, n]) => [c, n.toUpperCase()])];
     const feat = m.featured().map((id) => ITEM[id]);
-    const sets = SETS.map((st) => {
+    const setCard = (st) => {
       const p = m.setPrice(st), full = st.items.reduce((a, id) => a + ITEM[id].price, 0);
-      return `<button class="set${p ? '' : ' own'}" data-set="${st.id}"><div class="nm">${esc(st.name)}</div><div class="row4">${st.items.map((id) => `<div title="${esc(ITEM[id].name)}">${itemIcon(ITEM[id])}</div>`).join('')}</div>
-        ${p ? `<span class="pr">${FLAKE}<s>${full.toLocaleString()}</s>${p.toLocaleString()}</span>` : '<span class="pr">ALL OWNED</span>'}</button>`;
-    }).join('');
-    $('shop').innerHTML = `<div class="grp"><span>TODAY'S DEALS · 20% OFF</span></div><div class="timer" id="sh-timer"></div><div class="items feat">${feat.map((it) => this.card(it, 'shop')).join('')}</div>
-      <div class="grp"><span>OUTFIT SETS · 30% OFF</span></div><div class="sets">${sets}</div>` +
-      CATS.map(([c, n]) => {
-        const list = ITEMS.filter((it) => it.cat === c && it.price > 0 && !['free', 'pass', 'event'].includes(it.r));
-        return list.length ? `<div class="grp"><span>${n.toUpperCase()}</span></div><div class="items">${list.map((it) => this.card(it, 'shop')).join('')}</div>` : '';
-      }).join('');
-    this.shopTimer();
-    for (const b of document.querySelectorAll('#shop .item')) b.onclick = () => this.pick(b.dataset.id, 'shop');
-    for (const b of document.querySelectorAll('#shop .set')) b.onclick = () => {
-      const st = SETS.find((x) => x.id === b.dataset.set), p = m.setPrice(st);
-      if (!p) { for (const id of st.items) m.kit[ITEM[id].cat] = id; m.save(); m.changed(); this.g.kitChanged(); return; }
-      if (m.flakes < p) { this.g.toast(`${FLAKE} ${(p - m.flakes).toLocaleString()} more flakes for the ${esc(st.name)} set`); return; }
-      if (this.confirm !== st.id) { this.confirm = st.id; this.g.toast(`Tap again to buy the ${esc(st.name)} set for ${FLAKE} ${p.toLocaleString()}`); return; }
-      this.confirm = null;
-      if (m.buySet(st)) { this.g.toast(`The ${esc(st.name)} set is yours`); this.g.kitChanged(); }
+      const top = st.items.map((id) => ITEM[id]).sort((a, b) => b.price - a.price)[0];
+      return `<button class="set${p ? '' : ' own'}" data-set="${st.id}" style="--c1:${hex(top.c)};--c2:${hex(top.c2 ?? top.c)}"><div class="nm">${esc(st.name)}</div>${st.blurb ? `<div class="bl">${esc(st.blurb)}</div>` : ''}<div class="row4">${st.items.map((id) => `<div class="${ITEM[id].r}" title="${esc(ITEM[id].name)}">${itemIcon(ITEM[id])}</div>`).join('')}</div>
+        ${p ? `<span class="pr">${FLAKE}<s>${full.toLocaleString()}</s>${p.toLocaleString()}</span>` : '<span class="pr">ALL OWNED · WEAR IT</span>'}</button>`;
     };
+    const sp = m.spotlight(), spP = m.setPrice(sp), spItems = sp.items.map((id) => ITEM[id]);
+    const lead = spItems.slice().sort((a, b) => b.price - a.price)[0];
+    const hero = `<div class="sh-hero" style="--c1:${hex(lead.c)};--c2:${hex(lead.c2 ?? lead.c)}">
+      <div class="hl"><span class="kick">SPOTLIGHT SET · <b id="sh-week"></b></span><h2>${esc(sp.name)}</h2><p>${esc(sp.blurb ?? 'A whole look for less than its parts.')}</p>
+        <div class="hrow">${spItems.map((it) => `<button class="hi ${it.r}" data-id="${it.id}" title="${esc(it.name)}">${itemIcon(it)}<span>${esc(it.name)}</span></button>`).join('')}</div>
+        <div class="cta">${spP ? `<button class="buy" data-set="${sp.id}">${FLAKE}${spP.toLocaleString()} · BUY THE SET</button>` : `<button class="buy" data-set="${sp.id}">YOURS · WEAR IT</button>`}<span class="save">${spP ? `SAVE ${FLAKE}${(spItems.reduce((a, it) => a + it.price, 0) - spP).toLocaleString()}` : ''}</span></div></div>
+      <div class="hr"><div id="sh-hero-rider"></div><div class="disc"></div><span class="drag">← DRAG →</span></div></div>`;
+    const grid = (list) => `<div class="items">${list.map((it) => this.card(it, 'shop')).join('')}</div>`;
+    const sale = (it) => it.price > 0 && !['free', 'pass', 'gold', 'event'].includes(it.r);
+    let body = '';
+    if (cat === 'all' || cat === 'deals') body += `<div class="grp"><span>TODAY'S DEALS · 20% OFF</span><em class="timer" id="sh-timer"></em></div><div class="items feat">${feat.map((it) => this.card(it, 'shop')).join('')}</div>`;
+    if (cat === 'all' || cat === 'sets') body += `<div class="grp"><span>OUTFIT SETS · 30% OFF</span></div><div class="sets">${SETS.map(setCard).join('')}</div>`;
+    if (cat === 'all' || cat === 'trail') body += `<div class="grp"><span>TRAILS · LEAVE SOMETHING BEHIND</span></div>${grid(ITEMS.filter((it) => it.cat === 'trail' && sale(it)))}`;
+    for (const [c, n] of CATS) {
+      if (c === 'trail' || c === 'rider' || (cat !== 'all' && cat !== c)) continue;
+      const list = ITEMS.filter((it) => it.cat === c && sale(it)).sort((a, b) => ['rare', 'epic', 'legendary'].indexOf(b.r) - ['rare', 'epic', 'legendary'].indexOf(a.r));
+      if (list.length) body += `<div class="grp"><span>${n.toUpperCase()} · ${list.length}</span></div>${grid(list)}`;
+    }
+    $('shop').innerHTML = hero + `<div class="chips sm sh-cats">${chips.map(([c, n]) => `<button data-c="${c}" class="${c === cat ? 'on' : ''}">${n}</button>`).join('')}</div>` + body;
+    this.shopTimer();
+    for (const b of document.querySelectorAll('#shop .sh-cats button')) b.onclick = () => { this.shopCat = b.dataset.c; this.shop(); };
+    for (const b of document.querySelectorAll('#shop .item, #shop .hi')) b.onclick = () => this.detail(b.dataset.id);
+    for (const b of document.querySelectorAll('#shop .set, #shop .sh-hero .buy')) b.onclick = () => this.buySet(SETS.find((x) => x.id === b.dataset.set));
+  }
+
+  buySet(st) {
+    const m = this.meta, p = m.setPrice(st);
+    if (!p) { for (const id of st.items) m.kit[ITEM[id].cat] = id; m.save(); m.changed(); this.g.kitChanged(); this.g.toast(`Wearing the ${esc(st.name)} set`); return; }
+    if (m.flakes < p) { this.g.toast(`${FLAKE} ${(p - m.flakes).toLocaleString()} more flakes for the ${esc(st.name)} set`); return; }
+    if (this.confirm !== st.id) { this.confirm = st.id; this.g.toast(`Tap again to buy the ${esc(st.name)} set for ${FLAKE} ${p.toLocaleString()}`); return; }
+    this.confirm = null;
+    if (m.buySet(st)) { this.g.toast(`The ${esc(st.name)} set is yours`); this.g.kitChanged(); this.g.audio?.chime?.(); }
+  }
+
+  // one item, big: your rider wearing it (turn him round), what it is, buy or wear it
+  detail(id) {
+    const m = this.meta, it = ITEM[id];
+    if (!it) return;
+    this.dlg = id;
+    const own = m.owned.has(id), on = m.kit[it.cat] === id, p = m.price(id), deal = p < it.price;
+    const how = it.r === 'pass' ? `Season Pass · tier ${it.level}` : it.r === 'gold' ? `Gold Pass · tier ${it.level}` : it.r === 'event' ? it.how : '';
+    const what = { jacket: 'Jacket', pants: 'Pants', head: it.beanie ? 'Beanie' : 'Helmet', goggles: 'Goggles', skis: 'Skis', deck: 'Snowboard', gloves: 'Gloves', poles: 'Poles', trail: 'Trail', rider: 'Rider' }[it.cat];
+    const fxName = { fade: 'Glow', rainbow: 'Rainbow', sparkle: 'Sparkle', fire: 'Fire', snow: 'Snow' }[it.fx] ?? '';
+    const el = $('itemdlg');
+    el.className = 'itemdlg ' + it.r;
+    el.style.setProperty('--c1', hex(it.c)); el.style.setProperty('--c2', hex(it.c2 ?? it.c));
+    el.innerHTML = `<div class="card"><button class="x" id="it-x">×</button>
+      <div class="l">${it.cat === 'trail' ? `<div class="trailfx ${it.fx}"><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="tic">${itemIcon(it)}</div>` : '<div id="it-rider"></div><div class="disc"></div><span class="drag">← DRAG TO TURN →</span>'}</div>
+      <div class="r"><span class="rr">${RARITY[it.r]} · ${what}${fxName ? ' · ' + fxName : ''}</span><h2>${esc(it.name)}</h2>
+        <div class="ic">${itemIcon(it)}</div>
+        <p>${it.cat === 'trail' ? 'Coloured light your skis leave in the air behind you, carving and flying.' : it.cat === 'deck' ? 'A snowboard with its own printed top sheet.' : it.cat === 'skis' ? 'Twin tips with a printed top sheet.' : 'Try it on: your rider is wearing it.'}</p>
+        <div class="buyrow">${own ? `<button class="buy" id="it-go">${on ? 'WEARING ✓' : 'WEAR IT'}</button>` : how ? `<span class="how">${esc(how)}</span>` : `<button class="buy" id="it-go">${FLAKE}${deal ? `<s>${it.price.toLocaleString()}</s>` : ''}${p.toLocaleString()} · BUY</button>`}
+        <span class="bal">${FLAKE}${m.flakes.toLocaleString()}</span></div></div></div>`;
+    el.classList.remove('hidden');
+    const close = () => { this.dlg = null; el.classList.add('hidden'); this.preview?.setOutfit(this.tryOn()); };
+    $('it-x').onclick = close;
+    el.onclick = (e) => { if (e.target === el) close(); };
+    if ($('it-go')) $('it-go').onclick = () => {
+      if (own) { m.wear(id); this.g.kitChanged(); close(); return; }
+      if (m.flakes < p) { this.g.toast(`${FLAKE} ${(p - m.flakes).toLocaleString()} more flakes for ${esc(it.name)}`); return; }
+      if (m.buy(id)) { this.g.toast(`${esc(it.name)} is yours`); this.g.kitChanged(); this.g.audio?.chime?.(); close(); }
+    };
+    this.preview?.setOutfit(this.tryOn());
   }
 
   // ---------------------------------------------- season pass
+  // the next item reward ahead of you (the gold track's if you have it), for the showcase
+  passShow() {
+    const m = this.meta;
+    if (this.passPick) return ITEM[this.passPick];
+    for (let L = m.level + 1; L <= LEVELS; L++) {
+      const g = m.goldReward(L).item, f = m.reward(L).item;
+      if (m.gold && g && g.cat !== 'trail') return g;
+      if (f) return f;
+    }
+    return null;
+  }
+
   pass() {
     const m = this.meta, L = m.level;
     $('ps-lvl').textContent = L;
@@ -417,15 +508,39 @@ export class Menu {
     const left = Math.max(0, LEVEL_XP * 3 - m.day.xp);
     $('ps-info').innerHTML = `${SEASON.name} · ${SEASON.sub} · ${L >= LEVELS ? 'Pass complete' : `${LEVEL_XP - (m.xp % LEVEL_XP)} XP to level ${L + 1}`}<br>
       Every run pays XP: three levels a day at full rate${left ? ` (${left} XP left today)` : ' (used today: runs give a quarter now)'}, it waits for you if you miss a day`;
+    const show = this.passShow();
+    const goldItems = ITEMS.filter((x) => x.r === 'gold');
+    $('ps-top').innerHTML = `<div class="ps-show">
+        <div class="hr"><div id="ps-rider"></div><div class="disc"></div></div>
+        <div class="txt">${show ? `<span class="rr">${show.r === 'gold' ? 'GOLD PASS' : 'SEASON PASS'} · TIER ${show.level}</span><h3>${esc(show.name)}</h3><p>${show.level - L > 0 ? `${show.level - L} level${show.level - L === 1 ? '' : 's'} to go` : 'Unlocked'}</p>` : '<h3>All unlocked</h3>'}</div></div>
+      <div class="ps-gold${m.gold ? ' have' : ''}">
+        <div class="gt"><span class="kick">${m.gold ? 'YOU HAVE THE' : 'UPGRADE TO THE'}</span><h3>GOLD PASS</h3>
+        <ul><li>${goldItems.length} gold exclusives: ${goldItems.filter((x) => x.cat === 'trail').length} trails, jackets, boards, skis, chrome lids</li><li>Flakes on every other level, ${FLAKE}200 every tenth</li><li>Everything up to your level unlocks at once</li></ul></div>
+        <div class="gi">${goldItems.slice(0, 6).map((it) => `<div class="${it.r}">${itemIcon(it)}</div>`).join('')}</div>
+        ${m.gold ? '<span class="own">ACTIVE ✓</span>' : `<button class="buy" id="ps-buy">${FLAKE}${GOLD_PRICE.toLocaleString()} · GET GOLD</button>`}</div>`;
+    if ($('ps-buy')) $('ps-buy').onclick = () => {
+      if (m.flakes < GOLD_PRICE) { this.g.toast(`${FLAKE} ${(GOLD_PRICE - m.flakes).toLocaleString()} more flakes for the Gold Pass`); return; }
+      if (this.confirm !== 'gold') { this.confirm = 'gold'; this.g.toast(`Tap again to buy the Gold Pass for ${FLAKE} ${GOLD_PRICE.toLocaleString()}`); return; }
+      this.confirm = null;
+      const r = m.buyGold();
+      if (r) { this.g.toast(`Gold Pass active${r.gifts.length ? ` · ${r.gifts.length} item${r.gifts.length === 1 ? '' : 's'} unlocked` : ''}`); this.g.audio?.chime?.(); }
+    };
+    const cell = (r, i, gold) => {
+      const got = i <= L && (!gold || m.gold);
+      const lock = gold && !m.gold;
+      const inner = r.item ? `${itemIcon(r.item)}` : `<span class="q">${FLAKE}${r.flakes}</span>`;
+      return `<div class="rw${r.item ? ' item ' + r.item.r : ''}${got && i > 1 ? ' got' : ''}${lock ? ' lock' : ''}"${r.item ? ` data-id="${r.item.id}"` : ''}>${inner}${got && i > 1 ? '<span class="ck">✓</span>' : ''}${lock ? '<span class="lk">🔒</span>' : ''}<span class="nm">${r.item ? esc(r.item.name) : 'Flakes'}</span></div>`;
+    };
     let html = '';
     for (let i = 1; i <= LEVELS; i++) {
-      const r = m.reward(i), got = i <= L;
-      const tile = r.item ? `<div class="rw">${itemIcon(r.item)}${got ? '<span class="ck">✓</span>' : ''}</div>` : `<div class="rw"><span class="q">${FLAKE}${r.flakes}</span>${got && i > 1 ? '<span class="ck">✓</span>' : ''}</div>`;
-      html += `<div class="lv${got && i > 1 ? ' got' : ''}${i === L ? ' cur' : ''}${r.item ? ' item' : ''}"><div class="num">${i}</div>${tile}<div class="nm">${r.item ? esc(r.item.name) : 'Flakes'}</div></div>`;
+      html += `<div class="lv${i <= L ? ' past' : ''}${i === L ? ' cur' : ''}"><div class="num">${i}</div>${cell(m.reward(i), i, false)}${i > 1 ? cell(m.goldReward(i), i, true) : '<div class="rw spacer"></div>'}</div>`;
     }
     const tr = $('track');
-    tr.innerHTML = html;
-    requestAnimationFrame(() => { const cur = tr.querySelector('.cur'); if (cur) tr.scrollLeft = cur.offsetLeft - tr.offsetLeft - 120; });
+    tr.innerHTML = `<div class="rows"><span class="f">FREE</span><span class="g">GOLD</span></div>${html}`;
+    for (const b of tr.querySelectorAll('.rw[data-id]')) b.onclick = () => { this.passPick = b.dataset.id; this.preview?.setOutfit(this.tryOn()); this.pass(); };
+    if (!this.passScrolled) requestAnimationFrame(() => { const cur = tr.querySelector('.cur'); if (cur) tr.scrollLeft = cur.offsetLeft - tr.offsetLeft - 160; this.passScrolled = true; });
+    $('ps-prev').onclick = () => tr.scrollBy({ left: -tr.clientWidth * 0.8, behavior: 'smooth' });
+    $('ps-next').onclick = () => tr.scrollBy({ left: tr.clientWidth * 0.8, behavior: 'smooth' });
   }
 
   // ---------------------------------------------- replays

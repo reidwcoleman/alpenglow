@@ -159,7 +159,7 @@ export class Rescue {
     this.hideSkis(true);
     this.ui('PATCHED UP', 'Shredline Mountain Hospital');
     // a view of the doors
-    this.camPos.copy(h.door).addScaledVector(h.out, 9).add(_w.set(-h.out.z * 4, 3.2, h.out.x * 4));
+    this.camPos.copy(h.door).addScaledVector(h.out, 13).add(_w.set(-h.out.z * 6, 3.6, h.out.x * 6));
     this.camLook.copy(h.door).add(_w.set(0, 1.4, 0));
     this.snapCam = true;
   }
@@ -216,8 +216,17 @@ export class Rescue {
       }
       total += L;
     }
-    const v = 7.5;
-    this.d1 = at; this.d0 = Math.max(0, at - v * RIDE); this.v = (this.d1 - this.d0) / RIDE;
+    // a real chair on the line, the one that gets there in RIDE seconds (so it moves with the
+    // others instead of through them)
+    const want = Math.max(0, at - props.liftV * RIDE);
+    let mine = -1, bd = Infinity;
+    props.chairs.forEach((ch, i) => {
+      if (ch.li !== 0) return;
+      const d = props.chairD(i);
+      if (d + props.liftV * RIDE > props.totalLen[0] - 6) return;
+      if (Math.abs(d - want) < bd) { bd = Math.abs(d - want); mine = i; }
+    });
+    props.mine = mine;
     // the chair, with you on it
     const p = this.p;
     if (!this.chair) {
@@ -250,8 +259,7 @@ export class Rescue {
 
   ride(dt) {
     const g = this.g, props = g.props;
-    const d = this.d0 + this.v * Math.min(this.t, RIDE);
-    props.cablePoint(0, d, _v);
+    props.cablePoint(0, props.mine >= 0 ? props.chairD(props.mine) : 0, _v);
     const yaw = Math.atan2(props.liftDir.x, props.liftDir.z);
     this.chair.position.copy(_v);
     // a gentle swing on the hanger
@@ -270,6 +278,7 @@ export class Rescue {
     const g = this.g, p = this.p;
     this.active = false;
     this.chair.visible = false;
+    g.props.mine = -1;
     this.heli.group.visible = false;
     p.model.group.visible = true;
     p.hidden = false; p.held = false; p.frozen = false;
@@ -293,6 +302,7 @@ export class Rescue {
     $('dest').classList.add('hidden');
     this.heli.group.visible = false;
     if (this.chair) this.chair.visible = false;
+    this.g.props.mine = -1;
     const p = this.p;
     if (p) { p.model.group.visible = true; p.hidden = false; p.held = false; p.frozen = false; this.hideSkis(false); }
     this.fade(false); this.ui('', '');

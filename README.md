@@ -33,6 +33,7 @@ Pick one on the illustrated map (Ride > the park card), by day or by night. Each
 - **Big Air** (0.8 km): a steep inrun into one mega kicker. A full tuck gives about 4.5 s of air.
 - **Timberline** (5.7 km): a real tree run. Glades with trees on the line itself, the Creek Trail, pillows and the Lumber Yard logs.
 - **Grand Descent** (8.5 km, about 2.5 km of vertical): North Face, Glacier, Couloir, the Big Bowl with moguls, Cornice Traverse, Treeline Steeps, Valley Glades, The Long Road and the Village Run. Wind lips, cornice and rock drops, the Road Gap, icy patches.
+- **Shred Canyon** (4.4 km): a flow run with something to hit every few seconds. The Roller Coaster (ten whoops to pump or boost off), the Side Hit Gully (eight hits up its walls), the Canyon Pipe with rollers, the Gap Line (three tables to clear and a hip), the Pillow Forest, the Speed Chute with a launch pad at the bottom, a 12-feature Jib Line and the Grand Finale up to Canyon Air, the biggest kicker on the mountain.
 - **Mega Park** (4.3 km): an 18-feature Jib Garden in three lanes, Kicker Alley (two lines up to XXL plus a hip), a pipe, Big Air Duo, a step-down line with a gap, Rainbow Road (12 rainbows, kinks and boxes), Triple Threat (three lines of three tables plus a hip), the Slopestyle Final (rail, kicker, kink, XL, box, Final Air) and the Last Jib.
 
 Every part of every run has its name and difficulty sprayed on the snow where it starts, on the trail signs at its edges and in the corner of the HUD as you ride in.
@@ -99,16 +100,24 @@ Riding backwards on skis the rider turns his shoulders and looks over one of the
 
 The letter keys work in both schemes. On a rail, A/D swap the slide a quarter turn and Space pops off. Touch controls appear on phones and tablets.
 
-Landing assist: about 0.45 s before touchdown the rider finishes whatever rotation is closest to a clean landing (the nearest half turn of spin, the nearest whole flip, carrying on if well into it). Way off still bails. The Tricks tab is a trick book that ticks off each family the first time you land it; new tricks call out "NEW TRICK" and count on the results card.
+Nothing lands it for you. A spin or flip turns while you hold it and stops (with a little run-on) when you let go; a combo turns at the body's own pace, whatever size you asked for. Come down more than about 35 degrees off straight (forwards or switch) or still turning over and you crash; a bit off is a sketchy landing. The computer riders still get a landing assist. The Tricks tab is a trick book that ticks off each family the first time you land it; new tricks call out "NEW TRICK" and count on the results card.
 
-## Stars and boosts
-Gold stars float over the table of every kicker (go big to reach them), along every rail (grind it), above the pipe lips, in a line into each jump and down every run: 100 to 300 points each, and 10,000 more for every one on a run. Land a trick clean and it boosts you out of it, more for bigger tricks (stomped: a bit more).
+## Boosts
+Land a trick clean and it boosts you out of it, more for bigger tricks (stomped: a bit more).
 
 ## Hitting things
 Piste poles, race gates (breakaway), park flags and signs knock over when you ride into them and cost a little speed; they stand back up next run. Faster than about 30 km/h a pole or sign takes you down with it (gates don't). A tree trunk takes you down at anything over about 12 km/h into it; its branches (out to a couple of metres round it) catch you, drag you back and let you go, dropping their snow on you. The side nets stretch up to about a metre, catch you and push you back in (hit them at over ~45 km/h and you go down in them). The finish straight has solid boards. Trees, rocks, snow guns and lift towers are solid. A wipeout is a short tumble, a beat on the snow and back up within about two seconds, keeping about 40% of the speed you fell at.
 
 ## The rescue
-Crash hard enough (about 45 km/h into a tree, rock or tower, a pole or sign at over 50, a landing at over 60 km/h into the snow) and you don't get up. With Injuries: Realistic (the default; Settings) blood sprays off the impact and every time the body slams the snow, the helmet cracks and comes off, the head bleeds, an arm comes off at the elbow or a leg at the knee (two of them in the worst crashes) with the bone showing and tumbles away leaving a trail, the clothes soak through, a red smear follows the body down the slope and it pools where it stops; Off keeps all that out. Either way the run stops and the rescue helicopter comes in, lowers its orange stretcher, winches you up and flies you to the Shredline Mountain Hospital beside the bottom of the lift. You walk out patched up, pick any part of the run, and ride the chairlift there for 30 seconds while the terrain at the other end is built, then drop in. `node tools/rescue.mjs shots/rescue yard` runs it start to finish with a shot of each stage.
+It takes a lot: about 60 km/h into a tree, rock or tower, 80 into a pole or sign, or landing on your head from a big jump, and you don't get up. How bad it is depends on how much harder than that you hit. With Injuries: Realistic (the default; Settings) blood sprays off the impact and every time the body slams the snow, the helmet cracks off and the back of the skull is split open, one to three limbs come off at the elbow or knee and tumble away bleeding, the stumps pump blood in spurts with the heartbeat, a shin or forearm that stayed on is snapped with the bone out through the clothes, the clothes soak through, a red smear follows the body and a pool spreads where it stops, and blood runs down the screen; Off keeps all that out. Either way the run stops and the rescue helicopter comes in, lowers its orange stretcher, winches you up and flies you to the Shredline Mountain Clinic (stone and timber, a glass porch, an ambulance bay, a lit helipad with a windsock) beside the bottom of the lift. You walk out patched up, pick any part of the run, and ride a real chair on the lift line (it moves with the others) there for 30 seconds while the terrain at the other end is built, then drop in. `node tools/rescue.mjs shots/rescue yard` runs it start to finish with a shot of each stage.
+
+## Shop and pass
+The Shop opens on the week's spotlight set (your rider wears it, drag to turn him), then today's deals, outfit sets and every category. Tap anything to see your rider wearing it before you buy. Trails are new: coloured light your skis leave behind you (glow, fire, sparkle or rainbow). The Season Pass has two tracks: the free one, and the Gold Pass (950 flakes) with 25 gold exclusives and flakes in between; buying it unlocks everything up to your level at once.
+
+## On a phone
+Turn it sideways. The on-screen buttons are the arrow keys: ◀ ▶ carve (and spin in the air), ▲ tuck / front flip, ▼ brake / backflip, POP, GRAB and TURN (ride switch), so quick taps in the air make combos. Phones start on the Fast graphics setting.
+
+There's an iPhone app in `ios/` (xcodegen, bundle id com.reidcoleman.Shredline): it plays the live site, and the copy bundled in the app when offline. `ios/sync-web.sh` builds that copy, then `cd ios && xcodegen generate` and build/install as usual.
 
 ## Music
 A soundtrack made as it plays (drums, bass, pads and an arpeggio over four chord progressions): calm in the menu and on the chairlift, the full groove while you ride, pads only after a bad crash. Settings > Music turns it off; M mutes everything.
@@ -166,9 +175,12 @@ node tools/quick.mjs LDR XL            # pop off a park kicker and tap a combo i
 node tools/injury.mjs shots/inj 25      # a severe crash up close
 node tools/hits.mjs shots/hits yard     # a pole, the nets, a crash at speed, a hop turn to ride switch
 node tools/wx.mjs shots/wx timber 6    # drop in 6 times: a new sky and snow each time (or name them: grand whiteout,nightsnow)
+node tools/heli.mjs shots/heli          # the helicopter on its pad and the clinic
+node tools/shopshots.mjs shots/shop     # the shop: deals, an item opened, a trail
+node tools/phone.mjs shots/phone        # an iPhone in landscape: the front page and a run with touch controls
 node tools/portrait.mjs out.jpg 4 1.6 1.66 20   # rider portraits (OUTFITS='[{"head":"hx-racer"}]')
 PARK=forest node tools/sim.mjs free 150   # any park headless
 ```
-URL flags: `?park=yard|slope|forest|bigair|timber|grand|mega&room=name&event=cup|sprint|trial|jam|slopestyle|freeride|bigair&tier=0|1|2&cwatch=<replay id>&menu=0&mode=race|run|park&line=jumps|rails|pipe&auto=1&tod=bluebird|golden|alpenglow|night|storm|spring|arctic|flurries|whiteout|nightsnow&tm=aces|agx|neutral&z=1200&cam=chase|action|helmet|tv&q=low|high|ultra`.
+URL flags: `?park=yard|slope|forest|bigair|timber|grand|mega|canyon&room=name&event=cup|sprint|trial|jam|slopestyle|freeride|bigair&tier=0|1|2&cwatch=<replay id>&menu=0&mode=race|run|park&line=jumps|rails|pipe&auto=1&tod=bluebird|golden|alpenglow|night|storm|spring|arctic|flurries|whiteout|nightsnow&tm=aces|agx|neutral&z=1200&cam=chase|action|helmet|tv&q=low|high|ultra`.
 
 Pushing `main` deploys to GitHub Pages.

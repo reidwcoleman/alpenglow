@@ -416,6 +416,74 @@ export const MAPS = {
     icy: [],
     trees(z, s, d) { return d * 0.8; },
   },
+  // a flow run made for fun: never flat, something to hit every few seconds
+  canyon: {
+    name: 'Shred Canyon', tag: 'Flow run · 4.4 km', blurb: 'Pump a roller coaster of whoops, slash a gully of side hits, drop into the canyon pipe, send three gaps, bounce down a pillow forest, tuck the speed chute and finish on the biggest air on the mountain.',
+    start: 30, finish: 4380, km: 4.4, calm: true,
+    sections: [
+      { name: 'Drop In', z0: -200, z1: 120, grad: 0.18, width: 70 },
+      { name: 'Roller Coaster', z0: 120, z1: 720, grad: 0.27, width: 72 },
+      { name: 'Side Hit Gully', z0: 720, z1: 1300, grad: 0.3, width: 46 },
+      { name: 'Canyon Pipe', z0: 1300, z1: 1660, grad: 0.2, width: 170 },
+      { name: 'Gap Line', z0: 1660, z1: 2160, grad: 0.3, width: 120 },
+      { name: 'Pillow Forest', z0: 2160, z1: 2720, grad: 0.34, width: 90 },
+      { name: 'Speed Chute', z0: 2720, z1: 3200, grad: 0.42, width: 58 },
+      { name: 'Jib Line', z0: 3200, z1: 3700, grad: 0.21, width: 110 },
+      { name: 'Grand Finale', z0: 3700, z1: 4320, grad: 0.3, width: 130 },
+      { name: 'Finish', z0: 4320, z1: 4470, grad: 0.13, width: 120 },
+      { name: 'Base', z0: 4470, z1: 99999, grad: 0.025, width: 120 },
+    ],
+    // it winds hard through the gully and the chute, gently elsewhere
+    curve: (z) => 36 * Math.sin(z / 430 + 0.6) + 24 * Math.sin(z / 150 + 1.1) * smoothstep(720, 820, z) * (1 - smoothstep(1200, 1300, z)) + 14 * Math.sin(z / 120) * smoothstep(2700, 2780, z) * (1 - smoothstep(3120, 3200, z)),
+    curveClamp: [90, 4270],
+    crests: [
+      // whoops to pump (or boost off the backs of)
+      ...Array.from({ length: 10 }, (_, i) => ({ z: 160 + i * 52, off: 0, h: 1.3 + (i % 3) * 0.25, w: 76, ramp: 13 })),
+      // the launch pad at the bottom of the chute
+      { z: 3150, off: 0, h: 1.8, w: 64, ramp: 20 },
+    ],
+    park: { top: 1310, z0: 1320, z1: 1650 },
+    pipe: { z0: 1350, z1: 1630, dx: 0 },
+    rollers: { z0: 1350, z1: 1630, dx: -62 },
+    runJumps: [
+      { name: 'Drop In', zone: 'Drop In', z: 100, dx: 18, h: 1.4, ramp: 6, table: 3, land: 7, w: 8 },
+      // side hits up the gully walls, left and right
+      ...Array.from({ length: 8 }, (_, i) => ({ name: 'Side Hit', zone: 'Side Hit Gully', z: 760 + i * 66, dx: i % 2 ? 15 : -15, h: 1.5 + (i % 3) * 0.3, ramp: 7, table: 2, land: 8, w: 8 })),
+      // the gap line: three tables you have to clear, a hip to finish
+      { name: 'Gap', zone: 'Gap Line', z: 1730, dx: -10, h: 3.4, ramp: 11, table: 16, land: 15, w: 13 },
+      { name: 'Gap', zone: 'Gap Line', z: 1850, dx: 10, h: 3.8, ramp: 12, table: 18, land: 16, w: 13 },
+      { name: 'Mega Gap', zone: 'Gap Line', z: 1985, dx: -6, h: 4.4, ramp: 13, table: 20, land: 19, w: 14 },
+      { name: 'Hip', zone: 'Gap Line', z: 2100, dx: 22, h: 2.4, ramp: 8, table: 3, land: 10, w: 10 },
+      // pillows down the forest, both sides
+      ...[[2220, -22, 2.2], [2310, 20, 2.6], [2400, -14, 3.0], [2500, 22, 2.4], [2600, -8, 3.4]].map(([z, dx, h]) => ({ name: h > 3 ? 'Big Pillow' : 'Pillow Drop', zone: 'Pillow Forest', z, dx, h, ramp: 3, table: 7 + h, land: 2.5 + (h > 3 ? 0.5 : 0), w: 11, drop: true })),
+      // the finale: two kickers then the big one
+      { name: 'Large', zone: 'Grand Finale', z: 3760, dx: -18, h: 3.3, ramp: 10.5, table: 10, land: 14, w: 11 },
+      { name: 'XL', zone: 'Grand Finale', z: 3900, dx: 18, h: 4.1, ramp: 12, table: 13, land: 17, w: 12 },
+      { name: 'Canyon Air', zone: 'Grand Finale', z: 4080, dx: 0, h: 6.6, ramp: 20, table: 9, land: 36, w: 18 },
+    ],
+    runRails: [
+      { name: 'Start Box', zone: 'Drop In', z: 104, dx: -18, len: 8, h: 0.5, kind: 'box', shape: 'flat', color: 0x2a7de1 },
+      ...[[3240, 'rail', 'down', 12], [3320, 'box', 'rainbow', 10], [3400, 'rail', 'kink', 13], [3480, 'box', 'down', 12], [3560, 'rail', 'flat', 11], [3640, 'rail', 'down', 16]]
+        .flatMap(([z, kind, shape, len], i) => [-26, 26].map((dx, j) => ({
+          name: ['Down Rail', 'Rainbow', 'Kink', 'Down Box', 'Flat Bar', 'Long Tube'][i] + ' ' + 'LR'[j], zone: 'Jib Line', z: z + j * 18, dx,
+          len, h: kind === 'box' ? 0.5 : 0.65, kind, shape, color: [0xf2b705, 0xff4f8b, 0xd8342c, 0x18a868, 0x8e3fd1, 0xff6a2b][i],
+        }))),
+    ],
+    zones: [
+      { name: 'Drop In', z1: 120 }, { name: 'Roller Coaster', z1: 720 }, { name: 'Side Hit Gully', z1: 1300 }, { name: 'Canyon Pipe', z1: 1660 },
+      { name: 'Gap Line', z1: 2160 }, { name: 'Pillow Forest', z1: 2720 }, { name: 'Speed Chute', z1: 3200 }, { name: 'Jib Line', z1: 3700 },
+      { name: 'Grand Finale', z1: 4310 }, { name: 'Finish', z1: 4400 },
+    ],
+    signs: { 'Roller Coaster': 'TEN WHOOPS · PUMP THEM', 'Side Hit Gully': 'SIDE HITS', 'Canyon Pipe': 'HALFPIPE · ROLLERS', 'Gap Line': 'THREE GAPS · CLEAR THEM', 'Pillow Forest': 'PILLOW DROPS',
+      'Speed Chute': 'TUCK IT', 'Jib Line': '12 RAILS & BOXES', 'Grand Finale': 'THE BIGGEST AIR ON THE MOUNTAIN' },
+    icy: [[2740, 3180]],
+    trees(z, s, d) {
+      if (z > 720 && z < 1300) d = Math.max(d, 0.9); // the gully: trees right up to the walls
+      if (z > 2160 && z < 2720) d = Math.max(d, 0.8);
+      if (z > 1300 && z < 2160) d *= 0.6;
+      return d;
+    },
+  },
 };
 
 export const MAP_IDS = Object.keys(MAPS);

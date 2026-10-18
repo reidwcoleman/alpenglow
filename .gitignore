@@ -3,3 +3,6 @@ dist
 shots
 assets-src
 art/src
+ios/Web
+dist-app
+ios/build
