@@ -3,13 +3,13 @@
 // times. Winning pays flakes (more at the higher levels), medals stay in the profile and a
 // Pro win unlocks the Champion kit.
 export const TIERS = [
-  { key: 'am', name: 'AM', skill: [0.7, 0.8], field: 0.55, pay: 1, trial: [169, 182, 200] },
-  { key: 'pro', name: 'PRO', skill: [0.82, 0.95], field: 1, pay: 1.7, trial: [155, 163, 175] },
-  { key: 'legend', name: 'LEGEND', skill: [0.93, 1.0], field: 1.55, pay: 2.6, trial: [146, 152, 160] },
+  { key: 'am', name: 'AM', skill: [0.7, 0.8], field: 0.55, pay: 1, trial: [178, 192, 210] },
+  { key: 'pro', name: 'PRO', skill: [0.82, 0.95], field: 1, pay: 1.7, trial: [163, 172, 184] },
+  { key: 'legend', name: 'LEGEND', skill: [0.93, 1.0], field: 1.55, pay: 2.6, trial: [154, 160, 168] },
 ];
 
 // what the computer field scores in each contest, at Pro
-const FIELD = { yard: 42000, slope: 30000, forest: 21000, bigair: 15000 };
+const FIELD = { yard: 42000, slope: 52000, forest: 21000, bigair: 15000 };
 const SPREAD = [1, 0.88, 0.77, 0.66, 0.56, 0.46, 0.36];
 
 export const EVENTS = [
@@ -17,7 +17,7 @@ export const EVENTS = [
   { id: 'sprint', name: 'Express Sprint', park: 'yard', kind: 'race', racers: 6, from: 2390, blurb: 'Six racers down the fast bottom third: The Express and the run-out.', art: 'yard' },
   { id: 'trial', name: 'Gate Trial', park: 'yard', kind: 'trial', blurb: 'Just you and the clock through every gate. Beat the medal times.', art: 'yard' },
   { id: 'jam', name: 'Yard Jam', park: 'yard', kind: 'contest', blurb: 'One run top to bottom. Every jump and rail on the way counts.', art: 'yard' },
-  { id: 'slopestyle', name: 'Slopestyle Open', park: 'slope', kind: 'contest', blurb: 'Rails, three step-ups and the big air. Best score takes it.', art: 'slope' },
+  { id: 'slopestyle', name: 'Slopestyle Open', park: 'slope', kind: 'contest', blurb: 'Rails, step-ups, hips, Jib Street, step-downs and the big air. Best score takes it.', art: 'slope' },
   { id: 'freeride', name: 'Forest Freeride', park: 'forest', kind: 'contest', blurb: 'Pillows, logs and powder lines through the pines.', art: 'forest' },
   { id: 'bigair', name: 'Big Air Showdown', park: 'bigair', kind: 'contest', blurb: 'The biggest kicker on the mountain. Go big, land clean.', art: 'bigair' },
 ];

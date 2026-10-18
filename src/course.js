@@ -189,7 +189,8 @@ export function parkAt(dx, z) {
     if (f.k === 0) {
       const J = f.J;
       const v = Math.abs(dx - J.dx);
-      const lat = 1 - smoothstep(J.w / 2 - 1, J.w / 2 + 2.5, v);
+      // (shoulders that widen with the height, so you can ride round a big one)
+      const lat = 1 - smoothstep(J.w / 2 - 1, J.w / 2 + 1.5 + J.h * 0.9, v);
       if (lat > 0) y += jumpProfile(z - J.z, J) * lat;
     } else if (f.k === 1) {
       const RL = ROLLERS;
@@ -211,7 +212,7 @@ export function parkAt(dx, z) {
 
 // areas the features' own fine surface covers (the coarse terrain hides underneath)
 export const PARK_FEET = [
-  ...JUMPS.map((J) => ({ dx0: J.dx - J.w / 2 - 6, dx1: J.dx + J.w / 2 + 6, z0: J.z - 3, z1: J.z + J.len + 3 })),
+  ...JUMPS.map((J) => ({ dx0: J.dx - J.w / 2 - 3 - J.h, dx1: J.dx + J.w / 2 + 3 + J.h, z0: J.z - 3, z1: J.z + J.len + 3 })),
   ...(MAP.park ? [{ dx0: ROLLERS.dx - 10, dx1: ROLLERS.dx + 10, z0: ROLLERS.z0 - 3, z1: ROLLERS.z1 + 3 }, { dx0: PIPE.dx - 23, dx1: PIPE.dx + 23, z0: PIPE.z0 - 3, z1: PIPE.z1 + 3 }] : []),
   ...RAILS.map((R) => ({ dx0: R.dx - 3, dx1: R.dx + 3, z0: R.z - RAMP_L - 3, z1: R.z + 3 })),
 ];

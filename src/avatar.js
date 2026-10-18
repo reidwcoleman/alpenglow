@@ -128,7 +128,7 @@ export function kitMaterial(kit, outfit, crowd = false) {
     uFootL: { value: kit.feet[0] }, uFootR: { value: kit.feet[1] },
     uHandL: { value: kit.hands[0] }, uHandR: { value: kit.hands[1] },
     // injuries (injury.js): blood on the head, and where a limb came off (rest-pose point, w on)
-    uBlood: { value: 0 }, uCut: { value: new THREE.Vector4(0, 0, 0, 0) },
+    uBlood: { value: 0 }, uCut: { value: new THREE.Vector4(0, 0, 0, 0) }, uCut2: { value: new THREE.Vector4(0, 0, 0, 0) }, uStain: { value: 0 },
   };
   m.userData.u = u;
   m.onBeforeCompile = (sh) => {
@@ -173,7 +173,7 @@ vRest = position;
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
 uniform sampler2D uMask; uniform vec3 uJacket, uPants, uGloves, uBoots, uJacket2, uPants2, uHandL, uHandR; uniform vec2 uLm, uPat;
-uniform float uBlood; uniform vec4 uCut;
+uniform float uBlood, uStain; uniform vec4 uCut, uCut2;
 #ifdef CROWD
 #define JK vColor.rgb
 #else
@@ -292,11 +292,23 @@ vec3 agPat(vec3 a, vec3 b, float pat, float part, vec3 p, vec2 lm) {
     col = mix( col, vec3( 0.34, 0.012, 0.018 ), bm );
     gRough = mix( gRough, 0.2, bm );
   }
-  // where a limb came away: raw and red round the break
-  if ( uCut.w > 0.0 ) {
-    float cm = 1.0 - smoothstep( 0.05, 0.11, distance( vRest, uCut.xyz ) );
+  // where a limb came away: raw and red round the break, soaked further up the sleeve or leg
+  for ( int ci = 0; ci < 2; ci++ ) {
+    vec4 cut = ci == 0 ? uCut : uCut2;
+    if ( cut.w <= 0.0 ) continue;
+    float d = distance( vRest, cut.xyz );
+    float cm = 1.0 - smoothstep( 0.05, 0.11, d );
+    float soak = ( 1.0 - smoothstep( 0.1, 0.32, d ) ) * step( 0.45, agN( vRest * 31.0 ) + 0.25 );
     col = mix( col, vec3( 0.42, 0.02, 0.03 ), cm );
-    gRough = mix( gRough, 0.25, cm );
+    col = mix( col, vec3( 0.26, 0.01, 0.015 ), soak * 0.85 * ( 1.0 - cm ) );
+    gRough = mix( gRough, 0.22, max( cm, soak ) );
+  }
+  // blood soaked into the clothes in patches, and spattered
+  if ( uStain > 0.0 && part > 1.5 && part != 5.0 ) {
+    float bn = agN( vRest * vec3( 16.0, 12.0, 16.0 ) ) * 0.7 + agN( vRest * 70.0 ) * 0.3;
+    float st = smoothstep( 0.6, 0.66, bn ) * uStain;
+    col = mix( col, vec3( 0.24, 0.01, 0.015 ), st * 0.9 );
+    gRough = mix( gRough, 0.25, st );
   }
   diffuseColor.rgb *= col;
 }`)

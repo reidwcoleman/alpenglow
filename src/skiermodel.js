@@ -1,6 +1,7 @@
 // Procedural skier: capsule limbs posed every frame with two-bone IK.
 // Local frame: +Z = ski tips, +Y = up, +X = skier's left.
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { avatarKits, AvatarRig } from './avatar.js';
 import { ITEMS } from './meta.js';
 import { helmetGeometry, helmetMaterial, beanieGeometry, goggleGeometry, lensGeometry, strapGeometry, skiBootGeometry, boardBootGeometry,
@@ -133,6 +134,8 @@ const BOARD_GRAB = {
 // the board names for the same buttons
 export const BOARD_NAME = { mute: 'indy', tail: 'tail', japan: 'melon', safety: 'method', critical: 'stalefish', nose: 'nose' };
 
+const packGeo = {};
+
 export class SkierModel {
   constructor(outfit, bib = 0) {
     const g = geos();
@@ -202,6 +205,28 @@ export class SkierModel {
         sbindL: add(g.skiBind, bindM), sbindR: add(g.skiBind, bindM),
         poleL: add(g.pole, poleM), poleR: add(g.pole, poleM),
       });
+    }
+    // a freeride pack on the back (not on a race suit), and the jacket's hood bunched behind the neck
+    if (!outfit.racer) {
+      const packM = M(0x2a2d33, 0.85);
+      const pack = new THREE.Group();
+      const body = new THREE.Mesh(packGeo.body ??= new RoundedBoxGeometry(0.3, 0.44, 0.14, 3, 0.05), packM);
+      const lid = new THREE.Mesh(packGeo.lid ??= new RoundedBoxGeometry(0.28, 0.1, 0.15, 2, 0.04).translate(0, 0.21, 0.01), M(outfit.jacket2 ?? 0x3a3f46, 0.7));
+      const pocket = new THREE.Mesh(packGeo.pocket ??= new RoundedBoxGeometry(0.22, 0.2, 0.05, 2, 0.02).translate(0, -0.08, -0.08), packM);
+      const strapM = M(0x16181c, 0.9);
+      for (const sx of [-0.09, 0.09]) {
+        const st = new THREE.Mesh(packGeo.strap ??= new THREE.BoxGeometry(0.045, 0.34, 0.03).translate(0, 0.05, 0.11).rotateX(-0.2), strapM);
+        st.position.x = sx; pack.add(st);
+      }
+      const handle = new THREE.Mesh(packGeo.handle ??= new THREE.CylinderGeometry(0.012, 0.012, 0.3, 6).translate(0.07, -0.02, -0.075), M(0xb8bcc4, 0.4, 0.6));
+      pack.add(body, lid, pocket, handle);
+      for (const m of pack.children) m.castShadow = true;
+      this.frame.add(pack);
+      P.pack = pack;
+      const hood = new THREE.Mesh(packGeo.hood ??= new THREE.TorusGeometry(0.1, 0.04, 8, 16, Math.PI).rotateX(-Math.PI / 2).scale(1, 1, 0.8), jacketM);
+      hood.castShadow = true;
+      this.frame.add(hood);
+      P.hood = hood;
     }
     if (bib) {
       const bm = new THREE.MeshStandardMaterial({ map: bibTexture(bib, outfit.jacket), roughness: 0.8, side: THREE.DoubleSide });
@@ -331,6 +356,12 @@ export class SkierModel {
     j.ankL.x += pushL * 0.26; j.ankL.z -= pushL * 0.12; j.ankL.y += pushR * 0.07;
     j.ankR.x -= pushR * 0.26; j.ankR.z -= pushR * 0.12; j.ankR.y += pushL * 0.07;
 
+    if (p.crash) {
+      const r = p.rag ?? 0.5, t = p.ragT ?? p.t, s = p.ragSeed ?? 0;
+      j.ankL.x += 0.1 + 0.16 * r * Math.sin(t * 5.7 + s); j.ankR.x -= 0.12 + 0.16 * r * Math.sin(t * 6.3 + 2 + s);
+      j.ankL.y += 0.12 + 0.3 * r * Math.max(0, Math.sin(t * 4.1 + s)); j.ankR.y += 0.05 + 0.3 * r * Math.max(0, Math.sin(t * 4.9 + 1 + s));
+      j.ankL.z += 0.32 * r * Math.sin(t * 3.7 + s) + 0.12 * (1 - r); j.ankR.z += 0.32 * r * Math.sin(t * 4.3 + 2 + s) - 0.18 * (1 - r);
+    }
     const hipH = 0.93 - crouch * 0.22 - tuck * 0.33 - air * 0.12 - g * 0.08 + Math.sin(p.t * 9) * 0.004;
     const hipZ = -0.06 - crouch * 0.07 - tuck * 0.12;
     j.pelvis.set(-p.lean * 0.12 - (pushL - pushR) * 0.09, hipH, hipZ);
@@ -487,7 +518,15 @@ export class SkierModel {
   flail(p, hipH, hipZ) {
     const j = this.j;
     if (p.crash) {
-      j.hdL.set(0.5, hipH + 0.3, hipZ + 0.1); j.hdR.set(-0.5, hipH + 0.4, hipZ - 0.1);
+      // a body out of control: arms thrown about by the tumble, then flung out on the snow
+      const r = p.rag ?? 0.5, t = p.ragT ?? p.t, s = p.ragSeed ?? 0;
+      j.hdL.set(0.5 + 0.18 * r * Math.sin(t * 7.1 + s), hipH + 0.3 + 0.42 * r * Math.sin(t * 5.3 + 1 + s), hipZ + 0.1 + 0.4 * r * Math.sin(t * 6.2 + s * 2));
+      j.hdR.set(-0.5 - 0.18 * r * Math.sin(t * 6.4 + 2 + s), hipH + 0.4 + 0.42 * r * Math.sin(t * 4.7 + 3 + s), hipZ - 0.1 + 0.4 * r * Math.sin(t * 5.6 + 1 + s));
+      // sprawled once it stops: one arm up past the head, the other out
+      const lie = 1 - r;
+      j.hdL.lerp(tmpV.set(0.42, hipH + 0.75, hipZ + 0.2), lie * 0.6);
+      j.hdR.lerp(tmpV.set(-0.62, hipH + 0.18, hipZ - 0.05), lie * 0.6);
+      this.ep[0].set(0.9, 0.2, -0.3).normalize(); this.ep[1].set(-0.9, -0.3, -0.2).normalize();
     } else if (p.flail > 0) {
       const k = p.flail, w = Math.sin(p.t * 17);
       j.hdL.lerp(tmpV.set(0.55, hipH + 0.35 + w * 0.12, hipZ + 0.1), k);
@@ -541,6 +580,15 @@ export class SkierModel {
         P.bibBack.position.copy(r.chestP).addScaledVector(j.spine, 0.05).addScaledVector(j.fwd, -0.16);
       }
     } else skull = tmpV2.copy(j.head).addScaledVector(headUp, -0.02);
+    // the pack rides on the back of the chest, the hood on the back of the neck
+    if (P.pack) {
+      const chest = this.rig && this.real ? this.rig.chestP : j.chest, neck = this.rig && this.real ? this.rig.neckP : j.neck;
+      const bq = (this._bq ??= new THREE.Quaternion()).setFromRotationMatrix((this._bm ??= new THREE.Matrix4()).makeBasis(j.side, j.spine, j.fwd));
+      P.pack.position.copy(chest).addScaledVector(j.spine, -0.07).addScaledVector(j.fwd, -0.2);
+      P.pack.quaternion.copy(bq);
+      P.hood.position.copy(neck).addScaledVector(j.fwd, -0.06).addScaledVector(j.spine, -0.01);
+      P.hood.quaternion.copy(bq);
+    }
     // (all the head gear is built round the skull point, in the head's frame)
     for (const k of this.headGear) P[k].position.copy(skull);
     if (this.board) return;

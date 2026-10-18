@@ -8,6 +8,7 @@ import { Smash } from './smash.js';
 import { Injuries } from './injury.js';
 import { Rescue } from './rescue.js';
 import { Music } from './music.js';
+import { Tokens } from './tokens.js';
 import { Tracks } from './tracks.js';
 import { Particles, Snowfall } from './particles.js';
 import { Skier } from './skier.js';
@@ -151,6 +152,7 @@ class Game {
       smash: this.smash, netHit: (s, z, pen) => this.props.netHit(s, z, pen) };
     // a pole or a sign goes down: a knock, a puff of snow (and a jolt if it was you)
     this.injuries = new Injuries(scene);
+    this.tokens = new Tokens(scene);
     this.rescue = new Rescue(this);
     this.smash.onHit = (o, sp) => {
       const d = this.camera.position.distanceTo(_v.set(o.x, heightAt(o.x, o.z), o.z));
@@ -823,6 +825,13 @@ class Game {
       if (e.kind === 'net') { this.audio.netHit(Math.min(1, e.speed / 10)); this.rig.bump(Math.min(0.6, e.speed / 18)); this.burst(p, 20 + e.speed * 3, 3); }
       else if (e.kind === 'boards') { this.audio.thump(Math.min(1, e.speed / 10)); this.rig.bump(0.5); }
     });
+    // tumbling over: each slam into the snow throws it up (and, hurt, blood)
+    p.on('tumbleHit', (e) => {
+      this.burst(p, 30 + e.speed * 2, 3);
+      this.audio.thump(Math.min(1, 0.3 + e.speed / 30));
+      this.rig.bump(Math.min(0.7, e.speed / 25));
+      this.injuries.slam(p);
+    });
     p.on('branches', (e) => {
       // shoved through a tree: its snow comes down on you
       this.particles.emit(e.x, heightAt(e.x, e.z) + e.h * 0.5, e.z, 0, -1, 0, 2.8, 0.9, 1.6, 40);
@@ -980,12 +989,21 @@ class Game {
     pts *= this.repeat(name || 'air');
     this.addFeature(pts, name);
     this.bank(name, t.sketchy, t.air, t.stomp);
+    // land it clean and it sends you: a boost out of every trick, bigger for bigger tricks
+    if (!t.sketchy && trick) {
+      const boost = clamp(1.2 + pts / 1800, 1.2, 4.5) * (t.stomp ? 1.2 : 1);
+      p.vel.addScaledVector(p.forward(_v), boost * (p.skiSwitch ? -1 : 1));
+      this.burst(p, 40, 2.5);
+      this.audio.beep(660, 0.12, 0.08, 'sawtooth');
+      this.status(`BOOST +${Math.round(boost * 3.6)} KM/H`);
+    }
   }
 
   // ---------------- modes ----------------
   // opts: { online: race start time (server clock) }; this.event: { ev, tier } for an event
   start(mode, opts = {}) {
-    this.rescue?.abort(); this.injuries?.clear();
+    this.rescue?.abort(); this.injuries?.clear(); this.tokens?.reset();
+    if (this.tokens) $('tok').textContent = `★ 0/${this.tokens.list.length}`;
     if (mode === 'free') mode = 'run';
     if (mode === 'trial' || mode === 'contest') mode = mode === 'trial' ? 'race' : 'run';
     if (mode !== 'run' && PARK_ID !== 'yard') mode = 'run';
@@ -1142,6 +1160,17 @@ class Game {
   }
 
   // ---------------- trick school ----------------
+  collect(k) {
+    const T = this.tokens, n = T.list.length;
+    if (this.sc) this.sc.score += k.pts;
+    this.audio.beep(1320 + (T.got % 5) * 120, 0.08, 0.12, 'triangle');
+    this.particles.emit(k.x, k.y, k.z, 0, 1.5, 0, 3, 0.25, 0.6, 14);
+    $('tok').textContent = `★ ${T.got}/${n}`;
+    $('tok').classList.add('on'); clearTimeout(this.tokT); this.tokT = setTimeout(() => $('tok').classList.remove('on'), 2500);
+    if (T.got === n) { if (this.sc) this.sc.score += 10000; this.say('EVERY STAR', '', '+10,000', 'gold', 2400); this.audio.chime(); }
+    else this.status(`★ +${k.pts}`);
+  }
+
   // combos: quick arrow taps in the air. A match fires the trick (sized to the air left);
   // if a longer combo starts the same way it waits a beat for more taps first
   combos(inp, dt) {
@@ -1497,6 +1526,21 @@ class Game {
     if (this.audio.ctx && !this.music.timer) this.music.start();
     this.music.setMood(this.rescue.active ? (this.rescue.phase === 'lift' || this.rescue.phase === 'hospital' ? 'chill' : 'calm') : this.state === 'menu' || this.state === 'loading' ? 'chill' : 'ride');
     if (!this.paused) this.injuries.update(dt);
+    // gold stars: through one and it's yours
+    if (!this.paused && this.tokens) {
+      const live = this.player && !this.rescue.active && this.state === 'free';
+      for (const k of this.tokens.update(dt, live ? this.player.pos : null)) this.collect(k);
+    }
+    // breath in the cold air, every couple of seconds
+    const BP = this.player;
+    if (BP && !this.paused && BP.crash <= 0 && !BP.held && this.state !== 'menu' && BP.model.rig && BP.model.real && ((this.breathT = (this.breathT ?? 1) - dt) <= 0)) {
+      this.breathT = 1.5 + Math.random() * 0.9;
+      const r = BP.model.rig;
+      r.root.updateMatrixWorld(true);
+      const m = r.root.localToWorld(r.skull.clone());
+      const fx = Math.sin(BP.heading), fz = Math.cos(BP.heading);
+      this.particles.emit(m.x + fx * 0.14, m.y - 0.1, m.z + fz * 0.14, BP.vel.x * 0.85 + fx * 0.5, 0.25, BP.vel.z * 0.85 + fz * 0.5, 0.2, 0.1, 0.8, 5);
+    }
     if (!this.paused) {
       if (this.player && !this.player.ai && !this.rescue.active) {
         const c = inp.read(dt, !this.player.onGround && !this.player.grind);

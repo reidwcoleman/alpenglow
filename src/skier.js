@@ -223,7 +223,9 @@ export class Skier {
     const carveRate = (speed * Math.tan(Math.min(e, 1.2))) / this.sidecut * (1 - powder * 0.35);
     const pivot = 2.3 * (1 - smoothstep(0, 10, speed)) * Math.abs(c.steer);
     const dir = Math.sign(this.edge || c.steer);
-    this.heading += -dir * Math.max(carveRate, pivot) * (1 - c.brake * 0.3) * dt;
+    // (never turning the skis faster than the edges can bend the line: a clean carve, no skid)
+    const carveCap = c.brake > 0.05 || !this.isPlayer ? 99 : (this.grip * GRAV * 0.95) / Math.max(speed, 1);
+    this.heading += -dir * Math.max(Math.min(carveRate, carveCap), pivot) * (1 - c.brake * 0.3) * dt;
     this.avgHeading += wrapAngle(this.heading - this.avgHeading) * Math.min(1, dt / 1.1);
     // in the pipe the skis go where the speed goes: up a wall, over, and back down
     const inPipe = pipeAt(this.pos.x, this.pos.z);
@@ -240,24 +242,27 @@ export class Skier {
     const N = GRAV * Math.max(n.y, 0.2);
     if (speed > 0.05) {
       // groomed ~0.045, ice glides, powder bogs down until the skis plane
-      // (fast wax: speed comes easily)
-      const mu = (0.032 * (1 - ice * 0.45) + powder * (0.075 - 0.04 * smoothstep(8, 22, speed)) * (this.board ? 0.7 : 1)) * (W?.mu ?? 1);
+      // (you ride on fast wax off-piste and in the parks: speed comes easily; the computer
+      // riders and races keep the plain snow)
+      const fast = this.isPlayer && this.world.arcade;
+      const mu = ((fast ? 0.032 : 0.045) * (1 - ice * 0.45) + powder * (fast ? 0.075 - 0.04 * smoothstep(8, 22, speed) : 0.11 - 0.055 * smoothstep(8, 22, speed)) * (this.board ? 0.7 : 1)) * (W?.mu ?? 1);
       _a.addScaledVector(v, -(mu * N) / speed);
       this.updateDraft(dt);
       // a snowboarder can't tuck as small as a skier: standing sideways is more frontal area
       const tk = this.board ? 0.62 : 1;
-      const CdA = (this.world.arcade ? 0.4 - 0.25 * c.tuck * tk : 0.56 - 0.34 * c.tuck * tk) * (1 - this.draft * 0.38) + powder * (this.board ? 0.02 : 0.04);
+      const CdA = (this.world.arcade ? (fast ? 0.4 - 0.25 * c.tuck * tk : 0.44 - 0.26 * c.tuck * tk) : 0.56 - 0.34 * c.tuck * tk) * (1 - this.draft * 0.38) + powder * (this.board ? 0.02 : 0.04) * (fast ? 1 : 1.5);
       const k = (0.5 * RHO * CdA) / this.mass;
       _a.addScaledVector(v, -k * speed);
     }
     // skating stride to get going on the flats
     const vLong0 = v.dot(f);
     // (tuck on the flats and you skate hard to get going)
-    this.skating = c.tuck > 0.5 && vLong0 > -0.5 && vLong0 < 10 && c.brake < 0.1 && powder < 0.6 ? 1 : 0;
+    const skMax = this.isPlayer ? 10 : 7;
+    this.skating = c.tuck > 0.5 && vLong0 > -0.5 && vLong0 < skMax && c.brake < 0.1 && powder < 0.6 ? 1 : 0;
     if (this.skating) {
       this.skatePhase += dt * (5 + vLong0 * 0.4);
       const stroke = 0.55 + 0.9 * Math.max(0, Math.sin(this.skatePhase * 2));
-      _a.addScaledVector(f, 3.8 * (1 - vLong0 / 10) * stroke);
+      _a.addScaledVector(f, (this.isPlayer ? 3.8 : 2.5) * (1 - vLong0 / skMax) * stroke);
     }
     // hockey stop / snowplough (weaker on ice)
     if (c.brake > 0 && speed > 0.1) {
@@ -279,11 +284,15 @@ export class Skier {
     }
     const need = -vLat / dt;
     const applied = clamp(need, -maxGrip, maxGrip);
+    const sp0 = v.length();
     v.addScaledVector(side, applied * dt);
+    // carving turns your speed, it doesn't take it away: the edge bends the line, and only
+    // braking (or a real skid off the edges) costs speed
+    if (this.isPlayer && c.brake < 0.05 && !onWall && sp0 > 0.5) v.multiplyScalar(sp0 / Math.max(1e-3, v.length()));
     const rem = Math.abs(vLat + applied * dt);
     this.latAcc = this.latAcc * 0.8 + applied * 0.2;
     // skidding scrubs speed (little on ice, a lot in powder)
-    const skid = Math.min(rem, 6) * (onWall ? 0.08 : inPipe !== null ? 0.35 : 1);
+    const skid = Math.min(rem, 6) * (onWall ? 0.08 : inPipe !== null ? 0.35 : 1) * (c.brake > 0.05 || !this.isPlayer ? 1 : 0.25);
     if (skid > 0.05) {
       const sp = v.length();
       const scrub = 0.9 * GRAV * 0.55 * (1 - ice * 0.5 + powder * 0.4);
@@ -716,6 +725,7 @@ export class Skier {
     const hard = { tree: 12, rock: 12, tower: 12, station: 11, chalet: 11, arch: 12, pole: 15, sign: 14, snowgun: 12, skier: 16, net: 15, boards: 13, landing: 17, rail: 16 }[reason] ?? 99;
     this.injured = this.isPlayer && !this.ai && !this.world.noRescue && hit >= hard;
     this.crash = 1; this.crashPhase = 'tumble'; this.crashT = 0; this.crashSpeed = sp;
+    this.ragSeed = Math.random() * 6; this.halfTurns = 0;
     // tumble around the horizontal axis across the direction of travel
     const hx = this.vel.x, hz = this.vel.z, hl = Math.hypot(hx, hz) || 1;
     this.tumbleAxis.set(hz / hl, 0, -hx / hl);
@@ -750,6 +760,15 @@ export class Skier {
     const sp = v.length();
     if (this.crashPhase === 'tumble') {
       this.tumble += this.tumbleRate * dt;
+      // every half turn over, the body slams the snow and bounces
+      const ht = Math.floor(Math.abs(this.tumble) / Math.PI);
+      if (ht !== this.halfTurns) {
+        this.halfTurns = ht;
+        if (sp > 4 && this.pos.y <= gy + 0.05) {
+          v.y += 0.8 + Math.min(sp, 30) * 0.07;
+          this.emit('tumbleHit', { speed: sp });
+        }
+      }
       this.cartAngle += this.cartwheel * dt;
       const k = Math.exp(-dt * 1.5);
       this.tumbleRate *= k; this.cartwheel *= k;
@@ -762,7 +781,7 @@ export class Skier {
       }
       this.lie = Math.min(1, this.lie + dt * 2);
       // a short tumble, then straight back up (a big one tumbles a little longer)
-      const tMax = 0.75 + Math.min(0.55, (this.crashSpeed ?? 0) * 0.02);
+      const tMax = this.injured ? 7 : 0.75 + Math.min(0.55, (this.crashSpeed ?? 0) * 0.02);
       if ((sp < 1.2 && this.crashT > 0.6) || this.crashT > tMax) { this.crashPhase = 'down'; this.crashT = 0; }
     } else if (this.crashPhase === 'down') {
       // a beat on the snow
@@ -1062,6 +1081,9 @@ export class Skier {
       polePlant: Math.sin(this.polePlant * Math.PI),
       poleSide: this.poleSide,
       crash: crashed && this.crashPhase !== 'up',
+      // how wild the limbs are: thrown about while it tumbles, sprawled once it stops
+      rag: crashed ? clamp(Math.abs(this.tumbleRate ?? 0) / 7 + this.speed / 30, 0, 1) * (this.crashPhase === 'tumble' ? 1 : 0.15) : 0,
+      ragT: this.crashT * 1.0, ragSeed: this.ragSeed ?? 0,
       twist: crashed ? 0 : clamp(wrapAngle(this.avgHeading - this.heading) * 0.85, -0.7, 0.7) * (1 - this.backK) + lookS * 0.62,
       skate: this.skating && !crashed && !this.board ? 1 : 0,
       skatePhase: this.skatePhase,
