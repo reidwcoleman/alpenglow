@@ -103,6 +103,36 @@ export class Audio {
     o.connect(og).connect(this.master); o.start(t); o.stop(t + 0.18);
   }
 
+  // the helicopter: blade slap on a low roar, level 0 (gone) to 1 (overhead)
+  rotor(k) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    if (!this.rot) {
+      const src = ctx.createBufferSource(); src.buffer = this.noise; src.loop = true;
+      const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 260;
+      const am = ctx.createGain(); am.gain.value = 0.5;
+      const lfo = ctx.createOscillator(); lfo.type = 'square'; lfo.frequency.value = 19;
+      const lg = ctx.createGain(); lg.gain.value = 0.5;
+      lfo.connect(lg).connect(am.gain);
+      const g = ctx.createGain(); g.gain.value = 0;
+      src.connect(f).connect(am).connect(g).connect(this.master);
+      src.start(); lfo.start();
+      this.rot = g;
+    }
+    this.rot.gain.setTargetAtTime(Math.max(0, Math.min(1, k)) * 0.9, t, 0.2);
+  }
+
+  // pushed through a tree's branches: a rustle and snow coming down
+  branches(k = 1) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const src = ctx.createBufferSource(); src.buffer = this.noise;
+    const f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 1800;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.35 * k + 0.05, t + 0.05); g.gain.exponentialRampToValueAtTime(0.001, t + 0.7);
+    src.connect(f).connect(g).connect(this.master); src.start(t, Math.random()); src.stop(t + 0.75);
+  }
+
   // into the netting: a soft whump and the mesh rustling
   netHit(k = 1) {
     if (!this.ctx) return;

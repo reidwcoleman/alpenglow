@@ -125,6 +125,8 @@ export class Skier {
   }
 
   step(dt) {
+    // (carried off by the rescue: the rescue moves him)
+    if (this.frozen) return;
     this.time += dt;
     const c = this.controls;
     if (this.crash > 0) return this.stepCrash(dt);
@@ -157,7 +159,7 @@ export class Skier {
       if (out > 0) {
         this.vel.x -= nx * out * 1.3; this.vel.z -= nz * out * 1.3;
         if (out > 4) this.emit('impact', { kind: 'boards', x: this.pos.x, z: this.pos.z, speed: out });
-        if (out > 10 && this.crash <= 0) this.startCrash('boards');
+        if (out > 10 && this.crash <= 0) this.startCrash('boards', out);
       }
       return;
     }
@@ -173,7 +175,7 @@ export class Skier {
     this.world.netHit?.(sg, z, Math.min(pen, MAX) + 0.15);
     if (!this.netIn && out > 3) this.emit('impact', { kind: 'net', x: this.pos.x, z: this.pos.z, speed: out });
     this.netIn = 0.3;
-    if (out > 12 && this.crash <= 0) this.startCrash('net');
+    if (out > 12 && this.crash <= 0) this.startCrash('net', out);
   }
 
   // slipstream: a skier close ahead on our line cuts our drag
@@ -238,22 +240,24 @@ export class Skier {
     const N = GRAV * Math.max(n.y, 0.2);
     if (speed > 0.05) {
       // groomed ~0.045, ice glides, powder bogs down until the skis plane
-      const mu = (0.045 * (1 - ice * 0.45) + powder * (0.11 - 0.055 * smoothstep(8, 22, speed)) * (this.board ? 0.7 : 1)) * (W?.mu ?? 1);
+      // (fast wax: speed comes easily)
+      const mu = (0.032 * (1 - ice * 0.45) + powder * (0.075 - 0.04 * smoothstep(8, 22, speed)) * (this.board ? 0.7 : 1)) * (W?.mu ?? 1);
       _a.addScaledVector(v, -(mu * N) / speed);
       this.updateDraft(dt);
       // a snowboarder can't tuck as small as a skier: standing sideways is more frontal area
       const tk = this.board ? 0.62 : 1;
-      const CdA = (this.world.arcade ? 0.44 - 0.26 * c.tuck * tk : 0.56 - 0.34 * c.tuck * tk) * (1 - this.draft * 0.38) + powder * (this.board ? 0.03 : 0.06);
+      const CdA = (this.world.arcade ? 0.4 - 0.25 * c.tuck * tk : 0.56 - 0.34 * c.tuck * tk) * (1 - this.draft * 0.38) + powder * (this.board ? 0.02 : 0.04);
       const k = (0.5 * RHO * CdA) / this.mass;
       _a.addScaledVector(v, -k * speed);
     }
     // skating stride to get going on the flats
     const vLong0 = v.dot(f);
-    this.skating = c.tuck > 0.5 && vLong0 > -0.5 && vLong0 < 7 && c.brake < 0.1 && powder < 0.5 ? 1 : 0;
+    // (tuck on the flats and you skate hard to get going)
+    this.skating = c.tuck > 0.5 && vLong0 > -0.5 && vLong0 < 10 && c.brake < 0.1 && powder < 0.6 ? 1 : 0;
     if (this.skating) {
       this.skatePhase += dt * (5 + vLong0 * 0.4);
       const stroke = 0.55 + 0.9 * Math.max(0, Math.sin(this.skatePhase * 2));
-      _a.addScaledVector(f, 2.5 * (1 - vLong0 / 7) * stroke);
+      _a.addScaledVector(f, 3.8 * (1 - vLong0 / 10) * stroke);
     }
     // hockey stop / snowplough (weaker on ice)
     if (c.brake > 0 && speed > 0.1) {
@@ -398,6 +402,7 @@ export class Skier {
     if (W && W.s > 0) { v.x += W.x * W.s * k * 7 * dt; v.z += W.z * W.s * k * 7 * dt; }
     // a quick trick flies itself (sized to the air there is)
     if (this.auto && this.world.arcade && this.airTime > 0.05) this.autoTrick(dt, c);
+
     // spins (A/D) about the vertical; grabbing tucks you up and spins you faster
     const arc = this.world.arcade;
     let spinRate;
@@ -561,7 +566,7 @@ export class Skier {
     this.springV -= Math.min(vn, 14) * 0.16;
     if (!crash) { this.pitch = 0; this.spin = 0; this.flipAcc = 0; this.trickType = null; }
     if (this.trackSlot) this.trackSlot.break();
-    if (crash) this.startCrash('landing'); else this.emit('land', trick);
+    if (crash) this.startCrash('landing', vn + (pErr > 1.6 ? v.length() * 0.35 : 0)); else this.emit('land', trick);
   }
 
   // The last moments before touchdown: whatever rotation is closest to a clean landing gets
@@ -703,9 +708,13 @@ export class Skier {
   }
 
   // ---- crashes: tumble and slide, lie there a moment, get up where you stopped ----
-  startCrash(reason) {
+  // hit: how hard it was (m/s into the thing, or into the snow). Hard enough and it's not a
+  // wipeout you get up from: you're hurt, and the rescue comes (main.js / rescue.js)
+  startCrash(reason, hit = 0) {
     if (this.crash > 0) return;
     const sp = this.speed;
+    const hard = { tree: 12, rock: 12, tower: 12, station: 11, chalet: 11, arch: 12, pole: 15, sign: 14, snowgun: 12, skier: 16, net: 15, boards: 13, landing: 17, rail: 16 }[reason] ?? 99;
+    this.injured = this.isPlayer && !this.ai && !this.world.noRescue && hit >= hard;
     this.crash = 1; this.crashPhase = 'tumble'; this.crashT = 0; this.crashSpeed = sp;
     // tumble around the horizontal axis across the direction of travel
     const hx = this.vel.x, hz = this.vel.z, hl = Math.hypot(hx, hz) || 1;
@@ -717,7 +726,7 @@ export class Skier {
     this.lie = 0;
     this.onGround = true;
     if (this.trackSlot) this.trackSlot.break();
-    this.emit('crash', { reason, speed: sp });
+    this.emit('crash', { reason, speed: sp, hit, injured: this.injured });
     if (sp > 10) this.emit('yardsale', { speed: sp });
   }
 
@@ -760,7 +769,8 @@ export class Skier {
       const lying = Math.round((this.tumble - Math.PI / 2) / Math.PI) * Math.PI + Math.PI / 2;
       this.tumble += (lying - this.tumble) * Math.min(1, dt * 8);
       this.cartAngle += (Math.round(this.cartAngle / Math.PI) * Math.PI - this.cartAngle) * Math.min(1, dt * 8);
-      if (this.crashT > 0.18) { this.crashPhase = 'up'; this.crashT = 0; }
+      // (hurt: he stays down until he's carried off)
+      if (this.crashT > 0.18 && !this.injured) { this.crashPhase = 'up'; this.crashT = 0; }
     } else {
       // springing up while still sliding
       v.multiplyScalar(Math.exp(-dt * 0.8));
@@ -791,6 +801,7 @@ export class Skier {
   }
 
   endCrash() {
+    this.injured = false;
     this.crash = 0; this.crashPhase = null; this.tumble = 0; this.lie = 0; this.cartAngle = 0;
     this.pitch = 0; this.spin = 0; this.flipAcc = 0;
     this.emit('gear');
@@ -893,7 +904,7 @@ export class Skier {
     if (fell) {
       this.pos.x += Math.sign(g.bal) * 0.4;
       this.vel.x += Math.sign(g.bal) * 1.5;
-      if (g.v > 3) this.startCrash('rail');
+      if (g.v > 3) this.startCrash('rail', g.v);
     }
     this.emit('grindEnd', { kind: g.kind, rail: g.R.name, dist, t: g.t, fell, spinIn: g.spinIn, swaps: g.swaps, switchIn: g.switchIn, pop, press: g.press ?? 0, nose: g.nose ?? 0, tail: g.tail ?? 0, board: this.board });
   }
@@ -902,6 +913,19 @@ export class Skier {
     const w = this.world;
     if (!w.forest) return;
     w.forest.query(this.pos.x, this.pos.z, near);
+    // through a tree's branches: they catch you and drag you back, then let you go
+    let bough = null;
+    for (const o of near) {
+      if (!o.br || this.crash > 0 || !this.isPlayer || this.ai) continue;
+      const d = Math.hypot(this.pos.x - o.x, this.pos.z - o.z);
+      if (d > o.br || this.pos.y > heightAt(o.x, o.z) + o.th * 0.9) continue;
+      const k = 1 - d / o.br;
+      const sp = this.speed;
+      if (sp > 0.5) this.vel.multiplyScalar(Math.max(0, 1 - (1.6 + sp * 0.12) * k * (1 / 100)));
+      bough = o;
+    }
+    if (bough && bough !== this.bough) this.emit('branches', { x: bough.x, z: bough.z, h: bough.th, speed: this.speed });
+    this.bough = bough;
     for (const o of near) {
       const dx = this.pos.x - o.x, dz = this.pos.z - o.z;
       const minD = o.r + 0.35;
@@ -912,10 +936,16 @@ export class Skier {
       // poles, gates and signs: knock them over and carry on, a little slower
       if (o.soft) {
         if (o.down || o.off || this.pos.y > gy + o.h || this.speed < 1.5) continue;
+        const sp = this.speed;
         this.vel.multiplyScalar(1 - o.slow);
         this.flailT = Math.max(this.flailT, o.slow > 0.05 ? 0.45 : 0.2);
         this.world.smash?.hit(o, this.vel);
-        this.emit('smash', { kind: o.kind, speed: this.speed });
+        this.emit('smash', { kind: o.kind, speed: sp });
+        // a pole or a sign to the body at speed takes you down with it (gates break away)
+        if (o.kind !== 'gate' && sp > (o.kind === 'sign' ? 7 : 9) && this.crash <= 0 && this.onGround) {
+          this.startCrash(o.kind, sp);
+          this.emit('impact', { kind: o.kind, x: o.x, z: o.z, speed: sp });
+        }
         continue;
       }
       const d = Math.sqrt(d2) || 0.01;
@@ -923,9 +953,10 @@ export class Skier {
       const into = -(this.vel.x * nx + this.vel.z * nz);
       this.pos.x = o.x + nx * minD; this.pos.z = o.z + nz * minD;
       if (into > 0) {
-        if (into > 6.5 && this.crash <= 0) {
-          this.startCrash(o.kind);
-          this.emit('impact', { kind: o.kind, x: o.x, z: o.z });
+        // a trunk, a rock, a tower: there's no riding into one and carrying on
+        if (into > (o.kind === 'tree' ? 3.2 : 4.5) && this.crash <= 0) {
+          this.startCrash(o.kind, into);
+          this.emit('impact', { kind: o.kind, x: o.x, z: o.z, speed: into });
         }
         this.vel.x += nx * into * 1.15; this.vel.z += nz * into * 1.15;
       }
@@ -966,11 +997,26 @@ export class Skier {
     g.position.copy(this.pos).addScaledVector(_t, ch).sub(_n);
     if (this.butter && this.onGround && !this.crash) g.position.y += Math.sin(Math.min(1, this.butter.t * 6) * 0.32) * 0.82;
     // deep snow: the skis ride under the surface, planing up as the speed builds
+    // (only a whisker: the skis stay on top of the snow you can see)
     if (this.onGround && !this.grind) {
-      const sink = this.surf.powder * clamp(0.3 - this.speed * 0.012, 0.06, 0.3) * (this.crash > 0 ? 0.5 : 1);
+      const sink = this.surf.powder * clamp(0.05 - this.speed * 0.003, 0, 0.05) * (this.crash > 0 ? 0.5 : 1);
       this.sinkV = (this.sinkV ?? 0) + (sink - (this.sinkV ?? 0)) * Math.min(1, dt * 6);
     } else this.sinkV = (this.sinkV ?? 0) * (1 - Math.min(1, dt * 8));
     g.position.y -= this.sinkV;
+    // the slope bends under a 1.7 m ski: lift him so neither the tip nor the tail is in the snow
+    if (this.onGround && !this.grind && !this.crash) {
+      const fx = Math.sin(this.heading), fz = Math.cos(this.heading);
+      const reach = this.board ? 0.8 : 0.9;
+      let lift = 0;
+      for (const k of [-1, -0.5, 0.5, 1]) {
+        const x = this.pos.x + fx * reach * k, z = this.pos.z + fz * reach * k;
+        // height of the plane the skis lie in there, against the snow itself
+        const plane = this.pos.y - (this.normal.x * (x - this.pos.x) + this.normal.z * (z - this.pos.z)) / Math.max(0.3, this.normal.y);
+        lift = Math.max(lift, heightAt(x, z) - plane);
+      }
+      this.liftV = (this.liftV ?? 0) + (Math.min(lift, 0.35) + 0.015 - (this.liftV ?? 0)) * Math.min(1, dt * 14);
+      g.position.y += this.liftV;
+    } else this.liftV = 0;
 
     const dist = camPos ? camPos.distanceTo(this.pos) : 0;
     m.setDetail(dist < 70);

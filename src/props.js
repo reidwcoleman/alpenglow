@@ -3,7 +3,7 @@
 // plus rocks and terrain-park dressing.
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { heightAt, centerX, halfWidth, GATES, KICKERS, LIFT, START_Z, FINISH_Z, SECTIONS, ZONES, slopeAt, MAP, JUMPS, RAILS } from './course.js';
+import { heightAt, centerX, halfWidth, GATES, KICKERS, LIFT, START_Z, FINISH_Z, SECTIONS, ZONES, slopeAt, MAP, JUMPS, RAILS, HOSPITAL } from './course.js';
 import { mulberry32, makeSimplex, smoothstep } from './noise.js';
 import { pbr } from './terrain.js';
 import { crowd, bodies } from './people.js';
@@ -94,6 +94,7 @@ function canvasTex(w, h, draw) {
 
 // a run's difficulty from its name: blue, red or black
 export function trailDiff(n) {
+  if (/^(Drop In|Finish|Village)$/.test(n)) return 'blue';
   return /Wall|Glacier|Chute|Couloir|Face|Cornice|Steep|Drop|Pillow|Mega|Big Air|XXL|Gap/.test(n) ? 'black'
     : /Start|Drop In|Village|Run-out|Green|Flats|Cat|Long Road|Road|Inrun|Finish/.test(n) ? 'blue' : 'red';
 }
@@ -111,6 +112,7 @@ export class Props {
     this.buildGates();
     this.buildStart();
     this.buildFinish();
+    this.buildHospital();
     this.buildVillage();
     this.buildMarkers();
     this.buildNets();
@@ -169,16 +171,17 @@ export class Props {
     let z0 = START_Z;
     for (const Z of ZONES) {
       const za = z0; z0 = Z.z1;
-      if (Z.name === 'Finish' || za > FINISH_Z - 80) continue;
+      // (not at the very top: the start is right on it and it reads as a slab)
+      if (Z.name === 'Finish' || za > FINISH_Z - 80 || za < START_Z + 60) continue;
       const hw = halfWidth(za + 20);
-      const W = Math.min(hw * 1.3, 26), L = W * 0.25 * 8;
+      const W = Math.min(hw * 0.75, 15), L = W * 0.25 * 7;
       // somewhere clear of jumps and rails, near the top of it
       let z = Math.max(za, START_Z + 4) + 16;
       const busy = (zz) => [...JUMPS, ...RAILS].some((f) => f.z + (f.len ?? f.L ?? 10) + 8 > zz - L / 2 && f.z - 12 < zz + L / 2 && Math.abs(f.dx ?? 0) < W / 2 + 4);
       for (let k = 0; k < 8 && busy(z); k++) z += 12;
       if (busy(z) || z > Z.z1 - L) continue;
       const d = trailDiff(Z.name);
-      const col = d === 'blue' ? '#1d4fd0' : d === 'red' ? '#d0242a' : '#14161c';
+      const col = d === 'blue' ? '#2a5fe0' : d === 'red' ? '#e0393e' : '#2a2f3a';
       const tex = canvasTex(1024, 256, (g, w, h) => {
         g.clearRect(0, 0, w, h);
         g.fillStyle = col;
@@ -217,7 +220,7 @@ export class Props {
       g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
       g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
       g.setIndex(idx); g.computeVertexNormals();
-      const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: tex, transparent: true, opacity: 0.88, depthWrite: false, roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }));
+      const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: tex, transparent: true, opacity: 0.72, depthWrite: false, roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }));
       m.receiveShadow = true;
       m.renderOrder = 1;
       this.scene.add(m);
@@ -313,14 +316,23 @@ export class Props {
       const gy = heightAt(x, z);
       const isStation = t === 0 || t === 1;
       if (!isStation) {
-        const pole = colorize(new THREE.CylinderGeometry(0.28, 0.42, H + 1, 10), steel);
+        const pole = colorize(new THREE.CylinderGeometry(0.3, 0.46, H + 1, 14), steel);
         pole.translate(0, (H + 1) / 2 - 0.5, 0);
-        const arm = colorize(new THREE.BoxGeometry(5.6, 0.45, 0.5), steel);
-        arm.translate(0, H + 0.4, 0);
-        const sheaveA = colorize(new THREE.BoxGeometry(0.5, 0.6, 2.4), 0x2b2f36); sheaveA.translate(2.4, H + 0.05, 0);
-        const sheaveB = sheaveA.clone(); sheaveB.translate(-4.8, 0, 0);
-        const ladder = colorize(new THREE.BoxGeometry(0.4, H, 0.05), 0x3a3f46); ladder.translate(0, H / 2, 0.45);
-        const g = merge([pole, arm, sheaveA, sheaveB, ladder]);
+        const foot = colorize(new THREE.CylinderGeometry(0.75, 0.9, 0.9, 12), 0x9a9da3); foot.translate(0, 0.1, 0);
+        const head = colorize(new THREE.BoxGeometry(0.7, 0.7, 0.7), steel); head.translate(0, H + 0.45, 0);
+        const arm = colorize(new THREE.BoxGeometry(5.8, 0.38, 0.32), steel); arm.translate(0, H + 0.62, 0);
+        const sub = [pole, foot, head, arm];
+        // a sheave train each side: a beam with six wheels the cable runs over
+        for (const sx of [-2.4, 2.4]) {
+          const beam = colorize(new THREE.BoxGeometry(0.16, 0.22, 2.6), 0x2b2f36); beam.translate(sx, H + 0.32, 0); sub.push(beam);
+          for (let k = 0; k < 6; k++) { const wh = colorize(new THREE.CylinderGeometry(0.17, 0.17, 0.1, 12).rotateZ(Math.PI / 2), 0x1a1c20); wh.translate(sx, H + 0.13, -1.05 + k * 0.42); sub.push(wh); }
+        }
+        // ladder rungs up the side, a maintenance rail and the lightning rod
+        for (let y = 1.2; y < H; y += 0.42) { const rung = colorize(new THREE.BoxGeometry(0.44, 0.04, 0.04), 0x3a3f46); rung.translate(0, y, 0.48); sub.push(rung); }
+        for (const sx of [-0.22, 0.22]) { const rail = colorize(new THREE.BoxGeometry(0.04, H - 1, 0.04), 0x3a3f46); rail.translate(sx, (H + 1) / 2 + 0.2, 0.48); sub.push(rail); }
+        const rail2 = colorize(new THREE.BoxGeometry(5.6, 0.05, 0.05), 0xd8b84a); rail2.translate(0, H + 1.6, 0.25); sub.push(rail2);
+        const rod = colorize(new THREE.CylinderGeometry(0.02, 0.03, 2.2, 5), 0x9a9da3); rod.translate(0, H + 1.9, -0.2); sub.push(rod);
+        const g = merge(sub);
         tmpQ.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir);
         g.applyQuaternion(tmpQ);
         g.translate(x, gy, z);
@@ -329,21 +341,48 @@ export class Props {
       }
       this.liftPoints.push(new THREE.Vector3(x, gy + H + 0.3, z));
     }
-    // stations
+    // stations: an open terminal, the bullwheel under a long canopy on two columns, a loading
+    // platform, and the operator's hut beside it
+    const signs = [];
     for (const t of [0, 1]) {
       const [x, z] = at(t);
       const gy = heightAt(x, z);
-      const base = colorize(new THREE.BoxGeometry(9, 6, 16), 0x5b3d2a); base.translate(0, 3, 0);
-      const roof = snowCap(new THREE.CylinderGeometry(0.01, 8.5, 3.2, 4, 1).rotateY(Math.PI / 4).scale(1, 1, 1.6), 0x3a2a22, 0.3);
-      roof.translate(0, 7.05, 0);
-      const wheel = colorize(new THREE.TorusGeometry(2.6, 0.18, 8, 24).rotateX(Math.PI / 2), 0x2b2f36); wheel.translate(0, H + 0.3, t === 0 ? -6 : 6);
-      const deck = colorize(new THREE.BoxGeometry(6.5, 0.6, 9), steel); deck.translate(0, H - 0.4, t === 0 ? -5 : 5);
-      const g = merge([base, roof, wheel, deck]);
+      const back = t === 0 ? -1 : 1; // the bullwheel end
+      const sub = [];
+      const conc = 0x9a9ea5, blue = 0x2c5f9e, dark = 0x2b2f36;
+      const pad = colorize(new THREE.BoxGeometry(12, 3, 22), conc); pad.translate(0, -1.2, back * 2); sub.push(pad);
+      for (const sx of [-1, 1]) { const col = colorize(new THREE.BoxGeometry(0.9, H + 1.2, 0.9), steel); col.translate(sx * 1.6, (H + 1.2) / 2, back * 5); sub.push(col); }
+      const cover = colorize(new THREE.BoxGeometry(7.4, 1.9, 13), blue); cover.translate(0, H + 1.5, back * 4.5); sub.push(cover);
+      const lid = snowCap(new THREE.BoxGeometry(7.8, 0.35, 13.4), 0x22497a, 0.5); lid.translate(0, H + 2.6, back * 4.5); sub.push(lid);
+      const wheel = colorize(new THREE.TorusGeometry(2.4, 0.16, 8, 32).rotateX(Math.PI / 2), dark); wheel.translate(0, H + 0.3, back * 8); sub.push(wheel);
+      for (let k = 0; k < 6; k++) { const sp = colorize(new THREE.BoxGeometry(4.8, 0.08, 0.08).rotateY((k * Math.PI) / 6), dark); sp.translate(0, H + 0.3, back * 8); sub.push(sp); }
+      const deck = colorize(new THREE.BoxGeometry(6.5, 0.5, 10), conc); deck.translate(0, 0.5, -back * 3); sub.push(deck);
+      const ramp = colorize(new THREE.BoxGeometry(6.5, 0.2, 4).rotateX(back * 0.12), conc); ramp.translate(0, 0.3, -back * 9.6); sub.push(ramp);
+      // the operator's hut, windows all round
+      const hut = colorize(new THREE.BoxGeometry(3.2, 2.6, 3.2), 0xe8e9ec); hut.translate(5.6, 1.3 + 0.75, -back * 2); sub.push(hut);
+      const win = colorize(new THREE.BoxGeometry(3.25, 1.0, 3.25), 0x1b2a3a); win.translate(5.6, 2.3, -back * 2); sub.push(win);
+      const hroof = snowCap(new THREE.BoxGeometry(3.8, 0.3, 3.8), 0x22497a, 0.5); hroof.translate(5.6, 3.55, -back * 2); sub.push(hroof);
+      // a rope line and a couple of sign posts at the load
+      for (const sx of [-3.4, 3.4]) { const post = colorize(new THREE.BoxGeometry(0.08, 1.1, 0.08), 0xd8b84a); post.translate(sx, 1.3, -back * 7); sub.push(post); }
+      const g = merge(sub);
       tmpQ.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir);
       g.applyQuaternion(tmpQ);
-      g.translate(x, gy - 0.5, z);
+      g.translate(x, gy, z);
       parts.push(g);
       this.forest.addCollider(x, z, 7, 'station');
+      // the lift's name along the canopy
+      signs.push({ x, y: gy + H + 1.5, z, q: tmpQ.clone(), back });
+    }
+    const liftTex = canvasTex(1024, 128, (c, w, h) => {
+      c.fillStyle = '#2c5f9e'; c.fillRect(0, 0, w, h);
+      c.fillStyle = '#fff'; c.font = 'bold 70px Helvetica, Arial'; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.fillText('SHREDLINE EXPRESS', w / 2, h / 2 + 4);
+    });
+    for (const sg of signs) for (const s of [-1, 1]) {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(10, 1.25), new THREE.MeshStandardMaterial({ map: liftTex, roughness: 0.6 }));
+      m.position.set(s * 3.72, 0, sg.back * 4.5).applyQuaternion(sg.q).add(new THREE.Vector3(sg.x, sg.y, sg.z));
+      m.quaternion.copy(sg.q).multiply(new THREE.Quaternion().setFromAxisAngle(UP, s * Math.PI / 2));
+      this.scene.add(m);
     }
     const mesh = new THREE.Mesh(merge(parts), this.metal);
     mesh.castShadow = true; mesh.receiveShadow = true;
@@ -368,11 +407,29 @@ export class Props {
     this.scene.add(new THREE.Mesh(mergeGeometries(cables.map((g) => { g.deleteAttribute('uv'); return g; })), cableMat));
 
     // chairs
-    const hanger = colorize(new THREE.CylinderGeometry(0.04, 0.04, 2.4, 5), 0x3a3f46); hanger.translate(0, -1.2, 0);
-    const seat = colorize(new THREE.BoxGeometry(2.2, 0.12, 0.6), 0x2b6fb3); seat.translate(0, -2.45, 0.1);
-    const back = colorize(new THREE.BoxGeometry(2.2, 0.7, 0.1), 0x2b6fb3); back.translate(0, -2.05, -0.2);
-    const bar = colorize(new THREE.BoxGeometry(2.2, 0.05, 0.05), 0x9ea5b0); bar.translate(0, -1.75, 0.55);
-    const chairGeo = merge([hanger, seat, back, bar]);
+    const steelC = 0x9ea5b0, frameC = 0x3a3f46, pad = 0x1f5fa8, padD = 0x173f72;
+    const cp = [];
+    // the grip on the cable and the hanger arm curving down behind the back
+    const grip = colorize(new THREE.BoxGeometry(0.3, 0.28, 0.7), 0x2b2f36); grip.translate(0, -0.05, 0); cp.push(grip);
+    const hang = colorize(new THREE.CylinderGeometry(0.05, 0.05, 1.7, 8), frameC); hang.translate(0, -1.0, -0.05); cp.push(hang);
+    const elbow = colorize(new THREE.CylinderGeometry(0.05, 0.05, 0.7, 8).rotateX(0.9), frameC); elbow.translate(0, -1.95, -0.3); cp.push(elbow);
+    // seat frame and four cushions, backrest cushions
+    const frame = colorize(new THREE.BoxGeometry(2.7, 0.07, 0.66), frameC); frame.translate(0, -2.52, 0.08); cp.push(frame);
+    const bframe = colorize(new THREE.BoxGeometry(2.7, 0.8, 0.06).rotateX(-0.22), frameC); bframe.translate(0, -2.05, -0.27); cp.push(bframe);
+    for (let i = 0; i < 4; i++) {
+      const dx = -1.0 + i * 0.667;
+      const c = colorize(new THREE.BoxGeometry(0.6, 0.11, 0.58), i % 2 ? pad : padD); c.translate(dx, -2.44, 0.1); cp.push(c);
+      const b = colorize(new THREE.BoxGeometry(0.6, 0.66, 0.09).rotateX(-0.22), i % 2 ? pad : padD); b.translate(dx, -2.02, -0.21); cp.push(b);
+    }
+    // armrests, the safety bar overhead (up) and its footrest
+    for (const sx of [-1.38, 1.38]) {
+      const side = colorize(new THREE.BoxGeometry(0.06, 0.06, 0.66), steelC); side.translate(sx, -2.2, 0.06); cp.push(side);
+      const up = colorize(new THREE.CylinderGeometry(0.03, 0.03, 0.34, 6), steelC); up.translate(sx, -2.36, 0.33); cp.push(up);
+      const bar = colorize(new THREE.CylinderGeometry(0.03, 0.03, 0.9, 6).rotateX(0.5), steelC); bar.translate(sx, -1.55, 0.32); cp.push(bar);
+    }
+    const topBar = colorize(new THREE.CylinderGeometry(0.035, 0.035, 2.76, 6).rotateZ(Math.PI / 2), steelC); topBar.translate(0, -1.17, 0.52); cp.push(topBar);
+    const chairGeo = merge(cp);
+    this.chairGeo = chairGeo;
     const riders = [];
     for (const dx of [-0.55, 0.55]) {
       const body = new THREE.CapsuleGeometry(0.17, 0.32, 4, 8); body.translate(dx, -2.0, 0.02);
@@ -666,7 +723,8 @@ export class Props {
       b.geo.translate(0, seatY - pel.y, 0.12 - pel.z);
     }
     const seats = [];
-    this.chairs.forEach((ch, ci) => { if (ch.ride && ch.li === 0) for (const dx of [-0.55, 0.55]) seats.push({ ci, dx, b: Math.floor(rnd() * B.length) }); });
+    // two to four on each chair going up
+    this.chairs.forEach((ch, ci) => { if (ch.ride && ch.li === 0) for (const dx of [-1.0, -0.333, 0.333, 1.0]) if (rnd() < 0.62) seats.push({ ci, dx, b: Math.floor(rnd() * B.length) }); });
     this.seatMeshes = B.map((b, bi) => {
       const n = seats.filter((s) => s.b === bi).length;
       if (!n) return null;
@@ -693,6 +751,83 @@ export class Props {
     this.updateLift(this.liftT ?? 0);
   }
 
+  // ---------------- the hospital ----------------
+  // the slope-side clinic the rescue helicopter flies you to: a white block with a red
+  // cross, glass doors under a canopy and a helipad beside it
+  buildHospital() {
+    const best = HOSPITAL, { x, z } = best;
+    const W = 26, D = 13, Hh = 9;
+    // it faces the piste
+    const yaw = best.side > 0 ? -Math.PI / 2 : Math.PI / 2;
+    let gy = Infinity, gyMax = -Infinity;
+    for (let a = -W / 2; a <= W / 2; a += 4) for (let b = -D / 2; b <= D / 2; b += 4) { const h = heightAt(x - b, z + a); gy = Math.min(gy, h); gyMax = Math.max(gyMax, h); }
+    // set into the slope: the uphill side a little buried, a short plinth downhill
+    const floor = Math.max(gyMax - 2.2, gy) + 0.2;
+    const white = 0xeef1f4, grey = 0x7c776f;
+    const parts = [];
+    // (with a terrace out front at floor level, steps down at its edge)
+    const plinth = colorize(new THREE.BoxGeometry(W + 1, floor - gy + 6, D + 7), grey); plinth.translate(0, floor - (floor - gy + 6) / 2, 3); parts.push(plinth);
+    for (let k = 1; k <= 4; k++) { const st = colorize(new THREE.BoxGeometry(6, floor - gy + 6, 0.6), 0x9a9ea5); st.translate(0, floor - k * 0.35 - (floor - gy + 6) / 2, D / 2 + 6.5 + k * 0.6); parts.push(st); }
+    const body = colorize(new THREE.BoxGeometry(W, Hh, D), white); body.translate(0, floor + Hh / 2, 0); parts.push(body);
+    const roof = snowCap(new THREE.BoxGeometry(W + 0.8, 0.5, D + 0.8), 0xc9ccd1, 0.5); roof.translate(0, floor + Hh + 0.25, 0); parts.push(roof);
+    // a red band round the top, the entrance canopy
+    const band = colorize(new THREE.BoxGeometry(W + 0.1, 0.7, D + 0.1), 0xd3232c); band.translate(0, floor + Hh - 0.6, 0); parts.push(band);
+    const canopy = snowCap(new THREE.BoxGeometry(6, 0.3, 3), 0xd3232c, 0.5); canopy.translate(0, floor + 3.2, D / 2 + 1.5); parts.push(canopy);
+    for (const s of [-1, 1]) { const post = colorize(new THREE.BoxGeometry(0.2, 3.2, 0.2), grey); post.translate(s * 2.8, floor + 1.6, D / 2 + 2.8); parts.push(post); }
+    const g = merge(parts);
+    g.rotateY(yaw); g.translate(x, 0, z);
+    const m = new THREE.Mesh(g, this.vc); m.castShadow = m.receiveShadow = true;
+    this.scene.add(m);
+    // windows, doors, the cross and the sign: on the front face (local +z)
+    const grp = new THREE.Group();
+    grp.position.set(x, 0, z); grp.rotation.y = yaw;
+    const glassM = new THREE.MeshStandardMaterial({ color: 0x1b2a3a, roughness: 0.08, metalness: 0.8 });
+    for (const row of [0, 1]) for (let i = 0; i < 7; i++) {
+      if (row === 0 && (i === 3)) continue;
+      const w = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.6), glassM);
+      w.position.set(-W / 2 + 2.4 + i * 3.55, floor + 2.0 + row * 3.4, D / 2 + 0.03);
+      grp.add(w);
+      if (row === 1 || i !== 3) { const back = w.clone(); back.position.z = -D / 2 - 0.03; back.rotation.y = Math.PI; grp.add(back); }
+    }
+    const door = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 2.6), new THREE.MeshStandardMaterial({ color: 0x9fc4d8, roughness: 0.05, metalness: 0.6, emissive: 0x223844, emissiveIntensity: 0.6 }));
+    door.position.set(0, floor + 1.3, D / 2 + 0.04); grp.add(door);
+    const cross = canvasTex(256, 256, (c, w, h) => {
+      c.fillStyle = '#fff'; c.fillRect(0, 0, w, h);
+      c.fillStyle = '#d3232c'; c.fillRect(w * 0.36, h * 0.1, w * 0.28, h * 0.8); c.fillRect(w * 0.1, h * 0.36, w * 0.8, h * 0.28);
+    });
+    for (const sx of [-1, 1]) {
+      const cr = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 3.2), new THREE.MeshStandardMaterial({ map: cross, roughness: 0.5, emissive: 0xffffff, emissiveMap: cross, emissiveIntensity: 0.25 }));
+      cr.position.set(sx * (W / 2 - 3), floor + Hh - 3.3, D / 2 + 0.05); grp.add(cr);
+    }
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(9, 1.1), new THREE.MeshStandardMaterial({ map: canvasTex(1024, 128, (c, w, h) => {
+      c.fillStyle = '#ffffff'; c.fillRect(0, 0, w, h);
+      let fs = 78; c.font = `bold ${fs}px Helvetica, Arial`;
+      while (c.measureText('SHREDLINE MOUNTAIN HOSPITAL').width > w - 40) { fs -= 4; c.font = `bold ${fs}px Helvetica, Arial`; }
+      c.fillStyle = '#d3232c'; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.fillText('SHREDLINE MOUNTAIN HOSPITAL', w / 2, h / 2 + 4);
+    }), roughness: 0.6 }));
+    sign.position.set(0, floor + 4.3, D / 2 + 0.06); grp.add(sign);
+    // the helipad, level, beside the building
+    const pad = new THREE.Vector3().set(W / 2 + 13, 0, 2).applyAxisAngle(UP, yaw).add(new THREE.Vector3(x, 0, z));
+    let ph = -Infinity;
+    for (let a = -9; a <= 9; a += 3) for (let b = -9; b <= 9; b += 3) ph = Math.max(ph, heightAt(pad.x + a, pad.z + b));
+    pad.y = ph + 0.25;
+    const padTex = canvasTex(512, 512, (c, w, h) => {
+      c.fillStyle = '#6d7178'; c.fillRect(0, 0, w, h);
+      c.strokeStyle = '#ffd21e'; c.lineWidth = 18; c.beginPath(); c.arc(w / 2, h / 2, w * 0.42, 0, Math.PI * 2); c.stroke();
+      c.fillStyle = '#fff'; c.font = 'bold 300px Helvetica, Arial'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('H', w / 2, h / 2 + 12);
+    });
+    const padM = new THREE.Mesh(new THREE.CylinderGeometry(9, 9, 0.3, 40), [new THREE.MeshStandardMaterial({ color: 0x5c6067 }), new THREE.MeshStandardMaterial({ map: padTex, roughness: 0.8 }), new THREE.MeshStandardMaterial({ color: 0x5c6067 })]);
+    padM.position.copy(pad); padM.receiveShadow = true; padM.rotation.y = yaw;
+    this.scene.add(padM);
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(8.6, 9, 8, 32), new THREE.MeshStandardMaterial({ color: 0x8a8f96, roughness: 0.9 }));
+    base.position.set(pad.x, pad.y - 4.15, pad.z); this.scene.add(base);
+    this.scene.add(grp);
+    this.forest.addCollider(x, z, Math.max(W, D) * 0.55, 'chalet');
+    const out = new THREE.Vector3(0, 0, 1).applyAxisAngle(UP, yaw);
+    this.hospital = { at: new THREE.Vector3(x, floor, z), door: new THREE.Vector3(0, floor, D / 2 + 0.6).applyAxisAngle(UP, yaw).add(new THREE.Vector3(x, 0, z)), out, pad, yaw };
+  }
+
   // ---------------- village ----------------
   buildVillage() {
     const parts = [], wins = [];
@@ -707,6 +842,7 @@ export class Props {
       if (slopeAt(x, z) > 0.35) continue;
       const w = 8 + this.rnd() * 7, d = 9 + this.rnd() * 8, h = 4 + this.rnd() * 4;
       if (placed.some((p) => Math.hypot(p[0] - x, p[1] - z) < Math.max(w, d) + p[2] + 4)) continue;
+      if (this.hospital && Math.hypot(this.hospital.at.x - x, this.hospital.at.z - z) < 48 + Math.max(w, d)) continue;
       placed.push([x, z, Math.max(w, d)]);
       const gy = Math.min(heightAt(x - w / 2, z - d / 2), heightAt(x + w / 2, z + d / 2), heightAt(x, z));
       const yaw = Math.round(this.rnd() * 3) * Math.PI / 2 + (this.rnd() - 0.5) * 0.3;

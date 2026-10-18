@@ -4,7 +4,7 @@
 // draws it and passes clicks back.
 import { ITEMS, ITEM, CATS, RARITY, LEVELS, LEVEL_XP, SEASON, RIVALS, SETS, store } from './meta.js';
 import { EVENTS, TIERS, field, prize, MEDAL } from './events.js';
-import { LESSONS, LESSON, FAMS, QUICK0, quickSpec, numSteps } from './school.js';
+import { LESSONS, LESSON, FAMS, comboFor, comboSteps, ARROW } from './school.js';
 import { SERVERS, errText } from './cloud.js';
 import { designURL } from './gear.js';
 import { listRuns, getRun, keepRun, deleteRun } from './vault.js';
@@ -77,6 +77,7 @@ function shortDate(t) { const d = new Date(t); return d.toLocaleDateString(undef
 function clock(s) { const m = Math.floor(s / 60); return `${String(m).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`; }
 
 const NOTES = [
+  { d: '18 OCT', t: 'Combos, the rescue chopper and music', p: 'Tricks are combos now: tap the arrows in the air. Down down is a mute grab, left left a 360 (more taps, more spin), down down down a backflip, left down right a cork 720, and the biggest ones are secret until you find them. Crash hard enough and you are not getting up: the rescue helicopter winches you onto its orange stretcher and flies you to the mountain hospital, then you pick where to ride and take the chairlift there (Settings has Injuries: Realistic or Off). Tree trunks and poles take you down now, branches drag you back, the snow is faster, the chairlift is all new and there is a soundtrack.', tags: ['COMBOS', 'RESCUE', 'HOSPITAL', 'CHAIRLIFT', 'MUSIC', 'SPEED'] },
   { d: '18 OCT', t: 'Shredline: smash, ride switch, get back up', p: 'Alpenglow is now Shredline. Ride into a piste pole, a gate or a sign and it goes flying; ride into the side nets and they stretch, catch you and throw you back. Keypad . (or G) hops you round to ride backwards, and your rider looks back over his shoulder to see. Wipe out and you are back up in a couple of seconds, still moving. Every part of every run has its name sprayed on the snow, Mega Park is now 4.3 km with Rainbow Road, Triple Threat and a Slopestyle Final, the finish crowd and the chairlift riders are real people, and the mountains have snowy ledges and layered rock.', tags: ['NEW NAME', 'SMASH', 'SWITCH', 'MEGA PARK', 'REAL CROWD'] },
   { d: '18 OCT', t: 'Real ski runs and a new day every drop', p: 'Three new places to ride: Timberline, 5.7 km of glades where you weave through the trees; Grand Descent, 8.5 km and 2.5 km of vertical from a north face and a glacier through a couloir, a giant bowl and treeline steeps down to the village; and Mega Park, 2.8 km with a jib garden, a two-line kicker alley up to XXL, a pipe and a step-down gap. The weather is different every time you drop in, and the snow with it: fresh powder is slow and floaty, hardpack is fast and skates out, spring slush grabs. Tricks are now on the number keys: hold one on the way up a kicker and let go right at the lip. The arrows steer, tuck and brake on the snow and spin and flip in the air. Less glare and more snow-like snow, too.', tags: ['NEW RUNS', 'MEGA PARK', 'WEATHER', 'TRICK KEYS', 'ARROWS'] },
   { d: '18 OCT', t: 'Accounts and the shared server', p: 'Every rider now has an account on the Shredline server. Make it yours with an email and a password and your wallet, pass, locker and trick book follow you to any device. Leaderboards are global and weekly, and every best run can be watched by anyone. Multiplayer runs on our own servers: pick one from the list, or race everyone on it.', tags: ['ACCOUNTS', 'GLOBAL BOARDS', 'SERVERS', 'SERVER RACES'] },
@@ -476,20 +477,17 @@ export class Menu {
     for (const b of document.querySelectorAll('#lessons .lesson')) b.onclick = () => { this.lesson = b.dataset.l; this.preview?.demo(LESSON[this.lesson].demo); this.school(); };
     const l = LESSON[this.lesson] ?? LESSONS[0];
     const ok = has(l.re);
-    const slots = g.quickSlots();
-    const canQuick = !!quickSpec(l.id);
-    const slot = slots.indexOf(l.id);
     const where = l.where === 'rails' ? 'a rail' : l.lvl >= 4 ? 'the biggest kicker you can find (XL, Big Air)' : l.lvl >= 3 ? 'a large kicker' : 'any kicker';
-    const num = numSteps(l, slot >= 0 ? slot + 1 : null, where);
+    const combo = comboFor(l.id), secret = combo?.secret && !ok;
+    const num = comboSteps(l, where, secret);
+    const keys = combo ? (secret ? '<span class="combo q">? ? ? ?</span>' : `<span class="combo">${[...combo.seq].map((k) => `<kbd>${ARROW[k]}</kbd>`).join('')}</span>`) : '';
     const handHead = num ? `<div class="lv2" style="margin-top:12px">BY HAND${l.classic ? ' · CLASSIC KEYS (MENU › CONTROLS)' : ''}</div>` : '';
     $('howbox').innerHTML = `<div class="lv2">${FAMS.find(([k]) => k === l.fam)?.[1].toUpperCase() ?? ''} LEVEL ${l.lvl} · ${ok ? 'LANDED ✓' : `FIRST LANDING PAYS ${l.reward} FLAKES`}</div><h3>${esc(B ? l.board : l.name)}</h3>
-      ${num ? `<div class="lv2" style="margin-top:8px">WITH A TRICK KEY</div><ol>${num.map((st) => `<li><span>${st}</span></li>`).join('')}</ol>` : ''}
+      ${num ? `<div class="lv2" style="margin-top:8px">THE COMBO ${keys}</div><ol>${num.map((st) => `<li><span>${st}</span></li>`).join('')}</ol>` : ''}
       ${handHead}<ol>${l.steps.map((st) => `<li><span>${st}</span></li>`).join('')}</ol><div class="tip">${esc(l.tip)}</div>
-      <div class="row"><button class="btn p" id="sc-try">Try it ↗</button></div>
-      ${canQuick ? `<div class="lv2" style="margin-top:12px">PUT IT ON A KEY</div><div class="keyrow">${slots.map((id, i) => `<button class="${id === l.id ? 'on' : ''}" data-q="${i}" title="Key ${i + 1}: ${esc(LESSON[id] ? (B ? LESSON[id].board : LESSON[id].name) : '—')}"><b>${i + 1}</b><small>${esc(LESSON[id] ? (B ? LESSON[id].board : LESSON[id].name) : '—')}</small></button>`).join('')}</div>` : ''}`;
+      <div class="row"><button class="btn p" id="sc-try">Try it ↗</button></div>`;
     $('demo').innerHTML = `<div class="cap">${esc(B ? l.board : l.name)}</div>`;
     $('sc-try').onclick = () => g.tryLesson(l.id);
-    for (const b of document.querySelectorAll('#howbox [data-q]')) b.onclick = () => { g.setQuick(Number(b.dataset.q), l.id); this.school(); g.toast(`${esc(B ? l.board : l.name)} is on key ${Number(b.dataset.q) + 1}`); };
   }
 
   notes() {

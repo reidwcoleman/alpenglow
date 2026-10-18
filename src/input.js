@@ -100,12 +100,6 @@ export class Input {
     return { steer, tuck, brake, jump, grab: !!grabKind, grabKind, flip, roll, up, down, butter };
   }
 
-  // the trick key held right now (0-8 for 1-9 on the number row or the keypad), or -1
-  trickKey() {
-    for (let i = 0; i < 9; i++) if (this.keys.has('Digit' + (i + 1)) || this.keys.has('Numpad' + (i + 1))) return i;
-    return -1;
-  }
-
   setScheme(s) { this.scheme = s; try { localStorage.setItem('alpenglow.scheme', s); } catch { /* */ } }
 
   endFrame() { this.pressed.clear(); }

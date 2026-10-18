@@ -288,12 +288,6 @@
   #coach .ct button { border: 0; background: rgba(255,255,255,.14); color: #fff; width: 24px; height: 24px; border-radius: 6px; cursor: pointer; font: 700 14px Inter; }
   #coach ol { margin: 0; padding-left: 18px; display: grid; gap: 5px; font: 500 12.5px/1.4 Inter; }
   #coach kbd { font-size: 10px; height: 19px; min-width: 19px; }
-  #quick { position: absolute; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; gap: 4px; max-width: calc(100vw - 420px); flex-wrap: nowrap; }
-  @media (max-width: 1100px) { #quick span { max-width: 74px; } }
-  #quick span { display: flex; align-items: center; gap: 5px; padding: 4px 8px 4px 5px; border-radius: 8px; background: rgba(14,20,32,.6); font: 400 12.5px/1 var(--disp); max-width: 118px; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; opacity: .85; }
-  #quick span.on { background: #ffe14d; color: var(--ink); opacity: 1; }
-  #quick kbd { font-size: 10px; height: 18px; min-width: 18px; }
-  .touch #quick { display: none; }
   #wxtag { position: absolute; top: calc(max(26px, env(safe-area-inset-top)) + 38px); left: clamp(18px, 3.6vw, 46px); font: 700 10px Inter; letter-spacing: .12em; text-transform: uppercase; opacity: .85; text-shadow: 0 1px 3px rgba(0,0,0,.5); }
   #evtag:not(.hidden) ~ #wxtag, #evtag:not(.hidden) + #wxtag { top: calc(max(26px, env(safe-area-inset-top)) + 66px); }
   #evtag { position: absolute; top: calc(max(26px, env(safe-area-inset-top)) + 36px); left: clamp(18px, 3.6vw, 46px); padding: 4px 10px 3px; border-radius: 6px; background: #ffe14d; color: var(--ink); font: 400 15px/1 var(--disp); text-transform: uppercase; transform: rotate(-2deg); }
@@ -312,11 +306,6 @@
   .howbox kbd { font-size: 10px; height: 20px; min-width: 20px; }
   .howbox .tip { font: 500 12px/1.45 Inter; color: rgba(255,255,255,.7); padding: 8px 10px; border-radius: 10px; background: rgba(255,255,255,.06); }
   .howbox .row { margin-top: 12px; }
-  .keyrow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-top: 6px; }
-  .keyrow button { display: flex; align-items: center; gap: 7px; padding: 6px 8px; border-radius: 9px; border: 1px solid var(--line); background: rgba(255,255,255,.06); color: #fff; cursor: pointer; text-align: left; min-width: 0; }
-  .keyrow button.on { background: #ffe14d; color: var(--ink); border-color: #ffe14d; }
-  .keyrow b { font: 400 17px/1 var(--disp); }
-  .keyrow small { font: 600 10.5px Inter; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: .85; }
   .lessons { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; max-width: 900px; }
   .lesson { position: relative; padding: 11px 12px 10px; border-radius: 12px; border: 2px solid transparent; background: rgba(14,20,32,.66); color: #fff; text-align: left; cursor: pointer; }
   .lesson:hover { background: rgba(24,32,48,.8); }
@@ -383,6 +372,30 @@
   /* ---------- HUD ---------- */
   #hud { position: fixed; inset: 0; z-index: 10; pointer-events: none; }
   #zone { position: absolute; top: max(26px, env(safe-area-inset-top)); left: clamp(18px, 3.6vw, 46px); font: 400 clamp(22px, 2.4vw, 30px)/1 var(--disp); text-transform: uppercase; }
+  #fade { position: fixed; inset: 0; background: #05070b; opacity: 0; pointer-events: none; transition: opacity .55s ease; z-index: 40; }
+  #fade.on { opacity: 1; }
+  #rescue { position: fixed; left: 50%; top: 16%; transform: translateX(-50%); text-align: center; z-index: 41; pointer-events: none; color: #fff; text-shadow: 0 2px 12px rgba(0,0,0,.45); }
+  #rescue b { display: block; font: 400 clamp(34px, 5vw, 64px)/1 var(--disp); letter-spacing: .01em; }
+  #rescue span { display: block; margin-top: 8px; font: 600 15px/1.3 Inter, sans-serif; opacity: .9; }
+  #rescue.lift { top: auto; bottom: 12%; }
+  #rescue.lift b { font-size: clamp(26px, 3.2vw, 40px); }
+  #dest { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 42; width: min(420px, calc(100vw - 32px)); max-height: 80vh; overflow: auto; padding: 18px; border-radius: 18px; background: rgba(14,20,32,.88); backdrop-filter: blur(10px); color: #fff; box-shadow: 0 20px 60px rgba(0,0,0,.4); }
+  #dest .dh { font: 400 26px/1 var(--disp); margin: 2px 4px 12px; }
+  #dest .dn { font: 500 12px/1.3 Inter, sans-serif; opacity: .65; margin: 12px 4px 0; }
+  #dest button { display: flex; align-items: center; width: 100%; gap: 10px; padding: 11px 12px; margin: 3px 0; border: 0; border-radius: 10px; background: rgba(255,255,255,.06); color: #fff; font: 600 15px/1 Inter, sans-serif; cursor: pointer; text-align: left; }
+  #dest button small { margin-left: auto; opacity: .55; font-weight: 500; }
+  #dest button.on { background: #ffe14d; color: #11161f; }
+  #dest .dif { display: inline-block; width: 12px; height: 12px; background: #2a63e0; border-radius: 50%; box-shadow: 0 0 0 2px #fff; }
+  #dest .dif.red { background: #d8282e; border-radius: 2px; }
+  #dest .dif.black { background: #111; border-radius: 1px; transform: rotate(45deg) scale(.86); }
+  #combo { position: absolute; left: 50%; bottom: 22%; transform: translateX(-50%) scale(.9); display: flex; gap: 6px; opacity: 0; transition: opacity .25s, transform .25s; pointer-events: none; }
+  #combo.on { opacity: 1; transform: translateX(-50%) scale(1); }
+  #combo kbd { font-size: 22px; height: 38px; min-width: 38px; background: rgba(14,20,32,.72); color: #fff; border-color: rgba(255,255,255,.35); }
+  #combo b { font: 400 30px/1 var(--disp); color: #ffe14d; text-shadow: 0 2px 10px rgba(0,0,0,.45); }
+  #combo b.x { color: #ff5a5a; }
+  .combo { display: inline-flex; gap: 4px; margin-left: 8px; vertical-align: middle; }
+  .combo kbd { font-size: 13px; height: 22px; min-width: 22px; }
+  .combo.q { font: 700 13px Inter; letter-spacing: .2em; color: #ffe14d; }
   #zone .dif { display: inline-block; width: .62em; height: .62em; margin: 0 .35em .08em 0; vertical-align: middle; background: #2a63e0; border-radius: 50%; box-shadow: 0 0 0 2px #fff; }
   #zone .dif.red { background: #d8282e; border-radius: 2px; }
   #zone .dif.black { background: #111; border-radius: 1px; transform: rotate(45deg) scale(.86); }
@@ -679,7 +692,9 @@
   <div class="opt"><label>Conditions</label><div class="seg" id="tod"></div></div>
   <div class="opt"><label>Controls</label><div class="seg" id="ctrl"></div></div>
   <div class="opt"><label>Weather</label><div class="seg" id="wx"></div></div>
+  <div class="opt"><label>Injuries</label><div class="seg" id="gore"></div></div>
   <div class="opt"><label>Graphics</label><div class="seg" id="qual"></div></div>
+  <div class="opt"><label>Music</label><div class="seg" id="mus"></div></div>
   <div class="opt"><label>Sound</label><div class="seg" id="snd"><button data-m="0">On</button><button data-m="1">Off</button></div></div>
   <div class="row"><button class="btn" id="s-how">How to play</button><button class="btn p" id="s-close">Done</button></div>
 </div></div>
@@ -690,7 +705,7 @@
     <span><kbd>←</kbd><kbd>→</kbd></span><span>Carve · in the air: spin</span>
     <span><kbd>↑</kbd></span><span>Tuck · in the air: front flip</span>
     <span><kbd>↓</kbd></span><span>Brake · in the air: backflip</span>
-    <span><kbd>1</kbd>…<kbd>9</kbd></span><span>Trick keys (number row or keypad). Hold one on the way up a kicker, let go right at the lip: a perfect pop and that trick. Early and it shrinks to fit the air; in the air it starts when you let go, too near the snow and it's too late. Pick what's on each key in Trick School</span>
+    <span>Combos</span><span>In the air, quick taps of the arrows throw a trick: <kbd>↓</kbd><kbd>↓</kbd> mute grab, <kbd>←</kbd><kbd>←</kbd> 360 (more taps, more spin), <kbd>↓</kbd><kbd>↓</kbd><kbd>↓</kbd> backflip, <kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd> cork 720. Trick School has every combo, and a few big ones are secret until you find them. Hold an arrow instead and you spin or flip by hand</span>
     <span><kbd>.</kbd> <kbd>G</kbd></span><span>Hop round to ride backwards (keypad . or G); again to turn forwards</span>
     <span><kbd>SPACE</kbd></span><span>Hold to load, release to pop (no trick)</span>
     <span><kbd>SHIFT</kbd><kbd>Q</kbd><kbd>E</kbd><kbd>F</kbd><kbd>X</kbd><kbd>Z</kbd></span><span>Six grabs by hand. Switch keys mid-air to chain them, hold one a second to tweak it</span>
@@ -703,7 +718,7 @@
     <div class="h">Corks and co.</div>
     <span>spin + <kbd>↓</kbd></span><span>Cork (lean back while spinning)</span>
     <span>spin + <kbd>↑</kbd></span><span>Bio (board: misty)</span>
-    <span>Rodeos, flatspins</span><span>On a trick key (7 is a rodeo), or by hand with the classic keys</span>
+    <span>Rodeos, flatspins</span><span>Combos: <kbd>↓</kbd><kbd>←</kbd><kbd>↓</kbd> rodeo, <kbd>↑</kbd><kbd>←</kbd><kbd>→</kbd> flatspin, <kbd>←</kbd><kbd>→</kbd><kbd>←</kbd> sideflip</span>
     <span>Landing</span><span>Let go near the snow: the rider finishes the closest clean rotation</span>
     <div class="h">Scoring</div>
     <span>720</span><span>four times a 360 · flips count as turns</span>
@@ -721,12 +736,15 @@
 
 <div id="toast" class="hidden"></div>
 
+<div id="fade"></div>
+<div id="rescue" class="hidden"></div>
+<div id="dest" class="hidden"></div>
 <div id="hud" class="hidden">
   <div id="zone" class="shadow">Drop In</div>
   <div id="evtag" class="hidden"></div>
   <div id="wxtag"></div>
   <div id="coach" class="hidden"></div>
-  <div id="quick" class="hidden"></div>
+  <div id="combo"></div>
   <button id="menubtn"><span class="bars"></span>MENU <kbd>ESC</kbd></button>
   <div id="scorebox" class="shadow"><div class="lbl">Score</div><div id="score" class="disp">0</div><div id="combo"></div></div>
   <div id="racebox" class="shadow hidden"><div id="pos" class="disp"></div><div id="gates" class="lbl"></div><div id="board"></div></div>

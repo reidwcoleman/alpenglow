@@ -136,6 +136,7 @@ export const BOARD_NAME = { mute: 'indy', tail: 'tail', japan: 'melon', safety: 
 export class SkierModel {
   constructor(outfit, bib = 0) {
     const g = geos();
+    this.outfit = outfit;
     const M = (c, r = 0.7, m = 0, extra = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: m, ...extra });
     this.board = !!outfit.board;
     const jacketM = M(outfit.jacket, outfit.racer ? 0.35 : 0.72);
@@ -257,7 +258,7 @@ export class SkierModel {
     const lod = near ? 0 : 1;
     if (lod === this.lod) return;
     this.lod = lod;
-    for (const k of this.small) if (!(this.gearOff && /sbind/.test(k)) && !(this.real && this.body?.includes(this.parts[k])) && !(this.headHidden && this.headGear.includes(k))) this.parts[k].visible = near;
+    for (const k of this.small) if (!(this.gearOff && /sbind/.test(k)) && !(this.real && this.body?.includes(this.parts[k])) && !(this.headHidden && this.headGear.includes(k)) && !this.cut?.has(k)) this.parts[k].visible = near;
     for (const k in this.parts) this.parts[k].castShadow = near && !this.small.includes(k);
   }
 

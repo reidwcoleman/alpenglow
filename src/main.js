@@ -5,6 +5,9 @@ import { Terrain } from './terrain.js';
 import { Forest } from './trees.js';
 import { Props, trailDiff } from './props.js';
 import { Smash } from './smash.js';
+import { Injuries } from './injury.js';
+import { Rescue } from './rescue.js';
+import { Music } from './music.js';
 import { Tracks } from './tracks.js';
 import { Particles, Snowfall } from './particles.js';
 import { Skier } from './skier.js';
@@ -24,7 +27,7 @@ import { Meta } from './meta.js';
 import { Cloud, SERVERS, packReplay, errText } from './cloud.js';
 import { SNAP_N } from './snap.js';
 import { EVENT, TIERS, field, prize, MEDAL } from './events.js';
-import { LESSONS, LESSON, QUICK0, quickSpec, numSteps } from './school.js';
+import { LESSONS, LESSON, quickSpec, COMBOS, ARROW, comboFor, comboSteps } from './school.js';
 import { Menu, FLAKE } from './menu.js';
 import { saveRun, getRun } from './vault.js';
 import { MAPS, MAP_IDS } from './maps.js';
@@ -147,6 +150,8 @@ class Game {
     this.world = { scene, forest: this.forest, tracks: this.tracks, particles: this.particles, race: false, raceStarted: false, skiers: this.skiers, arcade: true, glades: !!MAP.glades,
       smash: this.smash, netHit: (s, z, pen) => this.props.netHit(s, z, pen) };
     // a pole or a sign goes down: a knock, a puff of snow (and a jolt if it was you)
+    this.injuries = new Injuries(scene);
+    this.rescue = new Rescue(this);
     this.smash.onHit = (o, sp) => {
       const d = this.camera.position.distanceTo(_v.set(o.x, heightAt(o.x, o.z), o.z));
       if (d < 60) this.audio.clack(Math.min(1, 0.4 + sp / 25) * (1 - d / 60), o.kind === 'sign');
@@ -160,6 +165,11 @@ class Game {
     this.input = new Input();
     this.audio = new Audio();
     this.audio.setMuted(store.get('muted', '0') === '1');
+    this.music = new Music(this.audio);
+    // sound can only start from a click or a key: the first one starts it (and the music)
+    const wake = () => { this.audio.start(); removeEventListener('pointerdown', wake); removeEventListener('keydown', wake); };
+    addEventListener('pointerdown', wake); addEventListener('keydown', wake);
+    this.music.on = store.get('music', 'on') !== 'off';
     this.rig = new CameraRig(this.camera);
     this.applyConditions();
     setLoad(86, 'Waking up the skiers…');
@@ -263,6 +273,20 @@ class Game {
       b.textContent = label; b.className = k === this.input.scheme ? 'on' : '';
       b.onclick = () => { this.input.setScheme(k); [...sc.children].forEach((c) => c.classList.toggle('on', c === b)); };
       sc.appendChild(b);
+    }
+    const mus = $('mus');
+    for (const [k, label] of [['on', 'On'], ['off', 'Off']]) {
+      const b = document.createElement('button');
+      b.textContent = label; b.className = k === store.get('music', 'on') ? 'on' : '';
+      b.onclick = () => { store.set('music', k); this.music.setOn(k === 'on'); this.audio.start(); [...mus.children].forEach((c) => c.classList.toggle('on', c === b)); };
+      mus.appendChild(b);
+    }
+    const gore = $('gore');
+    for (const [k, label] of [['on', 'Realistic'], ['off', 'Off']]) {
+      const b = document.createElement('button');
+      b.textContent = label; b.className = k === store.get('gore', 'on') ? 'on' : '';
+      b.onclick = () => { store.set('gore', k); [...gore.children].forEach((c) => c.classList.toggle('on', c === b)); };
+      gore.appendChild(b);
     }
     const wx = $('wx');
     for (const [k, label] of [['change', 'New every run'], ['fixed', 'Keep what I pick']]) {
@@ -616,6 +640,7 @@ class Game {
   showMenu() {
     // a park session pays when you leave it
     if (this.mode === 'park' && this.sc) { const pay = this.reward('park'); if (pay) this.toast(`Park session ${pay}`, 3800); }
+    this.rescue?.abort(); this.injuries?.clear();
     this.state = 'menu';
     this.mode = null;
     this.event = null; this.online = null; this.coach = null;
@@ -778,6 +803,13 @@ class Game {
       this.audio.thump(1.2); this.rig.bump(1);
       this.burst(p, 90, 5);
       const sc = this.sc;
+      // a crash you don't get up from: injuries (unless they're turned off) and the rescue
+      if (e.injured) {
+        if (sc) { sc.crashes++; sc.pend = 0; sc.n = 0; sc.names = []; }
+        this.injuries.hurt(p, store.get('gore', 'on') !== 'off');
+        this.rescue.start(p);
+        return;
+      }
       if (sc) {
         sc.crashes++;
         const lost = Math.round(sc.pend * this.lineMult());
@@ -790,6 +822,12 @@ class Game {
     p.on('impact', (e) => {
       if (e.kind === 'net') { this.audio.netHit(Math.min(1, e.speed / 10)); this.rig.bump(Math.min(0.6, e.speed / 18)); this.burst(p, 20 + e.speed * 3, 3); }
       else if (e.kind === 'boards') { this.audio.thump(Math.min(1, e.speed / 10)); this.rig.bump(0.5); }
+    });
+    p.on('branches', (e) => {
+      // shoved through a tree: its snow comes down on you
+      this.particles.emit(e.x, heightAt(e.x, e.z) + e.h * 0.5, e.z, 0, -1, 0, 2.8, 0.9, 1.6, 40);
+      this.audio.branches?.(Math.min(1, e.speed / 12));
+      this.rig.bump(0.25);
     });
     p.on('recover', () => { if (this.sc) this.say('BACK ON YOUR FEET', '', '', '', 1300); });
     p.on('grindStart', () => this.audio.thump(0.35));
@@ -947,6 +985,7 @@ class Game {
   // ---------------- modes ----------------
   // opts: { online: race start time (server clock) }; this.event: { ev, tier } for an event
   start(mode, opts = {}) {
+    this.rescue?.abort(); this.injuries?.clear();
     if (mode === 'free') mode = 'run';
     if (mode === 'trial' || mode === 'contest') mode = mode === 'trial' ? 'race' : 'run';
     if (mode !== 'run' && PARK_ID !== 'yard') mode = 'run';
@@ -977,9 +1016,6 @@ class Game {
     $('botbar').classList.toggle('hidden', mode === 'park');
     $('evtag').classList.toggle('hidden', !this.event && !this.online);
     $('wxtag').textContent = this.weatherLine();
-    $('quick').classList.toggle('hidden', mode === 'race');
-    this.quickShown = null;
-    setTimeout(() => this.quickHud(), 0);
     if (!this.coach) this.showCoach();
     if (this.event) $('evtag').textContent = `${this.event.ev.name} · ${TIERS[this.event.tier].name}`;
     if (this.online) $('evtag').textContent = `Server race · ${this.room?.label ?? ''}`;
@@ -1106,53 +1142,62 @@ class Game {
   }
 
   // ---------------- trick school ----------------
-  quickSlots() {
-    const q = this.meta.quick?.[this.gear];
-    return Array.isArray(q) && q.length === 9 ? q : QUICK0[this.gear];
-  }
-
-  setQuick(i, id) {
-    const q = (this.meta.quick ??= {});
-    q[this.gear] = [...this.quickSlots()];
-    q[this.gear][i] = id;
-    this.meta.save();
-    this.quickHud();
-  }
-
-  quickHud() {
-    const el = $('quick');
-    if (!el) return;
-    const B = this.gear === 'board', p = this.player;
-    el.innerHTML = this.quickSlots().map((id, i) => {
-      const l = LESSON[id];
-      const on = this.trickHeld === i || (p && p.auto?.id === id);
-      const name = l ? (B ? l.board : l.name).replace('Double ', 'Dbl ').replace(' Grab', '') : '—';
-      return `<span class="${on ? 'on' : ''}" title="${l ? esc(B ? l.board : l.name) : ''}"><kbd>${i + 1}</kbd>${esc(name)}</span>`;
-    }).join('');
-  }
-
-  // the number keys: hold to load the legs, let go to pop and throw that trick. Timed at a
-  // lip it's a perfect pop and the full trick; early and it shrinks to fit; in the air the
-  // trick starts when you let go, and too near the snow it never happens.
-  trickKeys(inp) {
+  // combos: quick arrow taps in the air. A match fires the trick (sized to the air left);
+  // if a longer combo starts the same way it waits a beat for more taps first
+  combos(inp, dt) {
     const P = this.player;
-    const k = inp.trickKey();
-    const prev = this.trickHeld ?? -1;
-    if (k >= 0 && P.onGround && !P.grind) P.controls.jump = true;
-    if (prev >= 0 && k !== prev) {
-      const id = this.quickSlots()[prev], spec = quickSpec(id);
-      const name = (this.gear === 'board' ? LESSON[id]?.board : LESSON[id]?.name)?.toUpperCase() ?? '';
-      if (spec && P.crash <= 0) {
-        const q = { ...spec, id };
-        if (P.onGround && !P.grind) { P.controls.jump = false; P.autoArm = q; this.armT = this.time; }
-        else if (!P.trickType && !P.auto && P.flightTime() > 0.5) P.auto = q;
-        else if (!P.onGround && !P.auto) this.status('TOO LATE · ' + name);
+    const air = !P.onGround && !P.grind && P.crash <= 0;
+    const st = (this.cst ??= { buf: '', last: 0, down: {}, shown: 0 });
+    if (!air) { if (st.buf) { st.buf = ''; this.comboHud(); } return; }
+    const now = this.time;
+    for (const [k, code] of [['U', 'ArrowUp'], ['D', 'ArrowDown'], ['L', 'ArrowLeft'], ['R', 'ArrowRight']]) {
+      const d = inp.down(code);
+      if (d && !st.down[k]) st.down[k] = now;
+      else if (!d && st.down[k]) {
+        // a tap, not a hold
+        if (now - st.down[k] < 0.22) { st.buf += k; st.last = now; this.comboStep(); }
+        st.down[k] = 0;
       }
     }
-    // an arm only lasts for the pop it was let go on
-    if (P.autoArm && this.time - (this.armT ?? 0) > 0.25) { P.autoArm = null; if (P.onGround) this.status('TOO EARLY · NO AIR'); }
-    if (k !== prev) { this.trickHeld = k; this.quickHud(); }
-    else if ((P.auto?.id ?? null) !== this.quickShown) { this.quickShown = P.auto?.id ?? null; this.quickHud(); }
+    if (st.buf && now - st.last > 0.3) this.comboFire(true);
+  }
+
+  comboStep() {
+    const st = this.cst;
+    const exact = COMBOS.find((c) => c.seq === st.buf);
+    const longer = COMBOS.some((c) => c.seq.length > st.buf.length && c.seq.startsWith(st.buf));
+    if (exact && !longer) this.comboFire(false);
+    else if (!exact && !longer) { this.status('NO SUCH COMBO'); st.buf = ''; this.comboHud(true); }
+    else this.comboHud();
+  }
+
+  comboFire(timeout) {
+    const st = this.cst, P = this.player;
+    const c = COMBOS.find((x) => x.seq === st.buf);
+    st.buf = '';
+    if (!c) { this.comboHud(); return; }
+    const spec = quickSpec(c.id), l = LESSON[c.id];
+    const name = (this.gear === 'board' ? l?.board : l?.name)?.toUpperCase() ?? '';
+    if (!spec) { this.comboHud(); return; }
+    if (P.auto || P.trickType) this.status('ONE AT A TIME');
+    else if (P.flightTime() < 0.45) this.status('TOO LATE · ' + name);
+    else {
+      P.auto = { ...spec, id: c.id, dir: c.dir ?? spec.dir };
+      if (c.secret) this.status('SECRET COMBO · ' + name);
+      this.audio.beep(1180, 0.05, 0.08);
+    }
+    this.comboHud(false, name);
+  }
+
+  // the taps so far under the rider, and what they made
+  comboHud(bad = false, made = '') {
+    const el = $('combo');
+    if (!el) return;
+    const buf = this.cst?.buf ?? '';
+    el.innerHTML = buf ? [...buf].map((k) => `<kbd>${ARROW[k]}</kbd>`).join('') : made ? `<b>${esc(made)}</b>` : bad ? '<b class="x">✕</b>' : '';
+    el.classList.toggle('on', !!(buf || made || bad));
+    clearTimeout(this.comboT);
+    if (!buf) this.comboT = setTimeout(() => el.classList.remove('on'), 900);
   }
 
   // Try it: to the right line of the park with the lesson on screen
@@ -1175,8 +1220,8 @@ class Game {
     el.classList.toggle('hidden', !l);
     if (!l) return;
     const B = this.gear === 'board';
-    const slot = this.quickSlots().indexOf(l.id);
-    const steps = slot >= 0 ? numSteps(l, slot + 1, 'a kicker') ?? l.steps : l.steps;
+    const c = comboFor(l.id);
+    const steps = comboSteps(l, 'a kicker', c?.secret && ![...this.book].some((n) => l.re.test(n))) ?? l.steps;
     el.innerHTML = `<div class="ct">TRICK SCHOOL · ${esc(B ? l.board : l.name)}<button id="coach-x">×</button></div><ol>${steps.map((s2) => `<li>${s2}</li>`).join('')}</ol>`;
     $('coach-x').onclick = () => { this.coach = null; this.showCoach(); };
   }
@@ -1447,9 +1492,21 @@ class Game {
       else if (this.state === 'results' && !$('results').classList.contains('hidden')) this.start(this.mode);
     }
 
+    if (!this.paused && this.rescue.active) { this.rescue.keys(inp); this.rescue.update(dt); }
+    // the soundtrack: once there's sound at all, in the mood of what's happening
+    if (this.audio.ctx && !this.music.timer) this.music.start();
+    this.music.setMood(this.rescue.active ? (this.rescue.phase === 'lift' || this.rescue.phase === 'hospital' ? 'chill' : 'calm') : this.state === 'menu' || this.state === 'loading' ? 'chill' : 'ride');
+    if (!this.paused) this.injuries.update(dt);
     if (!this.paused) {
-      if (this.player && !this.player.ai) {
+      if (this.player && !this.player.ai && !this.rescue.active) {
         const c = inp.read(dt, !this.player.onGround && !this.player.grind);
+        // in the air the arrows spin and flip by hand only once held: a quick tap is a combo
+        if (!this.player.onGround && !this.player.grind && this.world.arcade) {
+          this.holdS = Math.abs(c.steer) > 0.15 ? (this.holdS ?? 0) + dt : 0;
+          this.holdF = c.flip || c.roll ? (this.holdF ?? 0) + dt : 0;
+          if (this.holdS < 0.17) c.steer = 0;
+          if (this.holdF < 0.17) { c.flip = 0; c.roll = 0; }
+        } else this.holdS = this.holdF = 0;
         Object.assign(this.player.controls, c);
         if (this.state === 'countdown' || this.state === 'results') { this.player.controls.steer = 0; this.player.controls.tuck = 0; this.player.controls.brake = this.state === 'results' ? 1 : 0; this.player.controls.jump = false; }
         if (this.mode === 'race') {
@@ -1461,7 +1518,7 @@ class Game {
           const need = this.mode === 'park' ? 0.7 : 2;
           if (this.holdR >= need) { this.holdR = -99; this.restart(); }
         }
-        // L: the next park line; 1-9: the trick keys
+        // L: the next park line; arrow taps in the air: combos
         const P = this.player;
         if (this.mode === 'park' && inp.hit('KeyL') && P.onGround) {
           const order = ['jumps', 'rails', 'pipe', 'rollers'];
@@ -1469,7 +1526,7 @@ class Game {
           const names = { jumps: 'JUMP LINE', rails: 'RAIL GARDEN', pipe: 'HALFPIPE', rollers: 'ROLLERS' };
           this.parkSpawn(P, line); this.rig.snap = true; this.say(names[line], '', 'L for the next line', '', 1200);
         }
-        if (this.mode !== 'race' && this.state !== 'countdown') this.trickKeys(inp);
+        if (this.mode !== 'race' && this.state !== 'countdown') this.combos(inp, dt);
         // keypad . (or G): hop round to ride the other way, backwards or forwards again
         if ((inp.hit('NumpadDecimal') || inp.hit('KeyG') || inp.hit('NumpadEnter')) && P.onGround && !P.grind && P.crash <= 0 && this.state !== 'countdown') {
           P.turnReq = -Math.sign(P.controls.steer) || (this.turnDir = -(this.turnDir || -1));
@@ -1504,7 +1561,7 @@ class Game {
     }
 
     // the replay records what you ride
-    if (this.player && !this.paused && this.state !== 'menu' && this.state !== 'countdown') this.replay.record(dt, this.player);
+    if (this.player && !this.paused && this.state !== 'menu' && this.state !== 'countdown' && !this.rescue.active) this.replay.record(dt, this.player);
     // the front page is art over a still world: only the rider sticker draws
     if (this.state === 'menu' && !$('menu').classList.contains('hidden') && $('parks').classList.contains('hidden')) {
       this.room?.update(dt, null, this.camera.position);
@@ -1517,9 +1574,10 @@ class Game {
     const cam = this.camera;
     if (replaying) { /* the replay placed the camera */ }
     else if (this.state === 'menu') { this.menuT = (this.menuT ?? 0) + dt; this.rig.menu(dt, this.menuT, this.skiers); }
+    else if (this.rescue.active) this.rescue.camera(cam, dt);
     else if (this.player) this.rig.update(dt, this.player);
     if (window.__freeCam) { const f = window.__freeCam; cam.position.set(...f.pos); cam.lookAt(...f.look); cam.fov = f.fov ?? 55; cam.updateProjectionMatrix(); }
-    if (!replaying) for (const s of this.skiers) s.updateVisual(dt, cam.position);
+    if (!replaying) for (const s of this.skiers) if (!s.held) s.updateVisual(dt, cam.position);
     this.room?.update(dt, this.state === 'menu' || replaying ? null : this.player, cam.position);
     // never let another skier block the view of the player
     if (!replaying && this.player && this.state !== 'menu' && this.rig.mode !== 'tv') {
@@ -1675,7 +1733,7 @@ class Game {
       }
     }
     if (!tip && this.time < (this.tipUntil ?? 0)) tip = 'V · instant replay';
-    if (!tip && this.sc && this.time - (this.startAt ?? 0) < 10 && !document.body.classList.contains('touch')) tip = this.input.scheme === 'arrows' ? '← → carve · ↑ tuck · ↓ brake · in the air ← → spin, ↑ ↓ flip · hold 1-9 and let go at the lip for a trick' : 'A/D spin · W/S flip · arrows roll · Shift Q E F X Z grab · ↑ shifty · hold Space, release to pop';
+    if (!tip && this.sc && this.time - (this.startAt ?? 0) < 10 && !document.body.classList.contains('touch')) tip = this.input.scheme === 'arrows' ? '← → carve · ↑ tuck · ↓ brake · in the air hold ← → to spin, ↑ ↓ to flip, or tap combos: ↓↓ grab · ←← 360 · ↓↓↓ backflip' : 'A/D spin · W/S flip · arrows roll · Shift Q E F X Z grab · ↑ shifty · hold Space, release to pop';
     const tp = $('tip');
     if (tip !== this.tipTxt) { this.tipTxt = tip; tp.textContent = tip; tp.classList.toggle('hidden', !tip); }
     // hold-to-restart ring

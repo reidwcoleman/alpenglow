@@ -127,7 +127,10 @@ export function kitMaterial(kit, outfit, crowd = false) {
     // the feet live inside the boots (gear.js)
     uFootL: { value: kit.feet[0] }, uFootR: { value: kit.feet[1] },
     uHandL: { value: kit.hands[0] }, uHandR: { value: kit.hands[1] },
+    // injuries (injury.js): blood on the head, and where a limb came off (rest-pose point, w on)
+    uBlood: { value: 0 }, uCut: { value: new THREE.Vector4(0, 0, 0, 0) },
   };
+  m.userData.u = u;
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, u);
     sh.vertexShader = sh.vertexShader
@@ -170,6 +173,7 @@ vRest = position;
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
 uniform sampler2D uMask; uniform vec3 uJacket, uPants, uGloves, uBoots, uJacket2, uPants2, uHandL, uHandR; uniform vec2 uLm, uPat;
+uniform float uBlood; uniform vec4 uCut;
 #ifdef CROWD
 #define JK vColor.rgb
 #else
@@ -279,6 +283,20 @@ vec3 agPat(vec3 a, vec3 b, float pat, float part, vec3 p, vec2 lm) {
     }
     col = min( dye * det * fine, vec3( 0.82 ) );
     gRough = rough;
+  }
+  // hurt: blood from the crown of the head, running down the face and neck
+  if ( uBlood > 0.0 && part < 1.5 ) {
+    float hy = vRest.y - uLm.y;
+    float streak = agN( vec3( vRest.x * 46.0, vRest.y * 6.0, vRest.z * 46.0 ) );
+    float bm = clamp( smoothstep( 0.15, 0.22, hy ) + step( 0.56, streak ) * smoothstep( -0.02, 0.07, hy ), 0.0, 1.0 ) * uBlood;
+    col = mix( col, vec3( 0.34, 0.012, 0.018 ), bm );
+    gRough = mix( gRough, 0.2, bm );
+  }
+  // where a limb came away: raw and red round the break
+  if ( uCut.w > 0.0 ) {
+    float cm = 1.0 - smoothstep( 0.05, 0.11, distance( vRest, uCut.xyz ) );
+    col = mix( col, vec3( 0.42, 0.02, 0.03 ), cm );
+    gRough = mix( gRough, 0.25, cm );
   }
   diffuseColor.rgb *= col;
 }`)

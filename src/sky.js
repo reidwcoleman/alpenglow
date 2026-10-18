@@ -59,10 +59,10 @@ export const WX_WEIGHT = { bluebird: 3, golden: 2, alpenglow: 1.1, storm: 1.4, s
 // the snow: friction, edge grip, powder and ice on the piste, and how it looks (fresh, wet)
 export const COND = {
   groomed: { name: 'Fresh corduroy', mu: 1, grip: 1, powder: 0, ice: 0, fresh: 0, wet: 0 },
-  packed: { name: 'Packed powder', mu: 1.06, grip: 1, powder: 0.12, ice: 0, fresh: 0.45, wet: 0 },
-  powder: { name: 'Fresh powder · 30 cm', mu: 1.12, grip: 0.95, powder: 0.42, ice: 0, fresh: 1, wet: 0 },
+  packed: { name: 'Packed powder', mu: 1.02, grip: 1, powder: 0.12, ice: 0, fresh: 0.45, wet: 0 },
+  powder: { name: 'Fresh powder · 30 cm', mu: 1.04, grip: 0.95, powder: 0.32, ice: 0, fresh: 1, wet: 0 },
   ice: { name: 'Hardpack and ice', mu: 0.8, grip: 0.86, powder: 0, ice: 0.28, fresh: 0, wet: 0 },
-  slush: { name: 'Spring slush', mu: 1.6, grip: 1.06, powder: 0.14, ice: 0, fresh: 0, wet: 1 },
+  slush: { name: 'Spring slush', mu: 1.25, grip: 1.06, powder: 0.14, ice: 0, fresh: 0, wet: 1 },
 };
 
 const BASE = import.meta.env.BASE_URL + 'sky/';

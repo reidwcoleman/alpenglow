@@ -9,7 +9,7 @@ Built like the front page of a live-service indie game: tabs for **Ride**, **Eve
 - **Flakes and XP**: every finished run (and every park session, race and event) pays XP and flakes. XP fills a 100-tier **Season Pass**: three tiers a day at full rate, a quarter after that; tiers pay flakes and every fifth one unlocks an exclusive item.
 - **Shop and Locker**: about 245 things: jackets and pants in 16 prints (camo, tartan, stripes, chevron, pixel camo, quilted puffer...), helmets (gloss, matte, chrome, racing stripes) and beanies, goggles with mirrored lenses, skis and snowboards with printed top sheets (flames, tiger, galaxy, wood, checkers...), gloves and poles, plus your choice of rider. **Today's deals** (six items, 20% off, new every day) and **outfit sets** (a whole look for 30% less). The Locker shows your rider on a turntable (drag to turn).
 - **Events**: the Alpine Cup (8-racer downhill), the Express Sprint (6 racers, the fast bottom third), a Gate Trial against medal times, and four trick contests (Yard Jam, Slopestyle Open, Forest Freeride, Big Air Showdown) against a field of computer scores. Each at Am, Pro and Legend, with medals, prizes, and Champion kit for a Pro win.
-- **Trick School**: 31 lessons from a first grab to a double cork 1080. Each has the keys step by step, your rider doing the trick on a loop, a Try it button that drops you on the right park line with the steps on screen, and flakes the first time you land it. Any of them can go on keys 1-9: hold the key up the kicker, let go at the lip.
+- **Trick School**: 31 lessons from a first grab to a double cork 1080. Each has the keys step by step, your rider doing the trick on a loop, a Try it button that drops you on the right park line with the steps on screen, and flakes the first time you land it. Each shows its combo (the biggest stay secret until you land them).
 - **Daily challenge**: one trick a day for 150 flakes.
 - **Leaderboard**: global boards for every park, Park Laps, the Alpine Cup and the Express Sprint, all time and this week, plus your own runs. Every best run is on the server: press Watch on anyone's.
 - **Replays**: your last five runs are saved in the browser (IndexedDB); keep the ones you want for good.
@@ -45,21 +45,35 @@ Every part of every run has its name and difficulty sprayed on the snow where it
 - **Events**: see the Events tab above. Races and the trial run on The Yard, contests on every park.
 - **Replays**: V replays your last trick, and the results card plays the whole run. You get chase, TV, GoPro, orbit and drone cameras, 1/4 to 1x speed, scrubbing, and "Save clip" (records the canvas to a .webm).
 
+Speed comes easily: fast wax (snow friction 0.032), a slippery tuck, and holding ↑ on the flats skates you up to about 35 km/h; starts and run-outs are steeper than they were.
+
 Weather: a new sky every time you drop in (restarting keeps it; Menu > Weather > Fixed turns it off). Bluebird Morning, Golden Hour, Alpenglow Dusk, Night Session (moonlit, floodlight towers), Powder Day, Spring Sun, Arctic Blue, Snow Showers, Whiteout and Night Snow. Each comes with its snow, which changes the physics and the look: Fresh corduroy, Packed powder, Fresh powder (slow, deep, floaty), Hardpack and ice (fast, little grip, glints) and Spring slush (grabby, wet). Storms bring wind that pushes you in the air.
 
 ## Controls
-Two schemes (Menu > Controls). **Arrows** is the default and needs only the arrows and the number keys (or the keypad):
+Two schemes (Menu > Controls). **Arrows** is the default and needs only the arrows and the keypad:
 
 | Arrows (default) | On the snow | In the air |
 |---|---|---|
 | ← → | carve | spin |
 | ↑ | tuck | front flip |
 | ↓ | brake | backflip |
-| 1-9 (number row or keypad) | hold to load, let go at the lip to pop that trick | let go to throw it now (if there is time) |
+| arrow taps | | combos (below) |
 | Space / keypad 0 | hold and let go to pop with no trick | |
 | Keypad . / G | hop round: ride backwards (switch), or forwards again | |
 
-Trick keys are timed: hold the number on the way up the kicker and let go right at the lip for a PERFECT POP and the full trick, sized to the air. Let go too early and it shrinks (or there is no air), too late and you are already off the lip. The nine keys start as Mute, Shifty, 360, Backflip, 540, Frontflip, Cork 720, Rodeo 540 and Double Cork 1080, and any Trick School trick can go on any key. In the park, L picks the next line.
+Combos: in the air, quick taps of the arrows (each under a fifth of a second) throw a trick, sized to the air that's left; hold an arrow instead and you spin or flip by hand. A combo that a longer one starts with waits a beat for more taps.
+
+| Combo | Trick | | Combo | Trick |
+|---|---|---|---|---|
+| ↓↓ | Mute grab (board: Indy) | | ←← / →→ | 360 (one more tap for each half turn: 540, 720; 900 and 1080 are secret) |
+| ↑↑ | Japan (Melon) | | ↓↓↓ / ↑↑↑ | Backflip / frontflip (↓↓↓↓ double back: secret) |
+| ←→ / →← | Safety (Method) / Tail | | ←↓→ / →↓← | Cork 720 |
+| ↓← / ↑→ | Critical (Stalefish) / Nose | | ←↑→ | Bio 540 (Misty) |
+| ↑↓ / ↓↑ | Shifty / Daffy (Boned) | | ↓←↓ | Rodeo 540 |
+| ←→← | Sideflip (Wildcat) | | ↑←→ | Flatspin 360 |
+| ←↓←↓ | Double Cork 1080 (secret) | | | |
+
+The number keys no longer do tricks. In the park, L picks the next line.
 
 **Classic** keeps every move by hand:
 
@@ -79,7 +93,6 @@ Trick keys are timed: hold the number on the way up the kicker and let go right 
 | Restart (hold) | R | View |
 | Replay | V | |
 | Room list / chat (multiplayer) | Tab / T | |
-| Trick keys | 1-9 | |
 | Pause / mute | Esc / M | Menu |
 
 Riding backwards on skis the rider turns his shoulders and looks over one of them; land any half turn and you ride away switch too.
@@ -89,7 +102,13 @@ The letter keys work in both schemes. On a rail, A/D swap the slide a quarter tu
 Landing assist: about 0.45 s before touchdown the rider finishes whatever rotation is closest to a clean landing (the nearest half turn of spin, the nearest whole flip, carrying on if well into it). Way off still bails. The Tricks tab is a trick book that ticks off each family the first time you land it; new tricks call out "NEW TRICK" and count on the results card.
 
 ## Hitting things
-Piste poles, race gates (breakaway), park flags and signs knock over when you ride into them and cost a little speed; they stand back up next run. The side nets stretch up to about a metre, catch you and push you back in (hit them at over ~45 km/h and you go down in them). The finish straight has solid boards. Trees, rocks, snow guns and lift towers are solid. A wipeout is a short tumble, a beat on the snow and back up within about two seconds, keeping about 40% of the speed you fell at.
+Piste poles, race gates (breakaway), park flags and signs knock over when you ride into them and cost a little speed; they stand back up next run. Faster than about 30 km/h a pole or sign takes you down with it (gates don't). A tree trunk takes you down at anything over about 12 km/h into it; its branches (out to a couple of metres round it) catch you, drag you back and let you go, dropping their snow on you. The side nets stretch up to about a metre, catch you and push you back in (hit them at over ~45 km/h and you go down in them). The finish straight has solid boards. Trees, rocks, snow guns and lift towers are solid. A wipeout is a short tumble, a beat on the snow and back up within about two seconds, keeping about 40% of the speed you fell at.
+
+## The rescue
+Crash hard enough (about 45 km/h into a tree, rock or tower, a pole or sign at over 50, a landing at over 60 km/h into the snow) and you don't get up. With Injuries: Realistic (Settings) your helmet cracks and comes off, your head bleeds, an arm comes off at the elbow or a leg at the knee and tumbles away, and blood spreads on the snow; Off keeps all that out. Either way the run stops and the rescue helicopter comes in, lowers its orange stretcher, winches you up and flies you to the Shredline Mountain Hospital beside the bottom of the lift. You walk out patched up, pick any part of the run, and ride the chairlift there for 30 seconds while the terrain at the other end is built, then drop in. `node tools/rescue.mjs shots/rescue yard` runs it start to finish with a shot of each stage.
+
+## Music
+A soundtrack made as it plays (drums, bass, pads and an arpeggio over four chord progressions): calm in the menu and on the chairlift, the full groove while you ride, pads only after a bad crash. Settings > Music turns it off; M mutes everything.
 
 ## Scoring
 - Rotation pays by the square of the turns: a 720 is worth four 360s, and flips count as turns. Each inversion adds 15%, riding switch 25%.
@@ -140,7 +159,7 @@ node tools/ui2.mjs shots/ui2     # park picker, two browsers in one multiplayer 
 node tools/cloudtest.mjs bigair  # guest run -> global board -> watch it off the server -> cloud save
 node tools/srvrace.mjs           # two browsers on one server race each other
 node tools/eventtest.mjs sprint 1 yard   # an event on autopilot to its results
-node tools/quick.mjs cork Large -0.9   # hold key 1 up a park kicker, let go 0.9 m before the lip
+node tools/quick.mjs LDR XL            # pop off a park kicker and tap a combo in the air
 node tools/hits.mjs shots/hits yard     # a pole, the nets, a crash at speed, a hop turn to ride switch
 node tools/wx.mjs shots/wx timber 6    # drop in 6 times: a new sky and snow each time (or name them: grand whiteout,nightsnow)
 node tools/portrait.mjs out.jpg 4 1.6 1.66 20   # rider portraits (OUTFITS='[{"head":"hx-racer"}]')

@@ -502,4 +502,17 @@ export function slopeAt(x, z) {
 // Like most real lifts it is one straight line and crosses over the piste.
 export const LIFT = { x0: centerX(FINISH_Z - 90) + 78, z0: FINISH_Z - 90, x1: centerX(70) + 62, z1: 70 };
 
+// where the mountain hospital stands (props.js): the flattest ground near the bottom of the
+// run, off the piste; the forest keeps it clear
+export const HOSPITAL = (() => {
+  let best = null;
+  for (let dz = 40; dz <= 420; dz += 40) for (let off = 30; off <= 90; off += 20) for (const side of [1, -1]) {
+    const z = FINISH_Z + dz, x = centerX(z) + side * (halfWidth(z) + off);
+    let lo = Infinity, hi = -Infinity;
+    for (let a = -36; a <= 36; a += 4) for (let b = -10; b <= 10; b += 5) { const h = heightAt(x + b, z + a); lo = Math.min(lo, h); hi = Math.max(hi, h); }
+    if (!best || hi - lo < best.r) best = { x, z, r: hi - lo, side };
+  }
+  return best;
+})();
+
 export const rng = mulberry32(1234);

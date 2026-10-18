@@ -76,13 +76,25 @@ export function makeSnowMaterial(env) {
     uRockR: { value: pbr('rock_face_04_arm.webp', false) },
     // the day's snow: x fresh (covers the corduroy), y wet (spring slush), z hard (ice)
     uCond: { value: new THREE.Vector3() },
+    // where the chunk LODs are chosen from, and the distances they switch at
+    uCamXZ: { value: new THREE.Vector2() },
+    uLodD: { value: new THREE.Vector4(LOD_DIST[0], LOD_DIST[1], LOD_DIST[2], 1e9) },
   };
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, mat.userData.shared);
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>
-        attribute float aPiste; attribute float aIce;
+        attribute float aPiste; attribute float aIce; attribute vec2 aMorph; uniform vec2 uCamXZ; uniform vec4 uLodD;
         varying vec3 vWPos; varying vec3 vWNrm; varying float vPiste; varying float vIce;`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        // geomorph: toward the switch distance a chunk eases into the coarser level's shape
+        if (aMorph.y > 0.5) {
+          float l = aMorph.y - 1.0;
+          float far = l < 0.5 ? uLodD.x : l < 1.5 ? uLodD.y : uLodD.z;
+          float near = l < 0.5 ? 0.0 : l < 1.5 ? uLodD.x : uLodD.y;
+          float d = distance(position.xz, uCamXZ);
+          transformed.y = mix(position.y, aMorph.x, smoothstep(far - (far - near) * 0.45, far - 4.0, d));
+        }`)
       .replace('#include <fog_vertex>', `#include <fog_vertex>
         vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
         vWNrm = normalize(mat3(modelMatrix) * objectNormal);
@@ -244,6 +256,7 @@ function toGeometry(a) {
   g.setAttribute('normal', new THREE.BufferAttribute(a.nrm, 3));
   g.setAttribute('aPiste', new THREE.BufferAttribute(a.pst, 1));
   g.setAttribute('aIce', new THREE.BufferAttribute(a.ice, 1));
+  if (a.mor) g.setAttribute('aMorph', new THREE.BufferAttribute(a.mor, 2));
   g.setIndex(new THREE.BufferAttribute(a.idx, 1));
   g.computeBoundingSphere();
   g.computeBoundingBox();
@@ -292,6 +305,8 @@ export class Terrain {
         const x = X0 + i * S, z = ZA + j * S;
         let y = heightAt(x, z);
         if (x > -holeX + S && x < holeX - S && z > holeZ0 + S && z < holeZ1 - S) y -= 40;
+        // the band where it meets the finer mesh sits just under it: no two surfaces fighting
+        else if (x >= -holeX && x <= holeX && z >= holeZ0 && z <= holeZ1) y -= 2.5;
         const k = (j * nx + i) * 3;
         pos[k] = x; pos[k + 1] = y; pos[k + 2] = z;
       }
@@ -335,8 +350,23 @@ export class Terrain {
     this.update(px, pz, 1e9);
   }
 
+  // build (not show) the chunks round (x, z) at the detail they'll want there: the chairlift
+  // ride does this for where you'll drop in. warmDone: how much of it is ready
+  warm(x, z, budgetMs = 3) {
+    const t0 = performance.now();
+    let want = 0, have = 0;
+    for (const c of this.chunks) {
+      if (Math.abs(c.cx + CHUNK / 2 - x) > 520 || Math.abs(c.cz + CHUNK / 2 - z) > 520) continue;
+      const l = this.lodFor(c, x, z);
+      want++;
+      if (c.geos[l]) { have++; continue; }
+      if (performance.now() - t0 < budgetMs) { this.ensure(c, l); have++; }
+    }
+    this.warmDone = want ? have / want : 1;
+  }
+
   ensure(c, l) {
-    if (!c.geos[l]) c.geos[l] = toGeometry(buildChunkArrays(c.cx, c.cz, LODS[l], CHUNK));
+    if (!c.geos[l]) c.geos[l] = toGeometry(buildChunkArrays(c.cx, c.cz, LODS[l], CHUNK, l, l === LODS.length - 1));
     return c.geos[l];
   }
 
@@ -349,6 +379,7 @@ export class Terrain {
 
   update(px, pz, budgetMs = 5) {
     const t0 = performance.now();
+    this.material.userData.shared.uCamXZ.value.set(px, pz);
     // nearest-first refinement
     const pending = [];
     for (const c of this.chunks) {
@@ -366,7 +397,7 @@ export class Terrain {
         if ([...this.inflight.values()].some((j) => j.key === key)) continue;
         const id = ++this.jobId;
         this.inflight.set(id, { c, l: c.want, key });
-        this.worker.postMessage({ id, cx: c.cx, cz: c.cz, segs: LODS[c.want], size: CHUNK });
+        this.worker.postMessage({ id, cx: c.cx, cz: c.cz, segs: LODS[c.want], size: CHUNK, lod: c.want, coarsest: c.want === LODS.length - 1 });
         continue;
       }
       if (performance.now() - t0 > budgetMs) break;

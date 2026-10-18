@@ -1,7 +1,7 @@
 // The forest: snow-laden spruces (src/spruce.js), placed by the course's tree density.
 // Also the spatial hash every collider on the mountain lives in.
 import * as THREE from 'three';
-import { heightAt, treeDensity, slopeAt, LIFT, centerX, halfWidth, MAP, EXTENT_Z } from './course.js';
+import { heightAt, treeDensity, slopeAt, LIFT, centerX, halfWidth, MAP, EXTENT_Z, HOSPITAL } from './course.js';
 import { mulberry32, makeSimplex } from './noise.js';
 
 const SPRUCE_H = 16;
@@ -56,6 +56,8 @@ export class Forest {
       const along = lx * ldx + lz * ldz;
       if (along > -20 && along < liftLen + 20 && Math.abs(lx * ldz - lz * ldx) < 9) continue;
       if (noise(px / 30, pz / 30) < -0.35 && rnd() < 0.6) continue;
+      // and the hospital and its helipad
+      if (Math.hypot(px - HOSPITAL.x, pz - HOSPITAL.z) < 44) continue;
       const h = 9 + rnd() * 12 + (d > 0.8 ? 3 : 0);
       const v = Math.floor(rnd() * 4);
       const g = 0.8 + rnd() * 0.35;
@@ -64,7 +66,11 @@ export class Forest {
         tint: new THREE.Color(g * 0.94, g, g * 0.98), sx: 0.9 + rnd() * 0.2,
       });
       // only trees close to where people ski need colliders
-      if (Math.abs(px - centerX(pz)) < halfWidth(pz) + 140) this.addCollider(px, pz, Math.max(0.6, h * 0.035));
+      if (Math.abs(px - centerX(pz)) < halfWidth(pz) + 140) {
+        // the trunk, and how far the boughs reach (you can push through those, slowly)
+        const o = this.addCollider(px, pz, Math.max(0.6, h * 0.035));
+        o.br = Math.min(3.2, Math.max(1.3, h * 0.17)); o.th = h;
+      }
     }
     this.count = this.trees.length;
   }

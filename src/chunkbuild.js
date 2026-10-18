@@ -3,7 +3,9 @@ import { heightAt, meshHeightAt, centerX, halfWidth, surfaceAt } from './course.
 import { smoothstep } from './noise.js';
 
 
-export function buildChunkArrays(cx, cz, segs, size) {
+// lod: this chunk's level; every vertex also carries the height the next coarser level has
+// there (aMorph.x), so the shader can blend into it before the swap and nothing pops
+export function buildChunkArrays(cx, cz, segs, size, lod = 0, coarsest = false) {
   const step = size / segs;
   const n = segs + 1;
   const gn = n + 2; // one-sample border for normals
@@ -15,6 +17,17 @@ export function buildChunkArrays(cx, cz, segs, size) {
   const pst = new Float32Array(vCount);
   const ice = new Float32Array(vCount);
   const surf = { powder: 0, ice: 0 };
+  // the coarser level's grid (every other vertex, sampled as that level samples it)
+  const cn = segs / 2 + 1, C = new Float32Array(cn * cn);
+  for (let j = 0; j < cn; j++) for (let i = 0; i < cn; i++) C[j * cn + i] = coarsest ? 0 : meshHeightAt(cx + i * 2 * step, cz + j * 2 * step, step * 2);
+  const coarseAt = (i, j) => {
+    const ci = Math.min(cn - 2, i >> 1), cj = Math.min(cn - 2, j >> 1);
+    const u = (i - ci * 2) / 2, w = (j - cj * 2) / 2;
+    const a = C[cj * cn + ci], b = C[cj * cn + ci + 1], c = C[(cj + 1) * cn + ci], d = C[(cj + 1) * cn + ci + 1];
+    // the same split as the index buffer: triangles (a, c, b) and (b, c, d)
+    return u + w <= 1 ? a + u * (b - a) + w * (c - a) : d + (1 - u) * (c - d) + (1 - w) * (b - d);
+  };
+  const mor = new Float32Array(vCount * 2);
   let v = 0;
   for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
     const x = cx + i * step, z = cz + j * step;
@@ -27,6 +40,7 @@ export function buildChunkArrays(cx, cz, segs, size) {
     surfaceAt(x, z, surf);
     pst[v] = 1 - surf.powder;
     ice[v] = surf.ice;
+    mor[v * 2] = coarsest ? H[k] : coarseAt(i, j); mor[v * 2 + 1] = coarsest ? 0 : lod + 1;
     v++;
   }
   const idx = new Uint32Array(segs * segs * 6 + 4 * (n - 1) * 6);
@@ -50,6 +64,7 @@ export function buildChunkArrays(cx, cz, segs, size) {
       pos[v * 3] = pos[k * 3]; pos[v * 3 + 1] = pos[k * 3 + 1] - drop; pos[v * 3 + 2] = pos[k * 3 + 2];
       nrm[v * 3] = nrm[k * 3]; nrm[v * 3 + 1] = nrm[k * 3 + 1]; nrm[v * 3 + 2] = nrm[k * 3 + 2];
       pst[v] = pst[k]; ice[v] = ice[k];
+      mor[v * 2] = mor[k * 2] - drop; mor[v * 2 + 1] = mor[k * 2 + 1];
       v++;
     }
     for (let i = 0; i < n - 1; i++) {
@@ -58,5 +73,5 @@ export function buildChunkArrays(cx, cz, segs, size) {
       else { idx[q++] = a; idx[q++] = c; idx[q++] = b; idx[q++] = b; idx[q++] = c; idx[q++] = d; }
     }
   });
-  return { pos, nrm, pst, ice, idx };
+  return { pos, nrm, pst, ice, idx, mor };
 }

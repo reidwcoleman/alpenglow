@@ -40,7 +40,7 @@ function frame(kit, kind, rnd) {
 }
 
 // skin the rig's current pose into a plain geometry (with the rest positions kept for the dye)
-function bake(rig) {
+export function bake(rig) {
   rig.root.updateMatrixWorld(true);
   rig.skeleton.update();
   const src = rig.kit.geo, bm = rig.skeleton.boneMatrices;
@@ -119,4 +119,31 @@ export function crowd(scene, spots, kinds, rnd, shadow = true) {
   });
   for (const im of meshes) if (im) { im.instanceMatrix.needsUpdate = true; im.instanceColor.needsUpdate = true; im.frustumCulled = true; im.computeBoundingSphere(); im.boundingSphere.radius += 2; }
   return { meshes: meshes.filter(Boolean), slots };
+}
+
+// the triangles of a baked body whose corners all belong to parts (and one side: +1 left, -1 right)
+export function piece(geo, parts, side) {
+  const part = geo.getAttribute('aPart'), rest = geo.getAttribute('aRest'), idx = geo.index.array;
+  const keep = [];
+  const ok = (v) => parts.includes(Math.round(part.getX(v))) && Math.sign(rest.getX(v)) === side;
+  for (let i = 0; i < idx.length; i += 3) if (ok(idx[i]) && ok(idx[i + 1]) && ok(idx[i + 2])) keep.push(idx[i], idx[i + 1], idx[i + 2]);
+  const g = geo.clone();
+  g.setIndex(keep);
+  g.computeBoundingSphere();
+  return g;
+}
+
+// one posed copy of a particular body (the player's own, sitting on the lift): a single
+// instance wearing their jacket
+export function posedOne(kit, outfit, kind) {
+  const rig = new AvatarRig(kit, outfit);
+  rig.pose(frame(kit, kind, Math.random));
+  const geo = bake(rig);
+  const mat = kitMaterial(kit, { ...outfit, jacket: 0xffffff }, true);
+  const im = new THREE.InstancedMesh(geo, mat, 1);
+  im.setMatrixAt(0, new THREE.Matrix4());
+  im.setColorAt(0, new THREE.Color(outfit.jacket));
+  im.castShadow = true; im.frustumCulled = false;
+  im.userData.pelvis = kit.bindP[kit.I('Bip01_Pelvis')].clone();
+  return im;
 }

@@ -3,9 +3,9 @@
 // times. Winning pays flakes (more at the higher levels), medals stay in the profile and a
 // Pro win unlocks the Champion kit.
 export const TIERS = [
-  { key: 'am', name: 'AM', skill: [0.7, 0.8], field: 0.55, pay: 1, trial: [178, 192, 210] },
-  { key: 'pro', name: 'PRO', skill: [0.82, 0.95], field: 1, pay: 1.7, trial: [163, 172, 184] },
-  { key: 'legend', name: 'LEGEND', skill: [0.93, 1.0], field: 1.55, pay: 2.6, trial: [154, 160, 168] },
+  { key: 'am', name: 'AM', skill: [0.7, 0.8], field: 0.55, pay: 1, trial: [169, 182, 200] },
+  { key: 'pro', name: 'PRO', skill: [0.82, 0.95], field: 1, pay: 1.7, trial: [155, 163, 175] },
+  { key: 'legend', name: 'LEGEND', skill: [0.93, 1.0], field: 1.55, pay: 2.6, trial: [146, 152, 160] },
 ];
 
 // what the computer field scores in each contest, at Pro
