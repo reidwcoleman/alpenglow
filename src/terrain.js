@@ -2,7 +2,7 @@
 // coarse far mesh for the surrounding ranges. The snow material adds wind
 // ripples, groomer corduroy, exposed rock on steep faces and sun glints.
 import * as THREE from 'three';
-import { heightAt } from './course.js';
+import { heightAt, PARK_ID } from './course.js';
 import { buildChunkArrays } from './chunkbuild.js';
 import { makeSimplex, smoothstep } from './noise.js';
 
@@ -120,10 +120,10 @@ export function makeSnowMaterial(env) {
           snow *= 1.0 - vPiste * (0.03 + 0.02 * smoothstep(0.42, 0.5, band));
           // fresh corduroy: groomer ribs down the fall line, each pass a touch brighter or duller
           float pass = floor(wp.x / 4.6 + nL.g * 0.6);
-          snow *= 1.0 + vPiste * (fract(sin(pass * 12.9898) * 43758.5453) - 0.5) * 0.05;
+          snow *= 1.0 + smoothstep(0.8, 1.0, vPiste) * (fract(sin(pass * 12.9898) * 43758.5453) - 0.5) * 0.05;
           float rib = wp.x * 6.2832 / 0.21;
           float ribFade = 1.0 - smoothstep(0.12, 0.45, fwidth(rib) / 6.2832);
-          snow *= 1.0 + vPiste * ribFade * 0.028 * sin(rib) * (0.7 + 0.3 * nM.b);
+          snow *= 1.0 + smoothstep(0.8, 1.0, vPiste) * ribFade * 0.028 * sin(rib) * (0.7 + 0.3 * nM.b);
           gSnowRough = mix(texture2D(uSnowR, gSnowUv1).g, texture2D(uSnowR, gSnowUv2).g, gSnowMix);
           // scanned rock, triplanar so cliffs don't smear
           vec3 rock = vec3(0.2);
@@ -164,7 +164,7 @@ export function makeSnowMaterial(env) {
             g += vec2(h0 - hx, h0 - hz) * (1.0 - vPiste) * 1.3 * (1.0 - smoothstep(60.0, 260.0, dist));
             g.x += cos(cw) * 0.045 * vPiste * fade;
             float rib = wp.x * 6.2832 / 0.21;
-            g.x += cos(rib) * 0.095 * vPiste * (1.0 - smoothstep(0.12, 0.45, fwidth(rib) / 6.2832));
+            g.x += cos(rib) * 0.075 * smoothstep(0.8, 1.0, vPiste) * (1.0 - smoothstep(0.12, 0.45, fwidth(rib) / 6.2832));
           }
           g *= 1.0 - gRock;
           g *= 1.0 - vIce * 0.85;
@@ -233,7 +233,7 @@ export class Terrain {
     // fine chunks are built off the main thread
     this.inflight = new Map();
     try {
-      this.worker = new Worker(new URL('./terrainWorker.js', import.meta.url), { type: 'module' });
+      this.worker = new Worker(new URL('./terrainWorker.js', import.meta.url), { type: 'module', name: 'park=' + PARK_ID });
       this.worker.onmessage = (e) => {
         const job = this.inflight.get(e.data.id);
         this.inflight.delete(e.data.id);

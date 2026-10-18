@@ -6,6 +6,8 @@ export class Input {
     this.steer = 0;
     this.touch = { left: false, right: false, tuck: false, brake: false, jump: false, grab: false };
     addEventListener('keydown', (e) => {
+      // typing in a text field (chat, name, room) isn't riding
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Tab'].includes(e.code)) e.preventDefault();
       if (!this.keys.has(e.code)) this.pressed.add(e.code);
       this.keys.add(e.code);

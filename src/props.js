@@ -3,7 +3,7 @@
 // plus rocks and terrain-park dressing.
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { heightAt, centerX, halfWidth, GATES, KICKERS, LIFT, START_Z, FINISH_Z, SECTIONS, slopeAt } from './course.js';
+import { heightAt, centerX, halfWidth, GATES, KICKERS, LIFT, START_Z, FINISH_Z, SECTIONS, slopeAt, MAP } from './course.js';
 import { mulberry32, makeSimplex, smoothstep } from './noise.js';
 import { pbr } from './terrain.js';
 
@@ -600,7 +600,7 @@ export class Props {
     base.computeVertexNormals();
     const list = [];
     for (let i = 0; i < 2600 && list.length < 900; i++) {
-      const z = -200 + this.rnd() * 3600;
+      const z = -200 + this.rnd() * (FINISH_Z + 180);
       const s = this.rnd() < 0.5 ? -1 : 1;
       const off = halfWidth(z) + 6 + Math.pow(this.rnd(), 2) * 320;
       const x = centerX(z) + s * off;
@@ -646,6 +646,7 @@ export class Props {
     im.castShadow = true;
     this.scene.add(im);
     // park entry arch (two poles + banner)
+    if (!MAP.park) return;
     const z = 1015, cx = centerX(z), hw = halfWidth(z) * 0.7;
     const tex = canvasTex(1024, 128, (c, w, h) => {
       c.fillStyle = '#111'; c.fillRect(0, 0, w, h);

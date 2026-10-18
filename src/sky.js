@@ -10,15 +10,20 @@ import { AG } from './atmos.js';
 export const PRESETS = {
   bluebird: {
     label: 'Bluebird Morning', hdri: 'bluebird', az: 70, sun: 0xfff3e4, sunScale: 1.0,
-    fogD: 0.000075, fogFall: 1 / 1000, sunFog: 0xfff0dc, key: 4.2, haze: 0.28, snow: 0,
+    fogD: 0.000075, fogFall: 1 / 1000, sunFog: 0xfff0dc, key: 4.2, haze: 0.28, snow: 0, shafts: 0.1,
   },
   golden: {
     label: 'Golden Hour', hdri: 'golden', az: 8, elev: 9, sun: 0xffb46e, sunOverSky: 1.9,
-    fogD: 0.00005, fogFall: 1 / 900, sunFog: 0xffc58e, sunFogK: 0.6, key: 2.3, haze: 0.12, snow: 0,
+    fogD: 0.00005, fogFall: 1 / 900, sunFog: 0xffc58e, sunFogK: 0.6, key: 2.3, haze: 0.12, snow: 0, shafts: 0.32,
   },
   alpenglow: {
     label: 'Alpenglow Dusk', hdri: 'alpenglow', az: 334, elev: 3.2, sun: 0xff9a78, sunOverSky: 0.9,
-    fogD: 0.00006, fogFall: 1 / 850, sunFog: 0xffa98a, sunFogK: 0.5, key: 2.2, haze: 0.1, snow: 0,
+    fogD: 0.00006, fogFall: 1 / 850, sunFog: 0xffa98a, sunFogK: 0.5, key: 2.2, haze: 0.1, snow: 0, shafts: 0.28,
+  },
+  night: {
+    label: 'Night Session', hdri: 'night', az: 205, elev: 34, sun: 0xa9bcff, sunOverSky: 0.22,
+    fogD: 0.00011, fogFall: 1 / 900, sunFog: 0x5d6f96, sunFogK: 0.25, key: 0.62, haze: 0.12, snow: 0, night: true,
+    envK: 0.1, moonK: 0.18, domeK: 0.55, fogK: 0.35,
   },
   storm: {
     label: 'Powder Day', hdri: 'storm', az: 60, elev: 40, sun: 0xeef2ff, sunOverSky: 0.08,
@@ -38,7 +43,7 @@ const DOME_VERT = /* glsl */`
   }`;
 const DOME_FRAG = /* glsl */`
   uniform sampler2D map;
-  uniform float scale, yaw, rowsFrac, uHaze;
+  uniform float scale, yaw, rowsFrac, uHaze, uBright;
   uniform vec3 ground, uHazeCol;
   varying vec3 vDir;
   void main() {
@@ -53,12 +58,13 @@ const DOME_FRAG = /* glsl */`
       col = textureLod(map, vec2(u, 1.0 - t), 0.0).rgb;
       col = col * col * (col * 0.2 + 0.8); // sRGB -> linear (the jpg holds sRGB-encoded radiance x scale)
       col /= scale;
+      col *= uBright;
       col = mix(col, ground, smoothstep(0.97, 1.0, t));
     }
     // melt the horizon into the scene's haze so far ridges and sky agree
     float hz = uHaze * (1.0 - smoothstep(-0.04, 0.06 + uHaze * 0.45, d.y));
     col = mix(col, uHazeCol, clamp(hz, 0.0, 1.0));
-    gl_FragColor = vec4(col, 1.0);
+    gl_FragColor = vec4(col, 0.0); // alpha 0 marks the sky for the sun shafts
   }`;
 
 export class Environment {
@@ -67,7 +73,7 @@ export class Environment {
     this.scene = scene;
     this.mat = new THREE.ShaderMaterial({
       uniforms: {
-        map: { value: null }, scale: { value: 1 }, yaw: { value: 0 }, rowsFrac: { value: 0.53 },
+        map: { value: null }, scale: { value: 1 }, yaw: { value: 0 }, rowsFrac: { value: 0.53 }, uBright: { value: 1 },
         ground: { value: new THREE.Color(0.5, 0.52, 0.56) }, uHaze: { value: 0 }, uHazeCol: { value: new THREE.Color() },
       },
       vertexShader: DOME_VERT, fragmentShader: DOME_FRAG, side: THREE.BackSide, depthWrite: false, fog: false,
@@ -134,12 +140,14 @@ export class Environment {
     const skyL = lum(m.skyE);
     const sunL = p.sunOverSky != null ? skyL * p.sunOverSky : lum(m.sunE) * (p.sunScale ?? 1);
     this.sun.color.set(p.sun);
-    this.sun.intensity = sunL;
+    this.sun.intensity = sunL * (p.moonK ?? 1);
+    u.uBright.value = p.domeK ?? 1;
     const horiz = sunL * Math.max(0, this.sunDir.y) + skyL;
     this.renderer.toneMappingExposure = p.key / horiz;
     this.exposure = this.renderer.toneMappingExposure;
     // haze in the same radiance units as the dome
     const hc = new THREE.Color(m.horizon[0], m.horizon[1], m.horizon[2]);
+    hc.multiplyScalar(p.fogK ?? 1);
     this.scene.fog.color.copy(hc);
     this.scene.fog.density = p.fogD;
     u.uHaze.value = p.haze;
@@ -155,7 +163,8 @@ export class Environment {
     this.envRT = this.pmrem.fromScene(this.envScene, 0, 0.1, 500);
     u.uHaze.value = hz;
     this.scene.environment = this.envRT.texture;
-    this.scene.environmentIntensity = 1;
+    // at night the sky only fills in a little: the floodlights carry the scene
+    this.scene.environmentIntensity = p.envK ?? 1;
     this.skyL = skyL; this.sunL = sunL;
   }
 

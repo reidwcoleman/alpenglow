@@ -13,6 +13,8 @@ export const AG = {
   uSunFog: { value: new THREE.Color(1, 0.8, 0.6) },
   uFogFall: { value: 1 / 900 },
   uFogBase: { value: 0 },
+  // how much the mountain shade darkens direct light (off at night: the floodlights aren't the sun)
+  uAgDirect: { value: 1 },
 };
 
 const FOG_PARS_V = `varying vec3 vAgW; uniform mat4 uCamWorld;
@@ -24,7 +26,7 @@ const FOG_V = `vAgW = (uCamWorld * mvPosition).xyz;
   vFogDepth = - mvPosition.z;
 #endif`;
 const FOG_PARS_F = `varying vec3 vAgW;
-uniform vec3 uSunDirA; uniform vec3 uSunFog; uniform float uFogFall; uniform float uFogBase;
+uniform vec3 uSunDirA; uniform vec3 uSunFog; uniform float uFogFall; uniform float uFogBase; uniform float uAgDirect;
 uniform sampler2D uShadeTex; uniform vec4 uShadeBox;
 float agSun = 1.0;
 #ifdef USE_FOG
@@ -61,8 +63,8 @@ const LIGHT_F = `#include <lights_fragment_end>
   {
     vec2 agSh = agShade();
     agSun = agSh.r;
-    reflectedLight.directDiffuse *= agSh.r;
-    reflectedLight.directSpecular *= agSh.r;
+    reflectedLight.directDiffuse *= mix(1.0, agSh.r, uAgDirect);
+    reflectedLight.directSpecular *= mix(1.0, agSh.r, uAgDirect);
     reflectedLight.indirectDiffuse *= mix(1.0, agSh.g, 0.85);
     reflectedLight.indirectSpecular *= agSh.g;
   }`;

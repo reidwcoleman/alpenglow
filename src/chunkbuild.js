@@ -2,11 +2,6 @@
 import { heightAt, meshHeightAt, centerX, halfWidth, surfaceAt } from './course.js';
 import { smoothstep } from './noise.js';
 
-function pisteWeight(x, z) {
-  const hw = halfWidth(z);
-  const adx = Math.abs(x - centerX(z));
-  return 1 - smoothstep(hw - 3, hw + 6, adx);
-}
 
 export function buildChunkArrays(cx, cz, segs, size) {
   const step = size / segs;
@@ -29,8 +24,9 @@ export function buildChunkArrays(cx, cz, segs, size) {
     const l = Math.hypot(nx, ny, nz); nx /= l; ny /= l; nz /= l;
     pos[v * 3] = x; pos[v * 3 + 1] = H[k]; pos[v * 3 + 2] = z;
     nrm[v * 3] = nx; nrm[v * 3 + 1] = ny; nrm[v * 3 + 2] = nz;
-    pst[v] = pisteWeight(x, z);
-    ice[v] = pst[v] > 0 ? surfaceAt(x, z, surf).ice : 0;
+    surfaceAt(x, z, surf);
+    pst[v] = 1 - surf.powder;
+    ice[v] = surf.ice;
     v++;
   }
   const idx = new Uint32Array(segs * segs * 6 + 4 * (n - 1) * 6);

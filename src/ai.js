@@ -2,7 +2,7 @@
 // controls (steer / tuck / brake / jump). Each has a style: racers attack
 // gates, experts rip fast GS turns, cruisers and beginners make wide
 // speed-controlling turns, park rats hunt the kickers and throw spins.
-import { centerX, halfWidth, GATES, FINISH_Z, START_Z, heightAt, lineX, lineCurv, PARK_JUMPS as JUMPS, PARK_RAILS as RAILS, PIPE, PARK } from './course.js';
+import { centerX, halfWidth, GATES, FINISH_Z, START_Z, heightAt, lineX, lineCurv, PARK_JUMPS as JUMPS, PARK_RAILS as RAILS, PIPE, PARK, JUMPS as ALL_JUMPS, RAILS as ALL_RAILS } from './course.js';
 import { wrapAngle } from './skier.js';
 import { clamp, smoothstep } from './noise.js';
 
@@ -44,6 +44,7 @@ export class AIController {
     // park riders each stick to a line: the jumps, the rails or the pipe
     this.line = style === 'park' ? (rnd() < 0.5 ? 'jumps' : rnd() < 0.5 ? 'rails' : 'pipe') : null;
     this.pipeSide = rnd() < 0.5 ? 1 : -1;
+    this.railer = rnd() < 0.35;
   }
 
   // where a park rider is heading, and how fast it wants to be going
@@ -91,6 +92,35 @@ export class AIController {
         // carve hard across the flat bottom into the next wall
         return { tx: ax + this.pipeSide * (PIPE.flat + 6), tz: z + 4 };
       }
+    }
+    return null;
+  }
+
+  // out on the run: line up the next kicker (or, for rail riders, rail) coming up
+  featureLine(z, tz) {
+    this.want = null;
+    if (this.railer) {
+      for (const R of ALL_RAILS) {
+        const dz = R.a.z - z;
+        if (R.a.z + R.L < z - 1) continue;
+        if (dz > 80) break;
+        this.want = R.kind === 'box' ? 7.5 : 8.5;
+        if (dz > 0 && dz < 6) this.popOff = this.rnd() < 0.45;
+        const along = Math.max(tz, R.a.z + 2);
+        return { tx: R.a.x + (R.dir.x * (along - R.a.z)) / R.dir.z, tz: along };
+      }
+    }
+    for (const J of ALL_JUMPS) {
+      if (J.lip < z - 1) continue;
+      const dz = J.z - z;
+      if (dz > 95) break;
+      this.want = J.speed + (this.skill - 0.7) * 1.5;
+      if (z > J.z - 4 && !this.trick) {
+        const big = J.h > 3.5, spins = big ? [Math.PI * 2, Math.PI * 3, Math.PI * 4, 0] : [Math.PI, Math.PI * 2, 0, Math.PI * 2];
+        this.trick = { spin: spins[Math.floor(this.rnd() * spins.length)], dir: this.rnd() < 0.5 ? 1 : -1, grab: this.rnd() < 0.7, grabEnd: 0.5 + this.rnd() * 0.6, kind: ['mute', 'tail', 'japan'][Math.floor(this.rnd() * 3)] };
+        if (big && this.rnd() < 0.4) this.trick.flip = -1;
+      }
+      return { tx: centerX(J.lip) + J.dx, tz: Math.max(J.lip, z + 6) };
     }
     return null;
   }
@@ -175,6 +205,9 @@ export class AIController {
       if (this.style === 'park' && z > PARK.z0 - 80 && z < PARK.z1) {
         const r = this.parkLine(z, tz, speed);
         if (r) { tx = r.tx; tz = r.tz; }
+      } else if (this.style === 'park' && this.world.arcade) {
+        const r = this.featureLine(z, tz);
+        if (r) { tx = r.tx; tz = r.tz; }
       }
     }
 
@@ -192,6 +225,18 @@ export class AIController {
       const side = Math.abs(dx) < 0.5 ? Math.sign(centerX(z) - x) || 1 : -Math.sign(dx);
       const push = (4.5 - Math.abs(dx)) * smoothstep(L + 10, 0, dz);
       if (push > 0) avoid += side * push * 1.4;
+    }
+    // weave round the trees (the glades have them on the run)
+    const F = this.world.forest;
+    if (F && this.world.glades) {
+      F.query(x + s.vel.x * 0.6, z + Math.max(6, speed * 0.6), this.near ??= []);
+      for (const o of this.near) {
+        const dz = o.z - z;
+        if (dz < 1 || dz > L + 6) continue;
+        const dx = o.x - (x + (tx - x) * (dz / Math.max(tz - z, 1)));
+        if (Math.abs(dx) > o.r + 2.4) continue;
+        avoid += (dx > 0 ? -1 : 1) * (o.r + 2.6 - Math.abs(dx)) * 1.6 * smoothstep(L + 6, 2, dz);
+      }
     }
     tx += avoid;
     // stay inside the piste

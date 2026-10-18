@@ -5,7 +5,7 @@ import { AIController } from '../src/ai.js';
 import { Forest } from '../src/trees.js';
 import { randomOutfit } from '../src/skiermodel.js';
 import { mulberry32 } from '../src/noise.js';
-import { START_Z, FINISH_Z, GATES, centerX, halfWidth, sectionName, lineX } from '../src/course.js';
+import { START_Z, FINISH_Z, GATES, centerX, halfWidth, sectionName, lineX, MAP } from '../src/course.js';
 
 const mode = process.argv[2] ?? 'race';
 const secs = Number(process.argv[3] ?? 300);
@@ -13,7 +13,7 @@ const rnd = mulberry32(Number(process.env.SEED ?? 7));
 const scene = new THREE.Scene();
 const forest = new Forest(scene);
 const skiers = [], ais = [];
-const world = { scene, forest, tracks: null, race: mode === 'race', raceStarted: true, skiers, arcade: mode !== 'race' };
+const world = { scene, forest, tracks: null, race: mode === 'race', raceStarted: true, skiers, arcade: mode !== 'race', glades: !!MAP.glades };
 const stats = new Map();
 function add(style, z, x) {
   const s = new Skier(world, { outfit: randomOutfit(rnd, style === 'racer'), name: style + skiers.length, sidecut: style === 'racer' ? 24 : 16 });
@@ -23,14 +23,14 @@ function add(style, z, x) {
   const st = { style, crashes: [], gate: 0, missed: 0, finish: null, top: 0, air: 0, maxAir: 0, stuck: 0 };
   stats.set(s, st);
   s.on('crash', (e) => st.crashes.push(`${e.reason}@${Math.round(s.pos.z)}(${sectionName(s.pos.z)})`));
-  s.on('land', (t) => { st.maxAir = Math.max(st.maxAir, t.air); });
+  s.on('land', (t) => { st.maxAir = Math.max(st.maxAir, t.air); if (t.air > 0.5) st.airs = (st.airs ?? 0) + 1; });
 }
 if (mode === 'race') {
   [-10.5, -7.5, -4.5, -1.5, 1.5, 4.5, 7.5, 10.5].forEach((o) => add('racer', START_Z, centerX(START_Z) + o));
   ais.forEach((ai, i) => { ai.skill = 0.78 + (i / 8) * 0.2; ai.s.grip = 1.6 + ai.skill * 0.22; });
 } else {
   for (const [style, n] of [['expert', 5], ['carver', 9], ['cruiser', 8], ['beginner', 4], ['park', 6]])
-    for (let i = 0; i < n; i++) { const z = style === 'park' ? 900 + rnd() * 400 : 60 + rnd() * 3000; add(style, z, centerX(z) + (rnd() - 0.5) * halfWidth(z)); }
+    for (let i = 0; i < n; i++) { const z = style === 'park' && MAP.park ? 900 + rnd() * 400 : 60 + rnd() * (FINISH_Z - 300); add(style, z, centerX(z) + (rnd() - 0.5) * halfWidth(z)); }
 }
 const H = 1 / 100;
 let t = 0, bumps = 0;

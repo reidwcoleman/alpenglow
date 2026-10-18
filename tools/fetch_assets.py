@@ -16,6 +16,7 @@ HDRIS = {
     'golden': 'kloppenheim_06_puresky',
     'alpenglow': 'qwantani_dusk_2_puresky',
     'storm': 'snow_field_puresky',
+    'night': 'qwantani_night_puresky',
 }
 TEXTURES = ['snow_02', 'rock_face_04']
 

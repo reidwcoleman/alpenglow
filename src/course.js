@@ -1,26 +1,21 @@
 // The mountain: one deterministic height function that the terrain mesh,
 // physics, trees, props and AI all share. Downhill is +Z. The run starts at
-// z = 0 near the summit and finishes in the village at z ~ 3420.
+// z ~ 30 near the summit and finishes at the base area. Which park it is
+// (src/maps.js) is fixed for the page: picking another one reloads.
 import { makeSimplex, fbm, ridged, clamp, smoothstep, mulberry32 } from './noise.js';
+import { MAPS, resolveParkId } from './maps.js';
+
+export const PARK_ID = resolveParkId();
+export const MAP = MAPS[PARK_ID];
 
 const N = makeSimplex(7);
 const N2 = makeSimplex(19);
 const N3 = makeSimplex(42);
 
-export const SECTIONS = [
-  { name: 'Summit Start', z0: -200, z1: 150, grad: 0.12, width: 70 },
-  { name: 'The Wall', z0: 150, z1: 700, grad: 0.44, width: 80 },
-  { name: 'Meadow Rollers', z0: 700, z1: 950, grad: 0.21, width: 90 },
-  { name: 'Terrain Park', z0: 950, z1: 1490, grad: 0.2, width: 150 },
-  { name: 'Glacier Bowl', z0: 1490, z1: 1900, grad: 0.39, width: 110 },
-  { name: 'Pine Chute', z0: 1900, z1: 2400, grad: 0.27, width: 46 },
-  { name: 'The Express', z0: 2400, z1: 2950, grad: 0.31, width: 70 },
-  { name: 'Run-out', z0: 2950, z1: 3350, grad: 0.14, width: 80 },
-  { name: 'Village', z0: 3350, z1: 9000, grad: 0.025, width: 120 },
-];
+export const SECTIONS = MAP.sections;
 
-export const START_Z = 30;
-export const FINISH_Z = 3420;
+export const START_Z = MAP.start;
+export const FINISH_Z = MAP.finish;
 const Z_MIN = -6000, Z_MAX = 9000;
 
 // --- precomputed 1-D profiles along z (1 m steps) ---------------------------
@@ -68,10 +63,9 @@ function sectionAt(z) {
   }
   for (let i = 0; i < PN; i++) {
     const z = i + Z_MIN;
-    const zz = clamp(z, -100, 3500);
     // start and finish areas run straight: clamp the curve parameter, then smooth the knees
-    const zc = clamp(z, 90, 3260);
-    CX[i] = 95 * Math.sin(zc / 470 + 0.4) + 42 * Math.sin(zc / 190 + 1.7) + 14 * Math.sin(zc / 77);
+    const zc = clamp(z, MAP.curveClamp[0], MAP.curveClamp[1]);
+    CX[i] = MAP.curve(zc);
   }
   for (let pass = 0; pass < 3; pass++) {
     const src = CX.slice();
@@ -98,10 +92,7 @@ export const TOP_Y = elevAt(START_Z);
 
 // --- features ---------------------------------------------------------------
 // Natural crests (kickers in the park are added from JUMPS below). u runs downhill from the lip.
-export const KICKERS = [
-  { z: 2620, off: 0, h: 1.25, w: 64, ramp: 22, kind: 'crest' }, // full-width roller on The Express
-  { z: 820, off: 0, h: 0.9, w: 80, ramp: 18, kind: 'crest' },
-];
+export const KICKERS = MAP.crests.map((k) => ({ ...k, kind: 'crest' }));
 for (const k of KICKERS) k.x = centerX(k.z) + k.off;
 
 function kickerProfile(u, k) {
@@ -115,28 +106,11 @@ function kickerProfile(u, k) {
 // Laid out across the piste (dx from the centre line) and down it (z): a jump line of
 // table tops on the skier's left, a roller line beyond it, rails and boxes on the right
 // and a halfpipe beyond those. The race corridor down the middle stays clear.
-export const PARK = { top: 1032, z0: 1040, z1: 1400 };
+// (parks without a terrain park keep it far out of the way)
+export const PARK = MAP.park ?? { top: -1e5, z0: -1e5, z1: -1e5 };
 // z: start of the takeoff ramp; h: lip height over the slope; ramp/table/land: lengths (m)
-export const PARK_JUMPS = [
-// speed: the approach (m/s at the foot of the ramp) that lands in the sweet spot (tools/parkjump.mjs)
-  { name: 'Small', zone: 'Jump Line', z: 1062, dx: -28, h: 1.6, ramp: 6.5, table: 4, land: 8, w: 7, speed: 10.5 },
-  { name: 'Medium', zone: 'Jump Line', z: 1130, dx: -28, h: 2.5, ramp: 8.5, table: 7, land: 11, w: 9, speed: 12.5 },
-  { name: 'Large', zone: 'Jump Line', z: 1205, dx: -28, h: 3.3, ramp: 10.5, table: 10, land: 14, w: 11, speed: 14.6 },
-  { name: 'XL', zone: 'Jump Line', z: 1290, dx: -28, h: 4.1, ramp: 12, table: 13, land: 17, w: 12, speed: 16.2 },
-];
-// the rest of the run's kickers, each off to one side so the race line stays clear
-const RUN_JUMPS = [
-  { name: 'Drop In', zone: 'Drop In', z: 112, dx: -22, h: 1.3, ramp: 6, table: 3, land: 7, w: 7 },
-  { name: 'Wall Hit', zone: 'The Wall', z: 330, dx: -24, h: 1.5, ramp: 7, table: 2, land: 8, w: 8 },
-  { name: 'Wall Hit', zone: 'The Wall', z: 450, dx: 24, h: 1.5, ramp: 7, table: 2, land: 8, w: 8 },
-  { name: 'Wall Hit', zone: 'The Wall', z: 570, dx: -24, h: 1.5, ramp: 7, table: 2, land: 8, w: 8 },
-  { name: 'Big Air', zone: 'Big Air', z: 1585, dx: 30, h: 4.6, ramp: 15, table: 6, land: 26, w: 14 },
-  { name: 'Express', zone: 'Kicker Line', z: 2480, dx: -22, h: 2.2, ramp: 8, table: 5, land: 10, w: 9 },
-  { name: 'Express', zone: 'Kicker Line', z: 2560, dx: 22, h: 2.4, ramp: 8.5, table: 5, land: 11, w: 9 },
-  { name: 'Express', zone: 'Kicker Line', z: 2700, dx: -22, h: 2.6, ramp: 9, table: 6, land: 12, w: 10 },
-  { name: 'Express', zone: 'Kicker Line', z: 2790, dx: 22, h: 2.8, ramp: 9.5, table: 6, land: 12, w: 10 },
-  { name: 'Last Call', zone: 'Last Call', z: 3230, dx: -24, h: 2.4, ramp: 9, table: 6, land: 11, w: 10 },
-];
+export const PARK_JUMPS = MAP.parkJumps ?? [];
+const RUN_JUMPS = MAP.runJumps;
 export const JUMPS = [...RUN_JUMPS, ...PARK_JUMPS].sort((a, b) => a.z - b.z);
 for (const J of JUMPS) {
   J.lip = J.z + J.ramp;
@@ -145,41 +119,27 @@ for (const J of JUMPS) {
 }
 // halfpipe: flat bottom, 5.2 m transitions up to 72 degrees, a short steep wall to the lip, decks
 const P72 = 1.2566;
-export const PIPE = { z0: 1100, z1: 1350, dx: 54, flat: 4.2, R: 5.2, deck: 3, outer: 7 };
+export const PIPE = MAP.park ? { z0: 1100, z1: 1350, dx: 54, flat: 4.2, R: 5.2, deck: 3, outer: 7 } : { z0: -1e5, z1: -1e5 + 1, dx: 54, flat: 4.2, R: 5.2, deck: 3, outer: 7 };
 PIPE.amax = PIPE.R * Math.sin(P72);
 PIPE.lip = PIPE.amax + 0.3;
 PIPE.H = PIPE.R * (1 - Math.cos(P72)) + 0.3 * Math.tan(P72);
-export const ROLLERS = { z0: 1058, z1: 1382, dx: -58, len: 14, h: 1.15, w: 12 };
+export const ROLLERS = MAP.park ? { z0: 1058, z1: 1382, dx: -58, len: 14, h: 1.15, w: 12 } : { z0: -1e5, z1: -1e5 + 1, dx: -58, len: 14, h: 1.15, w: 12 };
 // rails and boxes: ridden onto from a short snow ramp. shape: down (parallel to the slope),
 // flat, kink (flat then down), rainbow (an arch)
-export const PARK_RAILS = [
-  { name: 'Butter Box', z: 1062, dx: 26, len: 7, h: 0.45, kind: 'box', shape: 'down', color: 0x2a7de1 },
-  { name: 'Down Rail', z: 1108, dx: 24, len: 9, h: 0.6, kind: 'rail', shape: 'down', color: 0xf2b705 },
-  { name: 'Rainbow Box', z: 1155, dx: 28, len: 8, h: 0.5, kind: 'box', shape: 'rainbow', color: 0xff4f8b },
-  { name: 'Kinked Rail', z: 1205, dx: 24, len: 11, h: 0.65, kind: 'rail', shape: 'kink', color: 0xd8342c },
-  { name: 'Flat Box', z: 1258, dx: 28, len: 7, h: 0.5, kind: 'box', shape: 'flat', color: 0x18a868 },
-  { name: 'Long Tube', z: 1305, dx: 25, len: 14, h: 0.8, kind: 'rail', shape: 'down', color: 0xff6a2b },
-];
-for (const R of PARK_RAILS) R.zone = 'Rail Garden';
-// rail zones down the rest of the run
-const RUN_RAILS = [
-  { name: 'Start Box', zone: 'Drop In', z: 116, dx: 22, len: 8, h: 0.5, kind: 'box', shape: 'flat', color: 0x2a7de1 },
-  { name: 'Yard Rail', zone: 'Rail Yard', z: 740, dx: 24, len: 10, h: 0.7, kind: 'rail', shape: 'down', color: 0xf2b705 },
-  { name: 'Yard Box', zone: 'Rail Yard', z: 775, dx: -24, len: 9, h: 0.5, kind: 'box', shape: 'flat', color: 0x18a868 },
-  { name: 'Yard Kink', zone: 'Rail Yard', z: 860, dx: 24, len: 12, h: 0.7, kind: 'rail', shape: 'kink', color: 0xd8342c },
-  { name: 'Yard Rainbow', zone: 'Rail Yard', z: 900, dx: -24, len: 9, h: 0.55, kind: 'box', shape: 'rainbow', color: 0xff4f8b },
-  { name: 'Forest Rail', zone: 'Forest Line', z: 2050, dx: 17, len: 10, h: 0.6, kind: 'rail', shape: 'down', color: 0xff6a2b },
-  { name: 'Forest Box', zone: 'Forest Line', z: 2200, dx: -17, len: 10, h: 0.5, kind: 'box', shape: 'down', color: 0x8e3fd1 },
-  { name: 'Last Box', zone: 'Last Call', z: 3020, dx: 24, len: 10, h: 0.5, kind: 'box', shape: 'flat', color: 0x2a7de1 },
-  { name: 'Last Tube', zone: 'Last Call', z: 3080, dx: -24, len: 14, h: 0.75, kind: 'rail', shape: 'down', color: 0xf2b705 },
-  { name: 'Last Kink', zone: 'Last Call', z: 3150, dx: 24, len: 11, h: 0.7, kind: 'rail', shape: 'kink', color: 0xd8342c },
-];
+export const PARK_RAILS = MAP.parkRails ?? [];
+const RUN_RAILS = MAP.runRails;
 export const RAILS = [...RUN_RAILS, ...PARK_RAILS].sort((a, b) => a.z - b.z);
 const RAMP_L = 3.4;
-for (const R of RAILS) R.hw = R.kind === 'box' ? 0.32 : 0.045;
+for (const R of RAILS) R.hw = R.kind === 'box' ? 0.32 : R.kind === 'log' ? 0.17 : 0.045;
 
 function jumpProfile(u, J) {
   const L = J.ramp;
+  if (J.drop) {
+    // a pillow: rounded rise, a flat top, then a sharp ledge back to the natural slope
+    if (u < L) return J.h * smoothstep(0, L, u);
+    if (u < L + J.table) return J.h;
+    return J.h * (1 - smoothstep(L + J.table, J.len, u));
+  }
   if (u < L) { const t = u / L; return J.h * t * t; }
   // the lip's back face drops onto the table
   const top = J.h - 0.45;
@@ -202,8 +162,7 @@ export const pipeWalls = (z) => smoothstep(PIPE.z0, PIPE.z0 + 22, z) * (1 - smoo
 const B0 = -300, BS = 8, BN = 500;
 const FEATS = [
   ...JUMPS.map((J) => ({ z0: J.z, z1: J.z + J.len, k: 0, J })),
-  { z0: ROLLERS.z0, z1: ROLLERS.z1, k: 1 },
-  { z0: PIPE.z0, z1: PIPE.z1, k: 2 },
+  ...(MAP.park ? [{ z0: ROLLERS.z0, z1: ROLLERS.z1, k: 1 }, { z0: PIPE.z0, z1: PIPE.z1, k: 2 }] : []),
   ...RAILS.map((R) => ({ z0: R.z - RAMP_L, z1: R.z + 0.35, k: 3, R })),
 ];
 function bucketize(list) {
@@ -249,8 +208,7 @@ export function parkAt(dx, z) {
 // areas the features' own fine surface covers (the coarse terrain hides underneath)
 export const PARK_FEET = [
   ...JUMPS.map((J) => ({ dx0: J.dx - J.w / 2 - 6, dx1: J.dx + J.w / 2 + 6, z0: J.z - 3, z1: J.z + J.len + 3 })),
-  { dx0: ROLLERS.dx - 10, dx1: ROLLERS.dx + 10, z0: ROLLERS.z0 - 3, z1: ROLLERS.z1 + 3 },
-  { dx0: PIPE.dx - 23, dx1: PIPE.dx + 23, z0: PIPE.z0 - 3, z1: PIPE.z1 + 3 },
+  ...(MAP.park ? [{ dx0: ROLLERS.dx - 10, dx1: ROLLERS.dx + 10, z0: ROLLERS.z0 - 3, z1: ROLLERS.z1 + 3 }, { dx0: PIPE.dx - 23, dx1: PIPE.dx + 23, z0: PIPE.z0 - 3, z1: PIPE.z1 + 3 }] : []),
   ...RAILS.map((R) => ({ dx0: R.dx - 3, dx1: R.dx + 3, z0: R.z - RAMP_L - 3, z1: R.z + 3 })),
 ];
 const FEET_B = bucketize(PARK_FEET.map((f) => ({ ...f, z0: f.z0 - 2, z1: f.z1 + 2, f })));
@@ -283,14 +241,10 @@ export function zoneAt(x, z) {
   for (const Z of ZONES) if (z < Z.z1) return Z.name;
   return 'Village';
 }
-export const ZONES = [
-  { name: 'Drop In', z1: 170 }, { name: 'The Wall', z1: 700 }, { name: 'Rail Yard', z1: 950 }, { name: 'Terrain Park', z1: 1490 },
-  { name: 'Big Air', z1: 1680 }, { name: 'Glacier Bowl', z1: 1900 }, { name: 'Forest Line', z1: 2400 }, { name: 'Kicker Line', z1: 2950 },
-  { name: 'Last Call', z1: FINISH_Z - 10 }, { name: 'Finish', z1: FINISH_Z + 60 },
-];
+export const ZONES = MAP.zones;
 
 // Mogul field on the skier's left of Glacier Bowl.
-const MOGUL = { z0: 1530, z1: 1860 };
+const MOGUL = MAP.moguls ?? { z0: -1e5, z1: -1e5 };
 
 // --- height -----------------------------------------------------------------
 export function heightAt(x, z) {
@@ -303,7 +257,7 @@ export function heightAt(x, z) {
   y += 300 * (1 - Math.exp(-s / 650)) + 0.05 * s; // valley sides rise, then level into benches
 
   // big alpine relief far from the run
-  const far = smoothstep(800, 3600, adx) + smoothstep(-300, -1600, z) + smoothstep(3900, 5600, z);
+  const far = smoothstep(800, 3600, adx) + smoothstep(-300, -1600, z) + smoothstep(FINISH_Z + 480, FINISH_Z + 2180, z);
   if (far > 0) {
     // domain-warped ridges: broad massifs with sharp crests rather than rows of teeth
     const wx = fbm(N3, x / 2600, z / 2600, 3) * 900, wz = fbm(N2, x / 2600 + 7, z / 2600, 3) * 900;
@@ -365,6 +319,30 @@ export function normalAt(x, z, out, e = 0.6) {
   out.set(-hx, 2 * e, -hz).normalize();
   return out;
 }
+
+// every kicker without a measured approach speed gets one: the speed off the lip (no pop)
+// whose flight comes down a third of the way down the landing
+function sweetSpeed(J) {
+  const x0 = centerX(J.lip) + J.dx;
+  const zl = J.lip - 0.01;
+  const y0 = heightAt(x0, zl);
+  const sl = (heightAt(x0, zl) - heightAt(x0, zl - 0.6)) / 0.6;
+  const want = J.lip + J.table + (J.drop ? 4 : J.land * 0.35);
+  const landZ = (v) => {
+    const il = 1 / Math.hypot(1, sl);
+    let z = zl, y = y0, vz = v * il, vy = v * sl * il;
+    for (let t = 0; t < 8; t += 0.01) {
+      vy -= 9.81 * 0.01; z += vz * 0.01; y += vy * 0.01;
+      if (t > 0.05 && y <= heightAt(centerX(z) + J.dx, z)) return z;
+    }
+    return z;
+  };
+  let lo = 4, hi = 45;
+  for (let i = 0; i < 26; i++) { const m = (lo + hi) / 2; if (landZ(m) < want) lo = m; else hi = m; }
+  return (lo + hi) / 2;
+}
+// (quoted at the foot of the ramp, like the measured park tables: the climb costs speed)
+for (const J of JUMPS) if (!J.speed) J.speed = +Math.sqrt(sweetSpeed(J) ** 2 + 2 * 9.81 * J.h).toFixed(1);
 
 // rail tops: a straight line on the ground plan, heights per shape (sampled every 0.25 m)
 for (const R of RAILS) {
@@ -458,35 +436,42 @@ function prof2(arr, z) {
 // --- tree placement ---------------------------------------------------------
 export function treeDensity(x, z) {
   const c = prof(CX, z), hw = prof(HW, z);
-  const adx = Math.abs(x - c);
+  const dx = x - c, adx = Math.abs(dx);
   const s = adx - hw;
-  if (s < 5) return 0;
+  if (s < 5) return gladeDensity(dx, z);
   // trees are thinner above the tree line (upper mountain) and absent near the start
   const alt = heightAt(x, z);
   let d = 1 - smoothstep(520, 760, alt);
-  // glacier bowl is open
-  if (z > 1450 && z < 1900) d *= 0.25 + 0.75 * smoothstep(60, 160, s);
-  // Pine Chute: dense wall of trees right at the edge
-  if (z > 1880 && z < 2420) d = Math.max(d, 1.0);
-  // village clearing
-  if (z > 3300) d *= smoothstep(140, 260, adx);
+  d = MAP.trees(z, s, d);
+  // base area clearing
+  if (z > FINISH_Z - 120) d *= smoothstep(140, 260, adx);
   // patchy forest
   const patch = fbm(N3, x / 160, z / 160, 3) * 0.9 + 0.45;
   d *= clamp(patch * 1.6, 0, 1);
   // edges of the piste get glades
   d *= smoothstep(5, 18, s);
+  // tree-skiing parks: the forest comes right down to the edge
+  if (MAP.glades && z < FINISH_Z - 120) d = Math.max(d, 0.85 * smoothstep(5, 11, s) * (1 - smoothstep(35, 80, s)));
   return clamp(d, 0, 1);
 }
 
-// Snow surface under (x, z): groomed piste, natural powder off piste, and
-// scraped ice patches on the steep, heavily skied pitches. Shared by the
-// physics (grip, friction) and the terrain shader (via a vertex attribute).
-const ICY = [[180, 690], [1500, 1870], [2450, 2900]];
+// glade parks grow sparse trees on the run itself, clear of the features and their run-ins
+function gladeDensity(dx, z) {
+  if (!MAP.glades) return 0;
+  let d = 0;
+  for (const [a, b, k] of MAP.glades) if (z > a && z < b) d = k * smoothstep(a, a + 30, z) * (1 - smoothstep(b - 30, b, z));
+  if (d <= 0) return 0;
+  for (const J of JUMPS) if (z > J.z - 28 && z < J.z + J.len + 14 && Math.abs(dx - J.dx) < J.w / 2 + 6) return 0;
+  for (const R of RAILS) if (z > R.z - 20 && z < R.z + R.len + 8 && Math.abs(dx - R.dx) < 5) return 0;
+  return d;
+}
+const ICY = MAP.icy ?? [];
 export function surfaceAt(x, z, out) {
   const hw = prof(HW, z);
   const adx = Math.abs(x - prof(CX, z));
   const onP = 1 - smoothstep(hw - 3, hw + 6, adx);
-  out.powder = 1 - onP;
+  // ungroomed parks: soft snow, powder in the glades
+  out.powder = 1 - onP * (1 - (MAP.soft ? MAP.soft(z) : 0));
   let ice = 0;
   for (const [a, b] of ICY) {
     if (z < a - 30 || z > b + 30) continue;
@@ -507,6 +492,6 @@ export function slopeAt(x, z) {
 
 // Chairlift line runs straight on the skier's right, clear of the piste.
 // Like most real lifts it is one straight line and crosses over the piste.
-export const LIFT = { x0: centerX(3330) + 78, z0: 3330, x1: centerX(70) + 62, z1: 70 };
+export const LIFT = { x0: centerX(FINISH_Z - 90) + 78, z0: FINISH_Z - 90, x1: centerX(70) + 62, z1: 70 };
 
 export const rng = mulberry32(1234);

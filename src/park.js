@@ -2,7 +2,7 @@
 // terrain sits just under it, see meshHeightAt), the rails and boxes, dye lines on the
 // lips and knuckles, and the signs.
 import * as THREE from 'three';
-import { heightAt, centerX, PARK_FEET, RAILS, railAt, JUMPS, PIPE, ROLLERS, PARK } from './course.js';
+import { heightAt, centerX, PARK_FEET, RAILS, railAt, JUMPS, PIPE, ROLLERS, PARK, MAP, surfaceAt } from './course.js';
 
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
 
@@ -22,11 +22,13 @@ function surface(f, ddx, dz) {
   }
   const pos = new Float32Array(nx * nz * 3), nrm = new Float32Array(nx * nz * 3);
   const pst = new Float32Array(nx * nz).fill(1), ice = new Float32Array(nx * nz);
+  const surf = { powder: 0, ice: 0 };
   let v = 0;
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
     const k = (j + 1) * gx + (i + 1);
     const z = f.z0 + j * dz;
     pos[v * 3] = X[k]; pos[v * 3 + 1] = H[k]; pos[v * 3 + 2] = z;
+    pst[v] = 1 - surfaceAt(X[k], z, surf).powder;
     const hx = (H[k + 1] - H[k - 1]) / (2 * ddx), hz = (H[k + gx] - H[k - gx]) / (2 * dz);
     const l = Math.hypot(hx, 1, hz);
     nrm[v * 3] = -hx / l; nrm[v * 3 + 1] = 1 / l; nrm[v * 3 + 2] = -hz / l;
@@ -121,6 +123,28 @@ export class Park {
         const s = (i / (n - 1)) * R.L;
         return new THREE.Vector3(R.a.x + R.dir.x * s, R.ys[i], R.a.z + R.dir.z * s);
       };
+      if (R.kind === 'log') {
+        // a fallen pine: bark cylinder with snow on its back
+        const a = pt(0), b = pt(n - 1);
+        const len = a.distanceTo(b);
+        const bark = new THREE.MeshStandardMaterial({ color: 0x5a3d28, roughness: 0.95 });
+        const log = new THREE.Mesh(new THREE.CylinderGeometry(R.hw, R.hw * 1.15, len + 0.6, 12, 1), bark);
+        log.position.copy(a).lerp(b, 0.5); log.position.y -= R.hw;
+        log.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+        log.castShadow = true; log.receiveShadow = true;
+        this.group.add(log);
+        const cap = new THREE.Mesh(new THREE.CylinderGeometry(R.hw * 1.02, R.hw * 1.02, len + 0.4, 12, 1, false, -Math.PI / 2.6, Math.PI / 1.3), new THREE.MeshStandardMaterial({ color: 0xf2f5fa, roughness: 0.6 }));
+        cap.position.copy(log.position); cap.position.y += 0.025; cap.quaternion.copy(log.quaternion);
+        cap.rotateY(Math.PI / 2);
+        this.group.add(cap);
+        for (const t of [0.15, 0.85]) {
+          const p = a.clone().lerp(b, t);
+          const st = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, p.y - heightAt(p.x, p.z) + 0.3, 8), bark);
+          st.position.set(p.x, (p.y - 2 * R.hw + heightAt(p.x, p.z) - 0.3) / 2 + R.hw * 0.0, p.z);
+          this.group.add(st);
+        }
+        continue;
+      }
       if (R.kind === 'box') {
         // a plastic-topped box: dark slick top, coloured steel sides
         const pos = [], col = [], idx = [];
@@ -203,7 +227,7 @@ export class Park {
       add(ribbon(across(J.dx, J.lip + J.table + J.land * 0.42, J.w - 2), 0.25)); // the sweet spot
     }
     // pipe lips, both walls
-    for (const s of [-1, 1]) {
+    if (MAP.park) for (const s of [-1, 1]) {
       const pts = [];
       for (let z = PIPE.z0 + 24; z <= PIPE.z1 - 16; z += 1.5) pts.push([centerX(z) + PIPE.dx + s * (PIPE.flat + PIPE.lip + 0.25), z]);
       add(ribbon(pts, 0.35, 0.04));
@@ -282,26 +306,30 @@ export class Park {
       return g;
     };
     const zTop = PARK.top + 6;
+    if (MAP.park) {
     sign(centerX(zTop) - 28, zTop, 4.2, 2.1, signTexture(['JUMP LINE', 'S · M · L · XL']));
     sign(centerX(zTop) + 26, zTop, 4.2, 2.1, signTexture(['RAILS', 'BOXES · DOWN · KINK']));
     sign(centerX(zTop) - 58, zTop, 4.2, 2.1, signTexture(['ROLLERS', 'PUMP IT']));
     sign(centerX(PIPE.z0 - 4) + PIPE.dx, PIPE.z0 - 4, 4.6, 2.3, signTexture(['HALFPIPE', '4.5 M WALLS']));
+    }
     // zone boards down the run, on the side of the first feature
     const seen = new Set();
     const firsts = [...JUMPS, ...RAILS].filter((f) => !['Jump Line', 'Rail Garden'].includes(f.zone)).sort((a, b) => a.z - b.z);
-    const SUBS = { 'Drop In': 'BOX · KICKER', 'The Wall': 'WALL HITS', 'Rail Yard': 'RAILS · BOXES · KINK', 'Big Air': 'ONE BIG KICKER', 'Forest Line': 'TREE RAILS', 'Kicker Line': 'FOUR TABLES', 'Last Call': 'RAILS · ONE MORE TABLE' };
+    const SUBS = MAP.signs ?? {};
     for (const f of firsts) {
       if (seen.has(f.zone)) continue;
       seen.add(f.zone);
-      const z = f.z - 26, side = Math.sign(f.dx);
+      const z = f.z - 26, side = Math.sign(f.dx) || 1;
       sign(centerX(z) + f.dx + side * 3, z, 4.2, 2.1, signTexture([f.zone.toUpperCase(), SUBS[f.zone] ?? ''], '#11161f', '#fff', '#3d8bff'), 0, 1.4);
     }
-    // size boards beside every park takeoff
+    // size boards beside every takeoff, with the speed it wants
     for (const J of JUMPS) {
-      if (!J.speed) continue;
+      if (J.drop) continue;
       const z = J.z - 2;
-      sign(centerX(z) + J.dx - J.w / 2 - 2.4, z, 1.6, 1.1, signTexture([J.name === 'XL' ? 'XL' : J.name[0], Math.round(J.speed * 3.6) + ' KM/H'], '#11161f', '#fff', '#3d8bff'), 0, 1.0);
+      const size = J.name === 'XL' ? 'XL' : J.h < 2 ? 'S' : J.h < 3 ? 'M' : J.h < 4 ? 'L' : J.h < 5 ? 'XL' : 'XXL';
+      sign(centerX(z) + J.dx - J.w / 2 - 2.4, z, 1.6, 1.1, signTexture([size, Math.round(J.speed * 3.6) + ' KM/H'], '#11161f', '#fff', '#3d8bff'), 0, 1.0);
     }
+    if (!MAP.park) return;
     // the gateway banner
     const z = PARK.top - 6, c = centerX(z);
     const span = 34;

@@ -16,9 +16,13 @@ import { Post } from './post.js';
 import { AG, ShadeField, patchTree, patchMaterial } from './atmos.js';
 import { Debris } from './debris.js';
 import { Park } from './park.js';
+import { Floodlights } from './night.js';
+import { Replay } from './replay.js';
+import { Room, myId } from './net.js';
+import { MAPS, MAP_IDS } from './maps.js';
 import { preloadAvatars } from './avatar.js';
 import { mulberry32, clamp, smoothstep } from './noise.js';
-import { START_Z, FINISH_Z, GATES, centerX, halfWidth, sectionName, heightAt, PARK, JUMPS, RAILS, PARK_JUMPS, PARK_RAILS, PIPE, ROLLERS, zoneAt } from './course.js';
+import { START_Z, FINISH_Z, GATES, centerX, halfWidth, sectionName, heightAt, PARK, JUMPS, RAILS, PARK_JUMPS, PARK_RAILS, PIPE, ROLLERS, zoneAt, PARK_ID, MAP } from './course.js';
 
 const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -41,6 +45,8 @@ function fmt(t) {
   const m = Math.floor(t / 60), s = t - m * 60;
   return `${m}:${s.toFixed(2).padStart(5, '0')}`;
 }
+const BASE = import.meta.env.BASE_URL ?? '/';
+const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 // run clock, mm:ss
 const clock = (t) => `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 const ord = (n) => (n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th');
@@ -56,6 +62,17 @@ class Game {
     this.jacket = Number(store.get('jacket', JACKETS[0]));
     this.selMode = store.get('mode', 'run');
     if (!['run', 'park', 'race'].includes(this.selMode)) this.selMode = 'run';
+    this.selPark = PARK_ID;
+    store.set('park', PARK_ID);
+    // multiplayer: who you are, which room
+    this.id = myId();
+    this.who = params.get('room') ? 'multi' : store.get('who', 'solo');
+    this.roomName = params.get('room') ?? store.get('room', '');
+    this.nick = store.get('name', '') || 'Rider ' + this.id.slice(0, 3).toUpperCase();
+    // the same rider every time on this browser (the jacket comes from the locker)
+    let h = 0;
+    for (const ch of this.id) h = (h * 31 + ch.charCodeAt(0)) | 0;
+    this.myOutfit = randomOutfit(mulberry32(h));
     this.skiers = [];
     this.ais = [];
     this.player = null;
@@ -101,11 +118,12 @@ class Game {
     setLoad(80, 'Shaping the park…');
     this.park = new Park(scene, this.terrain.material);
     await this.park.build();
+    this.lights = new Floodlights(scene, this.quality);
     this.tracks = new Tracks(scene);
     this.particles = new Particles(scene);
     this.snowfall = new Snowfall(scene);
     this.debris = new Debris(scene);
-    this.world = { scene, forest: this.forest, tracks: this.tracks, particles: this.particles, race: false, raceStarted: false, skiers: this.skiers, arcade: true };
+    this.world = { scene, forest: this.forest, tracks: this.tracks, particles: this.particles, race: false, raceStarted: false, skiers: this.skiers, arcade: true, glades: !!MAP.glades };
     this.shade = new ShadeField(r);
     patchTree(scene);
     this.post = new Post(r, scene, this.camera, { ...QUALITY[this.quality], ...JSON.parse(params.get('post') ?? '{}') });
@@ -128,6 +146,7 @@ class Game {
     setLoad(100, 'Ready');
     addEventListener('resize', () => this.resize());
     this.bindUI();
+    this.replay = new Replay(this);
     this.clock = new THREE.Timer();
     this.renderer.setAnimationLoop(() => this.frame());
     setTimeout(() => { $('loading').style.opacity = 0; setTimeout(() => $('loading').classList.add('hidden'), 800); }, 150);
@@ -154,11 +173,15 @@ class Game {
   applyConditions() {
     this.env.apply(this.tod);
     this.shade?.compute(this.env.sunDir);
-    const dusk = { bluebird: 0.05, golden: 0.45, alpenglow: 1, storm: 0.35 }[this.tod] ?? 0;
+    const night = !!PRESETS[this.tod].night;
+    this.lights?.setActive(night);
+    AG.uAgDirect.value = night ? 0 : 1;
+    const dusk = { bluebird: 0.05, golden: 0.45, alpenglow: 1, storm: 0.35, night: 1 }[this.tod] ?? 0;
     this.props.setDusk(dusk);
     this.snowfall.points.visible = !!PRESETS[this.tod].snow;
-    const warm = { bluebird: [1.0, 1.0, 1.02], golden: [1.04, 1.0, 0.95], alpenglow: [1.05, 0.98, 1.0], storm: [0.98, 1.0, 1.03] }[this.tod];
+    const warm = { bluebird: [1.0, 1.0, 1.02], golden: [1.04, 1.0, 0.95], alpenglow: [1.05, 0.98, 1.0], storm: [0.98, 1.0, 1.03], night: [0.98, 1.0, 1.06] }[this.tod];
     this.post.lens.uniforms.uWarm.value.set(...warm);
+    this.post.shafts.uniforms.uTint.value.set(PRESETS[this.tod].sun ?? 0xffffff).multiplyScalar(0.9);
     const p = PRESETS[this.tod];
     // snow spray: lit like snow (albedo ~0.9 over pi) by the sun and the sky
     const e = this.env;
@@ -194,16 +217,43 @@ class Game {
       tabs.forEach((x) => x.classList.toggle('on', x === t));
       for (const k of ['ride', 'locker', 'how']) $('tab-' + k).classList.toggle('hidden', k !== t.dataset.tab);
     };
-    const cards = [...document.querySelectorAll('.card2')];
+    // the ride tab: the park, the mode, solo or multiplayer
+    const chips = [...document.querySelectorAll('.mchip')];
     const pick = (m) => {
+      if (m !== 'run' && this.selPark !== 'yard') m = 'run';
       this.selMode = m; store.set('mode', m);
-      cards.forEach((c) => c.classList.toggle('on', c.dataset.mode === m));
+      chips.forEach((c) => { c.classList.toggle('on', c.dataset.mode === m); c.disabled = c.dataset.mode !== 'run' && this.selPark !== 'yard'; });
       $('ridelbl').textContent = { run: 'RIDE', park: 'RIDE THE PARK', race: 'RACE' }[m];
       this.showBest();
     };
-    for (const c of cards) { c.onclick = () => pick(c.dataset.mode); c.ondblclick = () => this.start(c.dataset.mode); }
+    this.pickMode = pick;
+    for (const c of chips) c.onclick = () => pick(c.dataset.mode);
+    this.showParkCard();
     pick(this.selMode);
-    $('b-ride').onclick = () => this.start(this.selMode);
+    $('b-park-pick').onclick = () => this.openParks();
+    const whos = [...document.querySelectorAll('.who button')];
+    const setWho = (w) => {
+      this.who = w; store.set('who', w);
+      whos.forEach((b) => b.classList.toggle('on', b.dataset.who === w));
+      $('mp-panel').classList.toggle('hidden', w !== 'multi');
+      if (w === 'multi' && this.state === 'menu') this.joinRoom();
+      if (w === 'solo') this.leaveRoom();
+    };
+    for (const b of whos) b.onclick = () => setWho(b.dataset.who);
+    $('mp-name').value = this.nick;
+    $('mp-room').value = this.roomName;
+    $('mp-name').onchange = () => { this.nick = $('mp-name').value.trim().slice(0, 16) || this.nick; store.set('name', this.nick); if (this.room) { this.room.me.name = this.nick; this.room.hello(); } };
+    $('mp-room').onchange = () => { this.roomName = $('mp-room').value.trim(); store.set('room', this.roomName); if (this.room) { this.leaveRoom(); this.joinRoom(); } };
+    $('mp-copy').onclick = () => {
+      const url = `${location.origin}${location.pathname}?park=${this.selPark}&room=${encodeURIComponent(this.roomName || 'public')}`;
+      navigator.clipboard?.writeText(url).then(() => { $('mp-copy').textContent = 'Copied'; setTimeout(() => ($('mp-copy').textContent = 'Copy invite'), 1500); });
+    };
+    setWho(this.who);
+    $('b-ride').onclick = () => this.go();
+    $('pk-ride').onclick = () => this.go();
+    $('pk-back').onclick = () => this.closeParks();
+    for (const b of document.querySelectorAll('#pk-tod button')) b.onclick = () => this.setNight(b.dataset.n === '1');
+    addEventListener('resize', () => this.layoutParks());
     $('menubtn').onclick = () => this.setPaused(true);
     $('p-resume').onclick = () => this.setPaused(false);
     $('p-restart').onclick = () => { this.setPaused(false); this.start(this.mode); };
@@ -215,8 +265,133 @@ class Game {
 
   showBest() {
     const m = this.selMode;
-    const best = m === 'race' ? Number(store.get('best', '0')) : Number(store.get('best.' + m, '0'));
-    $('best').innerHTML = best ? (m === 'race' ? `Best Cup time<b>${fmt(best)}</b>` : `Best ${m === 'run' ? 'run' : 'park session'}<b>${best.toLocaleString()}</b>`) : 'No score yet<b>Send it</b>';
+    const best = m === 'race' ? Number(store.get('best', '0')) : Number(store.get(m === 'run' ? 'best.run.' + this.selPark : 'best.park', '0'));
+    $('best').innerHTML = best ? (m === 'race' ? `Best Cup time<b>${fmt(best)}</b>` : `Best ${m === 'run' ? MAPS[this.selPark].name : 'park session'}<b>${best.toLocaleString()}</b>`) : 'No score yet<b>Send it</b>';
+  }
+
+  outfit() { return { ...this.myOutfit, jacket: this.jacket }; }
+
+  showParkCard() {
+    const M = MAPS[this.selPark];
+    const i = MAP_IDS.indexOf(this.selPark) + 1;
+    $('pc-num').textContent = 'PARK 0' + i;
+    $('pc-name').textContent = M.name;
+    $('pc-sub').textContent = `${M.tag} · ${M.km} km${this.selPark === PARK_ID ? '' : ' · loads when you ride'}`;
+    $('b-park-pick').style.backgroundImage = `url(${BASE}art/${this.selPark}.webp)`;
+  }
+
+  // Cork7-style park chooser over the illustrated mountain
+  openParks() {
+    $('parks').classList.remove('hidden');
+    const pins = $('pk-pins');
+    if (!pins.children.length) {
+      const POS = { yard: [15, 40], slope: [45, 47], forest: [57, 38], bigair: [76, 17] };
+      const COL = { yard: '#7fe0c4', slope: '#ff8a5c', forest: '#9fd36b', bigair: '#ff5c7a' };
+      MAP_IDS.forEach((id, i) => {
+        const M = MAPS[id];
+        const b = document.createElement('button');
+        b.className = 'pk-pin'; b.dataset.id = id;
+        b.style.left = POS[id][0] + '%'; b.style.top = POS[id][1] + '%';
+        b.style.setProperty('--c', COL[id]);
+        b.innerHTML = `<span class="n">0${i + 1}</span><span><div class="nm">${M.name.toUpperCase()}</div><div class="tg">${M.tag}</div></span>`;
+        b.onclick = () => this.selectPark(id);
+        b.ondblclick = () => { this.selectPark(id); this.go(); };
+        pins.appendChild(b);
+      });
+    }
+    this.layoutParks();
+    this.selectPark(this.selPark);
+    this.setNight(!!PRESETS[this.tod].night);
+  }
+  closeParks() { $('parks').classList.add('hidden'); }
+
+  // the map covers the screen like a background image, the pins ride on it
+  layoutParks() {
+    const st = $('pk-stage');
+    if (!st) return;
+    const r = 16 / 9, W = innerWidth, H = innerHeight;
+    const w = W / H > r ? W : H * r, h = w / r;
+    st.style.width = w + 'px'; st.style.height = h + 'px';
+  }
+
+  selectPark(id) {
+    this.selPark = id;
+    const M = MAPS[id];
+    for (const b of document.querySelectorAll('.pk-pin')) b.classList.toggle('on', b.dataset.id === id);
+    $('pk-name').textContent = M.name.toUpperCase();
+    $('pk-tag').textContent = M.tag;
+    $('pk-blurb').textContent = M.blurb;
+    const nJ = (M.runJumps?.length ?? 0) + (M.parkJumps?.length ?? 0), nR = (M.runRails?.length ?? 0) + (M.parkRails?.length ?? 0);
+    $('pk-facts').innerHTML = `<span>${M.km} km</span><span>${nJ} jumps</span><span>${nR} ${id === 'forest' ? 'logs' : 'rails'}</span>`;
+    this.showParkCard();
+    this.pickMode?.(this.selMode);
+  }
+
+  setNight(on) {
+    if (on && !PRESETS[this.tod].night) { store.set('dayTod', this.tod); this.tod = 'night'; }
+    else if (!on && PRESETS[this.tod].night) this.tod = store.get('dayTod', 'bluebird');
+    store.set('tod', this.tod);
+    for (const b of document.querySelectorAll('#pk-tod button')) b.classList.toggle('on', (b.dataset.n === '1') === on);
+    for (const b of $('tod').children) b.classList.toggle('on', b.textContent === PRESETS[this.tod].label);
+    $('pk-img').src = `${BASE}art/${on ? 'map_night' : 'map'}.webp`;
+    if (this.selPark === PARK_ID) this.applyConditions();
+  }
+
+  // ride: the chosen park is already loaded, or load it
+  go() {
+    let mode = this.selMode;
+    if (this.selPark !== 'yard') mode = 'run';
+    if (this.selPark !== PARK_ID) {
+      store.set('park', this.selPark);
+      const q = new URLSearchParams({ park: this.selPark, menu: '0', mode, tod: this.tod });
+      if (this.who === 'multi') q.set('room', this.roomName || 'public');
+      location.search = q.toString();
+      return;
+    }
+    this.closeParks();
+    this.start(mode);
+  }
+
+  // ---------------- multiplayer ----------------
+  async joinRoom() {
+    if (this.room) return;
+    const room = (this.room = new Room(this, PARK_ID, this.roomName || 'public', { id: this.id, name: this.nick, outfit: this.outfit() }));
+    room.on('status', (st) => this.mpStatus());
+    room.on('join', (p) => { this.feed(`<b style="color:${p.color}">${esc(p.name)}</b> dropped in`); this.mpStatus(); });
+    room.on('leave', (p) => { this.feed(`<b style="color:${p.color}">${esc(p.name)}</b> left`); this.mpStatus(); });
+    room.on('chat', (e) => this.feed(`<b style="color:${e.peer.color}">${esc(e.peer.name)}</b> ${esc(e.text)}`, 7000));
+    room.on('trick', (e) => this.feed(`<b style="color:${e.peer.color}">${esc(e.peer.name)}</b> ${esc(e.name)} <b>+${Number(e.pts).toLocaleString()}</b>`));
+    await room.connect();
+    this.mpStatus();
+  }
+
+  leaveRoom() { if (this.room) { this.room.close(); this.room = null; } this.mpStatus(); }
+
+  mpStatus() {
+    const r = this.room;
+    const n = r ? r.peers.size + 1 : 0;
+    $('mp-count').textContent = !r ? 'Live rooms, free' : r.status === 'live' ? `${n} riding · ${MAP.name} · ${r.room}` : r.status === 'offline' ? 'Offline, retrying' : 'Connecting…';
+    $('live').classList.toggle('hidden', !r);
+    $('live').classList.toggle('off', r?.status !== 'live');
+    $('livelbl').textContent = r ? (r.status === 'live' ? `Live · ${r.room} · ${n} rider${n > 1 ? 's' : ''}` : 'Reconnecting') : '';
+  }
+
+  feed(html, ms = 5000) {
+    const el = $('feed');
+    const d = document.createElement('div');
+    d.innerHTML = html;
+    el.appendChild(d);
+    while (el.children.length > 5) el.firstChild.remove();
+    setTimeout(() => { d.classList.add('out'); setTimeout(() => d.remove(), 500); }, ms);
+  }
+
+  showPlayers(on) {
+    const el = $('players');
+    el.classList.toggle('hidden', !on);
+    if (!on) return;
+    const rows = [{ name: this.nick + ' (you)', color: hex(this.jacket), score: this.sc?.score ?? 0 }, ...[...(this.room?.peers.values() ?? [])].map((p) => ({ name: p.name, color: p.color, score: p.score ?? 0 }))]
+      .sort((a, b) => b.score - a.score);
+    el.innerHTML = `<h4>${this.room ? `${MAP.name} · ${this.room.room}` : 'Solo'}</h4>` + rows.map((r) => `<div class="r"><i style="background:${r.color}"></i>${esc(r.name)}<b>${r.score.toLocaleString()}</b></div>`).join('');
   }
 
   showMenu() {
@@ -283,18 +458,20 @@ class Game {
     this.props.setRaceMode(false);
     const styles = [['expert', 5], ['carver', 9], ['cruiser', 8], ['beginner', 4], ['park', 6]];
     let n = 0;
-    for (const [style, count] of styles) for (let i = 0; i < count; i++) {
+    // fewer riders on the shorter parks
+    const crowd = Math.min(1, Math.max(0.35, MAP.km / 3.4));
+    for (const [style, all] of styles) for (let i = 0, count = Math.max(1, Math.round(all * crowd)); i < count; i++) {
       const s = this.addSkier({ outfit: randomOutfit(this.rnd), name: NAMES[n % NAMES.length] }, style);
       let z = 60 + this.rnd() * (FINISH_Z - 200);
-      if (style === 'park') z = 900 + this.rnd() * 450;
-      if (style === 'beginner') z = 2900 + this.rnd() * 400 - (i % 2) * 2600;
+      if (style === 'park' && PARK_ID === 'yard') z = 900 + this.rnd() * 450;
+      if (style === 'beginner') z = FINISH_Z * (0.85 - (i % 2) * 0.75) + this.rnd() * FINISH_Z * 0.1;
       const x = centerX(z) + (this.rnd() - 0.5) * halfWidth(z) * 1.4;
       s.place(x, z, null, s.ai.targetSpeed * 0.7);
       s.ai.lastZ = z;
       n++;
     }
     if (!menu) {
-      const p = this.addSkier({ outfit: { ...randomOutfit(this.rnd), jacket: this.jacket }, name: 'You', isPlayer: true, grip: 1.75, sidecut: 16 });
+      const p = this.addSkier({ outfit: this.outfit(), name: 'You', isPlayer: true, grip: 1.75, sidecut: 16 });
       p.place(centerX(START_Z), START_Z, null, 0);
       this.player = p;
       this.hookPlayer(p);
@@ -318,7 +495,7 @@ class Game {
       const s = this.addSkier({ outfit: randomOutfit(this.rnd), name: NAMES[n++ % NAMES.length] }, i < 2 ? 'cruiser' : 'carver');
       this.parkSpawn(s, 'middle', this.rnd() * 0.8);
     }
-    const p = this.addSkier({ outfit: { ...randomOutfit(this.rnd), jacket: this.jacket }, name: 'You', isPlayer: true, grip: 1.75, sidecut: 16 });
+    const p = this.addSkier({ outfit: this.outfit(), name: 'You', isPlayer: true, grip: 1.75, sidecut: 16 });
     this.player = p;
     this.hookPlayer(p);
     this.parkSpawn(p, 'gate', 0);
@@ -381,6 +558,7 @@ class Game {
     p.on('grindEnd', (g) => this.onPlayerGrind(g));
     p.on('railSwap', () => this.audio.beep(880, 0.05, 0.08));
     p.on('butter', (b) => this.onPlayerButter(b));
+    p.on('pop', (e) => { if (e.perfect) { this.status(e.late ? 'LATE POP' : 'PERFECT POP'); this.audio.beep(1500, 0.05, 0.1); } });
   }
 
   // ---------------- scoring ----------------
@@ -423,7 +601,7 @@ class Game {
   }
 
   // landing on snow banks the line
-  bank(name, sketchy, air) {
+  bank(name, sketchy, air, stomp = false) {
     const sc = this.sc;
     const mult = this.lineMult();
     let award = sc.pend * mult * (sketchy ? 0.5 : 1);
@@ -432,21 +610,25 @@ class Game {
     sc.pend = 0;
     if (total <= 0) return;
     sc.score += total; sc.clean++;
-    const title = name || (sketchy ? 'SKETCHY LANDING' : 'CLEAN LANDING');
+    const title = name || (sketchy ? 'SKETCHY LANDING' : stomp ? 'STOMPED' : 'CLEAN LANDING');
     if (total > sc.best.pts && name) sc.best = { pts: total, name };
     const prev = name && sc.names[sc.names.length - 1] === name ? sc.names.slice(0, -1) : sc.names.filter((x) => x !== name);
     const line = prev.length ? prev.join(' · ') + ' · ' : '';
     sc.names = [];
     const big = total > 6000 || mult >= 1.5;
+    this.replay?.mark(title);
+    if (this.room && total >= 1500) this.room.event({ type: 'trick', name: title, pts: total });
+    if (total >= 2500) this.tipUntil = this.time + 3.5;
     this.say(title, `+${total.toLocaleString()}${mult > 1 ? `<em>×${mult.toFixed(2).replace(/0$/, '')}</em>` : ''}`, sketchy ? 'sketchy' : line ? line.slice(0, -3) : '', big ? 'gold' : '');
-    this.status(sketchy ? 'SKETCHY' : 'CLEAN LANDING');
+    this.status(sketchy ? 'SKETCHY' : stomp ? 'STOMPED' : 'CLEAN LANDING');
     if (big) this.audio.chime();
   }
 
   onPlayerGrind(g) {
     const sc = this.sc;
     if (!sc || g.fell || g.t < 0.25) return;
-    let pts = 750 * g.t + 450 * g.swaps + (g.spinIn >= 180 ? 300 : 0);
+    // a press (skis crossed, Space held) pays a quarter more while it's held
+    let pts = 750 * g.t + 450 * g.swaps + (g.spinIn >= 180 ? 300 : 0) + 190 * Math.min(g.press, g.t);
     if (g.switchIn) pts *= 1.25;
     const name = `${g.spinIn >= 180 ? g.spinIn + ' on ' : ''}${g.switchIn && g.kind === '50-50' ? 'Switch 50-50' : g.kind}`;
     pts *= this.repeat(name + g.rail);
@@ -479,17 +661,23 @@ class Game {
     let pts = rot + 135 * t.air + 36 * Math.max(0, t.height);
     if (t.grabs.length) pts *= (1.25 + 0.25 * smoothstep(0.25, 1, t.grabs[0][1])) * (t.grabs.length > 1 ? 1.3 : 1);
     if (t.pipe) pts += Math.max(0, t.rise) * 90;
+    // stomped it: a landing that matched the slope pays 15% more
+    if (t.stomp) pts *= 1.15;
     const name = this.trickName(t);
     // riding off the end of a rail is part of the rail, not a feature of its own
     if (t.fromRail && !trick) { sc.pend += pts; this.bank(sc.names[sc.names.length - 1] ?? '', t.sketchy, t.air); return; }
     pts *= this.repeat(name || 'air');
     this.addFeature(pts, name);
-    this.bank(name, t.sketchy, t.air);
+    this.bank(name, t.sketchy, t.air, t.stomp);
   }
 
   // ---------------- modes ----------------
   start(mode) {
     if (mode === 'free') mode = 'run';
+    if (mode !== 'run' && PARK_ID !== 'yard') mode = 'run';
+    this.replay?.close();
+    this.replay?.reset();
+    if (this.who === 'multi') { this.joinRoom(); if (this.room) this.room.me.outfit = this.outfit(); }
     this.audio.start();
     this.mode = mode;
     $('menu').classList.add('hidden');
@@ -548,7 +736,7 @@ class Game {
     const pts = [];
     for (let z = START_Z; z <= FINISH_Z; z += 40) pts.push([centerX(z) - cx0, z]);
     for (const [x] of pts) mx = Math.max(mx, Math.abs(x));
-    const k = 16 / mx;
+    const k = 16 / Math.max(mx, 40);
     this.mm = { k, cx0 };
     const P = (x, z) => [(22 + x * k).toFixed(1), (4 + ((z - START_Z) / (FINISH_Z - START_Z)) * 120).toFixed(1)];
     const d = pts.map(([x, z], i) => (i ? 'L' : 'M') + P(x, z).join(' ')).join(' ');
@@ -569,10 +757,10 @@ class Game {
     const title = me === 1 ? 'VICTORY' : me <= 3 ? 'PODIUM' : 'FINISHED';
     $('rescard').innerHTML = `<h2>${title}</h2><p class="lead">You finished ${me}${ord(me)} of ${rs.length}${this.racers.find((r) => r.s === this.player).missed ? ', with ' + this.racers.find((r) => r.s === this.player).missed + ' missed gates' : ''}.</p>
       <table class="res">${rows}</table>
-      <div class="row"><button class="btn p" id="r-again">Race again</button><button class="btn" id="r-free">The Run</button><button class="btn" id="r-menu">Menu</button></div>`;
+      <div class="row"><button class="btn p" id="r-again">Race again</button><button class="btn" id="r-replay">Watch replay</button><button class="btn" id="r-menu">Menu</button></div>`;
     $('results').classList.remove('hidden');
     $('r-again').onclick = () => this.start('race');
-    $('r-free').onclick = () => this.start('run');
+    $('r-replay').onclick = () => { if (this.replay.open('all')) $('results').classList.add('hidden'); };
     $('r-menu').onclick = () => this.showMenu();
     const best = Number(store.get('best', '0'));
     const mine = this.racers.find((r) => r.s === this.player).finish;
@@ -582,9 +770,9 @@ class Game {
   finishRun() {
     this.state = 'results';
     const sc = this.sc;
-    const prev = Number(store.get('best.run', '0'));
+    const prev = Number(store.get('best.run.' + PARK_ID, '0'));
     const isBest = sc.score > prev;
-    if (isBest) store.set('best.run', sc.score);
+    if (isBest) store.set('best.run.' + PARK_ID, sc.score);
     $('rescard').innerHTML = `<h2>RUN COMPLETE</h2>
       <div class="bigscore">${sc.score.toLocaleString()}</div><p class="lead" style="margin-top:0">${isBest ? 'New best run.' : prev ? `Best ${prev.toLocaleString()}` : ''}</p>
       <div class="stats">
@@ -594,10 +782,10 @@ class Game {
         <div class="stat"><b>${sc.crashes}</b><span>Bails</span></div>
       </div>
       <p class="lead" style="margin-top:16px">Best trick <b style="color:var(--gold)">${sc.best.name}</b>${sc.best.pts ? ' · ' + sc.best.pts.toLocaleString() : ''}</p>
-      <div class="row"><button class="btn p" id="r-lift">Ride again</button><button class="btn" id="r-park">Ski Park</button><button class="btn" id="r-menu">Menu</button></div>`;
+      <div class="row"><button class="btn p" id="r-lift">Ride again</button><button class="btn" id="r-replay">Watch replay</button><button class="btn" id="r-menu">Menu</button></div>`;
     $('results').classList.remove('hidden');
     $('r-lift').onclick = () => this.start('run');
-    $('r-park').onclick = () => this.start('park');
+    $('r-replay').onclick = () => { if (this.replay.open('all')) $('results').classList.add('hidden'); };
     $('r-menu').onclick = () => this.showMenu();
   }
 
@@ -754,11 +942,28 @@ class Game {
     this.time += dt;
     this.trackFps(dtRaw);
     const inp = this.input;
+    // watching a replay: the world holds still
+    if (this.replay?.on) {
+      this.replay.keys(inp);
+      if (this.replay.on) { this.replay.update(dt); this.renderWorld(dt, true); inp.endFrame(); return; }
+    }
+    if (this.state !== 'menu' && this.player && !this.paused && inp.hit('KeyV') && this.replay.open('last')) { inp.endFrame(); return; }
+    // multiplayer: hold Tab for the room, T to chat
+    if (this.state !== 'menu') this.showPlayers(inp.down('Tab'));
+    if (this.room && this.state !== 'menu' && inp.hit('KeyT')) {
+      const box = $('chatbox'), el = $('chatin');
+      box.classList.remove('hidden'); el.value = ''; setTimeout(() => el.focus(), 0);
+      el.onkeydown = (e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') { const t = el.value.trim(); if (t) { this.room.event({ type: 'chat', text: t.slice(0, 80) }); this.feed(`<b>${esc(this.nick)}</b> ${esc(t)}`, 7000); } }
+        if (e.key === 'Enter' || e.key === 'Escape') { box.classList.add('hidden'); el.blur(); }
+      };
+    }
     if (inp.hit('Escape') || inp.hit('KeyP') || inp.padHit?.[9]) this.setPaused(!this.paused);
     if (inp.hit('KeyM')) { this.audio.setMuted(!this.audio.muted); store.set('muted', this.audio.muted ? '1' : '0'); }
     if (inp.hit('KeyC') || inp.padHit?.[12]) this.cycleCam();
     if (inp.hit('Enter') || inp.padHit?.[0]) {
-      if (this.state === 'menu') this.start(this.selMode);
+      if (this.state === 'menu') this.go();
       else if (this.state === 'results' && !$('results').classList.contains('hidden')) this.start(this.mode);
     }
 
@@ -810,14 +1015,22 @@ class Game {
       this.tracks.flush();
     }
 
-    // visuals
+    // the replay records what you ride
+    if (this.player && !this.paused && this.state !== 'menu' && this.state !== 'countdown') this.replay.record(dt, this.player);
+    this.renderWorld(dt, false);
+    inp.endFrame();
+  }
+
+  renderWorld(dt, replaying) {
     const cam = this.camera;
-    if (this.state === 'menu') { this.menuT = (this.menuT ?? 0) + dt; this.rig.menu(dt, this.menuT, this.skiers); }
+    if (replaying) { /* the replay placed the camera */ }
+    else if (this.state === 'menu') { this.menuT = (this.menuT ?? 0) + dt; this.rig.menu(dt, this.menuT, this.skiers); }
     else if (this.player) this.rig.update(dt, this.player);
     if (window.__freeCam) { const f = window.__freeCam; cam.position.set(...f.pos); cam.lookAt(...f.look); cam.fov = f.fov ?? 55; cam.updateProjectionMatrix(); }
-    for (const s of this.skiers) s.updateVisual(dt, cam.position);
+    if (!replaying) for (const s of this.skiers) s.updateVisual(dt, cam.position);
+    this.room?.update(dt, this.state === 'menu' || replaying ? null : this.player, cam.position);
     // never let another skier block the view of the player
-    if (this.player && this.state !== 'menu' && this.rig.mode !== 'tv') {
+    if (!replaying && this.player && this.state !== 'menu' && this.rig.mode !== 'tv') {
       const P = this.player.pos, C = cam.position;
       const dPC = C.distanceTo(P);
       for (const s of this.skiers) {
@@ -831,7 +1044,7 @@ class Game {
         }
       }
     }
-    if (!this.paused) {
+    if (!this.paused && !replaying) {
       this.spray(dt);
       this.particles.update(dt, this.sunLit);
       this.debris.update(dt);
@@ -841,19 +1054,20 @@ class Game {
     this.terrain.update(cam.position.x, cam.position.z, 4);
     this.forest.update(cam, this.time, this.env.sunDir);
     this.props.updateLift(this.time);
+    this.lights.update(cam, focus);
     this.cheerT = Math.max(0, (this.cheerT ?? 0) - dt);
     const nearFinish = smoothstep(260, 40, Math.abs(cam.position.z - FINISH_Z));
     this.props.cheer(this.time, this.cheerT > 0 ? 1 : 0);
     this.env.follow(focus, dt);
     this.audio.update(this.state === 'menu' ? null : this.player, nearFinish * (0.25 + (this.cheerT > 0 ? 0.75 : 0)));
-    if (this.state !== 'menu' && this.player) this.hud(dt);
-    const sp = this.player && this.state !== 'menu' ? this.player.speed : 0;
+    if (this.state !== 'menu' && this.player && !replaying) this.hud(dt);
+    const sp = replaying ? this.replay.ghost.speed : this.player && this.state !== 'menu' ? this.player.speed : 0;
     this.post.lens.uniforms.uSpeed.value = smoothstep(14, 40, sp) * (this.rig.mode === 'tv' ? 0 : 1);
     this.post.lens.uniforms.uFlash.value *= 0.9;
     cam.updateMatrixWorld();
     AG.uCamWorld.value.copy(cam.matrixWorld);
+    this.post.sun(cam, this.env.sunDir, PRESETS[this.tod].shafts ?? 0);
     this.post.render(dt);
-    inp.endFrame();
   }
 
   trackFps(dt) {
@@ -958,6 +1172,7 @@ class Game {
         }
       }
     }
+    if (!tip && this.time < (this.tipUntil ?? 0)) tip = 'V · instant replay';
     if (!tip && this.sc && this.time - (this.startAt ?? 0) < 10 && !document.body.classList.contains('touch')) tip = 'A/D spin · W/S flip · arrows roll · Shift/Q/E grab · hold Space, release to pop';
     const tp = $('tip');
     if (tip !== this.tipTxt) { this.tipTxt = tip; tp.textContent = tip; tp.classList.toggle('hidden', !tip); }
