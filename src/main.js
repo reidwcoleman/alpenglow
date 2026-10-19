@@ -1246,7 +1246,7 @@ class Game {
     const P = this.player;
     const air = !P.onGround && !P.grind && P.crash <= 0;
     const st = (this.cst ??= { buf: '', last: 0, down: {}, shown: 0 });
-    if (!air) { if (st.buf) { st.buf = ''; this.comboHud(); } return; }
+    if (!air) { st.fired = null; if (st.buf) { st.buf = ''; this.comboHud(); } return; }
     const now = this.time;
     for (const [k, code] of [['U', 'ArrowUp'], ['D', 'ArrowDown'], ['L', 'ArrowLeft'], ['R', 'ArrowRight']]) {
       const d = inp.down(code);
@@ -1264,23 +1264,30 @@ class Game {
     const st = this.cst;
     const exact = COMBOS.find((c) => c.seq === st.buf);
     const longer = COMBOS.some((c) => c.seq.length > st.buf.length && c.seq.startsWith(st.buf));
-    if (exact && !longer) this.comboFire(false);
-    else if (!exact && !longer) { this.status('NO SUCH COMBO'); st.buf = ''; this.comboHud(true); }
+    // a combo starts on the tap that makes it (no waiting to see if more are coming: that cost
+    // the air to finish it); another tap that makes a longer one upgrades it in the air
+    if (exact) this.comboFire(false, longer);
+    else if (!longer) { const had = !!st.fired; if (!had) this.status('NO SUCH COMBO'); st.buf = ''; st.fired = null; this.comboHud(!had); }
     else this.comboHud();
   }
 
-  comboFire(timeout) {
+  comboFire(timeout, keep = false) {
     const st = this.cst, P = this.player;
+    // (the pause after the taps: whatever they made has started already)
+    if (timeout && st.fired && st.fired === st.buf) { st.buf = ''; st.fired = null; this.comboHud(false, st.firedName); return; }
     const c = COMBOS.find((x) => x.seq === st.buf);
-    st.buf = '';
+    if (!keep) st.buf = '';
     if (!c) { this.comboHud(); return; }
     const spec = quickSpec(c.id), l = LESSON[c.id];
     const name = (this.gear === 'board' ? l?.board : l?.name)?.toUpperCase() ?? '';
     if (!spec) { this.comboHud(); return; }
-    if (P.auto || P.trickType) this.status('ONE AT A TIME');
+    const up = !!(st.fired && P.auto?.combo === st.fired && c.seq.startsWith(st.fired));
+    if ((P.auto || P.trickType) && !up) this.status('ONE AT A TIME');
     else if (P.flightTime() < (P.strict ? 0.12 : 0.45)) this.status('TOO LATE · ' + name);
     else {
-      P.auto = { ...spec, id: c.id, dir: c.dir ?? spec.dir };
+      // an upgrade carries on from where the first one started turning
+      P.auto = { ...spec, id: c.id, dir: c.dir ?? spec.dir, combo: c.seq, f0: up ? P.auto.plan?.f0 : undefined };
+      st.fired = keep ? c.seq : null; st.firedName = name;
       if (c.secret) this.status('SECRET COMBO · ' + name);
       this.audio.beep(1180, 0.05, 0.08);
     }

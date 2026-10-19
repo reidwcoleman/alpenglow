@@ -314,10 +314,12 @@ export class Park {
     };
     const zTop = PARK.top + 6;
     if (MAP.park) {
-    sign(centerX(zTop) - 28, zTop, 4.2, 2.1, signTexture(['JUMP LINE', 'S · M · L · XL']));
-    sign(centerX(zTop) + 26, zTop, 4.2, 2.1, signTexture(['RAILS', 'BOXES · DOWN · KINK']));
-    sign(centerX(zTop) - 58, zTop, 4.2, 2.1, signTexture(['ROLLERS', 'PUMP IT']));
-    sign(centerX(PIPE.z0 - 4) + PIPE.dx, PIPE.z0 - 4, 4.6, 2.3, signTexture(['HALFPIPE', '4.5 M WALLS']));
+    // (each beside the head of its line, never in it: riding straight down a line used to run
+    // you into its own sign)
+    sign(centerX(zTop) - 21, zTop, 4.2, 2.1, signTexture(['JUMP LINE', 'S · M · L · XL']));
+    sign(centerX(zTop) + 18.5, zTop, 4.2, 2.1, signTexture(['RAILS', 'BOXES · DOWN · KINK']));
+    sign(centerX(zTop) - 46.5, zTop, 4.2, 2.1, signTexture(['ROLLERS', 'PUMP IT']));
+    sign(centerX(PIPE.z0 - 4) + PIPE.dx - 15, PIPE.z0 - 4, 4.6, 2.3, signTexture(['HALFPIPE', '4.5 M WALLS']));
     }
     // zone boards down the run, at the edge of the piste on the side of the first feature
     // (never out in the middle where people ride)

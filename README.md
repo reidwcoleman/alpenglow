@@ -100,7 +100,7 @@ Riding backwards on skis the rider turns his shoulders and looks over one of the
 
 The letter keys work in both schemes. On a rail, A/D swap the slide a quarter turn and Space pops off. Touch controls appear on phones and tablets.
 
-Nothing lands it for you. A spin or flip turns while you hold it and stops (with a little run-on) when you let go; a combo turns at the body's own pace, whatever size you asked for. Come down more than about 35 degrees off straight (forwards or switch) or still turning over and you crash; a bit off is a sketchy landing. The computer riders still get a landing assist. The Tricks tab is a trick book that ticks off each family the first time you land it; new tricks call out "NEW TRICK" and count on the results card.
+A spin or flip turns while you hold it and carries on with its momentum when you let go, slowing (about a sixth of a turn more from full speed). A combo starts on the tap that makes it (another tap upgrades it in the air: LL is a 360, a third L makes it a 540) and turns faster when it has to, up to a limit, to come round before touchdown. In the last third of a second a trick that's nearly round (the skis within about 55 degrees of straight, a flip within about 80 of upright) is pulled in to land; further off than that and you crash (a bit off is a sketchy landing). The computer riders still get a landing assist. The Tricks tab is a trick book that ticks off each family the first time you land it; new tricks call out "NEW TRICK" and count on the results card.
 
 ## Boosts
 Land a trick clean and it boosts you out of it, more for bigger tricks (stomped: a bit more).
