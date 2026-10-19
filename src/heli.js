@@ -4,6 +4,8 @@
 // a beacon that flashes and a searchlight. A hoist on a boom over the right-hand door lets an
 // orange basket stretcher down on its cable. The rescue (rescue.js) flies it.
 import * as THREE from 'three';
+import { posedOne } from './people.js';
+import { avatarKits } from './avatar.js';
 
 function label(text, w, h, bg, fg) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
@@ -24,6 +26,53 @@ function crossTex() {
   return t;
 }
 
+// the panel lines, doors, hatches, rivets and grime over the paint (u along the body from the
+// nose, v round it from the top: a quarter round is the left side, three quarters the right)
+const ZN = 2.95, ZT = -6.6;
+function panelTex() {
+  const W = 2048, H = 1024, c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  const U = (z) => ((ZN - z) / (ZN - ZT)) * W, V = (v) => v * H;
+  g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, H);
+  // grime: a little darker underneath and along the boom
+  const belly = g.createLinearGradient(0, V(0.35), 0, V(0.5));
+  belly.addColorStop(0, 'rgba(0,0,0,0)'); belly.addColorStop(1, 'rgba(40,40,40,0.18)');
+  g.fillStyle = belly; g.fillRect(0, V(0.35), W, V(0.15));
+  const belly2 = g.createLinearGradient(0, V(0.5), 0, V(0.65));
+  belly2.addColorStop(0, 'rgba(40,40,40,0.18)'); belly2.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = belly2; g.fillRect(0, V(0.5), W, V(0.15));
+  // soot behind the exhausts, on top of the boom
+  for (const v of [0.02, 0.98]) {
+    const sg = g.createLinearGradient(U(-1.7), 0, U(-3.6), 0);
+    sg.addColorStop(0, 'rgba(30,26,24,0.55)'); sg.addColorStop(1, 'rgba(30,26,24,0)');
+    g.fillStyle = sg; g.fillRect(U(-1.7), V(v) - 70, U(-3.6) - U(-1.7), 140);
+  }
+  const line = (a = 0.4, w = 2.2) => { g.strokeStyle = `rgba(20,22,26,${a})`; g.lineWidth = w; };
+  // seams round the body
+  line();
+  for (const z of [2.42, 1.55, 0.78, -1.08, -1.92, -2.65, -3.6, -4.6, -5.6]) { g.beginPath(); g.moveTo(U(z), 0); g.lineTo(U(z), H); g.stroke(); }
+  // a seam along each side and down the spine of the boom
+  for (const v of [0.1, 0.9, 0.4, 0.6]) { g.beginPath(); g.moveTo(U(1.55), V(v)); g.lineTo(U(-6.4), V(v)); g.stroke(); }
+  // the doors on both sides: the pilots' doors and the big sliding doors
+  for (const sv of [0.25, 0.75]) {
+    line(0.55, 3);
+    g.beginPath(); g.roundRect(U(2.05), V(sv - 0.15), U(0.86) - U(2.05), V(0.29), 18); g.stroke();
+    g.beginPath(); g.roundRect(U(0.74), V(sv - 0.16), U(-1.04) - U(0.74), V(0.31), 14); g.stroke();
+    // handles and the slide rail's track
+    g.fillStyle = 'rgba(30,32,36,0.8)'; g.fillRect(U(0.98), V(sv + 0.02), 26, 8); g.fillRect(U(0.6), V(sv + 0.03), 30, 8);
+    // hatches and a step plate
+    line(0.35, 2);
+    for (const [z, dv, w, h] of [[-2.2, 0.05, 0.35, 0.06], [-3.0, -0.02, 0.5, 0.05], [-1.4, 0.12, 0.22, 0.05], [1.2, 0.16, 0.3, 0.04]]) g.strokeRect(U(z), V(sv + dv), U(z - w) - U(z), V(h));
+    // rivet rows along the seams
+    g.fillStyle = 'rgba(30,32,36,0.35)';
+    for (const z of [1.55, -1.08, -1.92]) for (let v = sv - 0.2; v < sv + 0.2; v += 0.012) { g.beginPath(); g.arc(U(z) + 7, V(v), 1.6, 0, 7); g.fill(); }
+  }
+  // fine noise so the paint isn't flat
+  for (let i = 0; i < 40000; i++) { const k = Math.random() < 0.5 ? 255 : 0; g.fillStyle = `rgba(${k},${k},${k},${Math.random() * 0.04})`; g.fillRect(Math.random() * W, Math.random() * H, 2, 2); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  return t;
+}
+
 // a body lofted through cross-sections { z, y, w, h, sq } (half width / height, sq: how square
 // the superellipse is, 2 = round). a0..a1 limits it to part of the way round (0 = the top,
 // clockwise seen from the front), z0..z1 to part of its length; scale puffs it out (for glass
@@ -41,8 +90,9 @@ function sectionAt(S, z) {
   }
   return S[S.length - 1];
 }
-function loft(S, { a0 = 0, a1 = Math.PI * 2, z0 = S[S.length - 1].z, z1 = S[0].z, scale = 1, nz = 48, na = 36, color = null, cap = false } = {}) {
-  const pos = [], col = [], idx = [];
+function loft(S, { a0 = 0, a1 = Math.PI * 2, z0 = S[S.length - 1].z, z1 = S[0].z, scale = 1, nz = 48, na = 36, color = null, cap = false, uv = false, skip = null } = {}) {
+  const pos = [], col = [], idx = [], uvs = [];
+  const zA = S[0].z, zB = S[S.length - 1].z;
   const c = new THREE.Color();
   for (let i = 0; i <= nz; i++) {
     const z = z1 - ((z1 - z0) * i) / nz;
@@ -51,26 +101,32 @@ function loft(S, { a0 = 0, a1 = Math.PI * 2, z0 = S[S.length - 1].z, z1 = S[0].z
       const a = a0 + ((a1 - a0) * j) / na;
       pos.push(superX(a, s.sq) * s.w * scale, s.y + superY(a, s.sq) * s.h * scale, z);
       if (color) { color(z, a, s, c); col.push(c.r, c.g, c.b); }
+      // (the livery's panel lines: along the body, and round it from the top)
+      if (uv) uvs.push((zA - z) / (zA - zB), (((a % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) / (Math.PI * 2));
     }
   }
   const row = na + 1;
   for (let i = 0; i < nz; i++) for (let j = 0; j < na; j++) {
     const p = i * row + j;
-    idx.push(p, p + row, p + 1, p + 1, p + row, p + row + 1);
+    // (left open where skip says: the doorway)
+    if (skip && skip(z1 - ((z1 - z0) * (i + 0.5)) / nz, a0 + ((a1 - a0) * (j + 0.5)) / na)) continue;
+    idx.push(p, p + 1, p + row, p + 1, p + row + 1, p + row);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   if (color) g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  if (uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   g.setIndex(idx);
   g.computeVertexNormals();
   return g;
 }
 
+const UPV = new THREE.Vector3(0, 1, 0);
 const tube = (pts, r, seg = 40) => new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), seg, r, 8, false);
 
 export class Helicopter {
   constructor(scene) {
-    const paint = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.32, metalness: 0.15, clearcoat: 0.45, clearcoatRoughness: 0.2, envMapIntensity: 0.7 });
+    const paint = new THREE.MeshPhysicalMaterial({ vertexColors: true, map: panelTex(), roughness: 0.32, metalness: 0.15, clearcoat: 0.45, clearcoatRoughness: 0.2, envMapIntensity: 0.7 });
     const red = new THREE.MeshPhysicalMaterial({ color: 0xc81d26, roughness: 0.3, metalness: 0.2, clearcoat: 0.8, clearcoatRoughness: 0.15 });
     const white = new THREE.MeshPhysicalMaterial({ color: 0xf2f3f5, roughness: 0.3, metalness: 0.1, clearcoat: 0.6, clearcoatRoughness: 0.15 });
     const dark = new THREE.MeshStandardMaterial({ color: 0x23262c, roughness: 0.5, metalness: 0.6 });
@@ -94,27 +150,39 @@ export class Helicopter {
       { z: -6.6, y: 2.3, w: 0.16, h: 0.22, sq: 2 },
     ];
     const RED = new THREE.Color(0xc81d26), WHITE = new THREE.Color(0xf2f3f5), YEL = new THREE.Color(0xffc21a), GREY = new THREE.Color(0x5c6068);
-    root.add(G(loft(S, {
-      nz: 90, na: 96,
-      color: (z, a, s, c) => {
+    // the right-hand door's opening (it slides back along the outside): dark inside
+    const inDoor = (z, a) => z > -1.0 && z < 0.7 && a > Math.PI * 2 - 2.2 && a < Math.PI * 2 - 0.9;
+    const livery = (z, a, s, c) => {
         const ly = Math.cos(a); // +1 top, -1 bottom
         if (z < -2.4) c.copy(z < -5.8 ? WHITE : RED);
         else if (ly < -0.82) c.copy(GREY); // the belly
         else if (ly < -0.05) c.copy(RED);
         else if (ly < 0.08 && z < 1.9) c.copy(YEL); // a yellow cheat line
         else c.copy(WHITE);
-      },
-    }), paint));
+      };
+    root.add(G(loft(S, { nz: 90, na: 96, uv: true, color: livery, skip: inDoor }), paint));
+    // the cabin's lining, seen through the doorway and the glass
+    root.add(G(loft(S, { z0: -1.95, z1: 2.7, scale: 0.975, nz: 30, na: 40 }), new THREE.MeshStandardMaterial({ color: 0x2b3038, roughness: 0.9, side: THREE.BackSide })));
     // the glass: a canopy wrapped round the nose, cabin windows, a sliding door's window
     root.add(G(loft(S, { a0: -2.05, a1: 2.05, z0: 1.05, z1: 2.72, scale: 1.025, nz: 28, na: 30 }), glass));
     for (const sd of [-1, 1]) {
-      root.add(G(loft(S, { a0: sd > 0 ? 0.95 : -1.75, a1: sd > 0 ? 1.75 : -0.95, z0: -0.75, z1: 0.65, scale: 1.025, nz: 10, na: 8 }), glass));
+      if (sd > 0) root.add(G(loft(S, { a0: 0.95, a1: 1.75, z0: -0.75, z1: 0.65, scale: 1.025, nz: 10, na: 8 }), glass));
       root.add(G(loft(S, { a0: sd > 0 ? 0.95 : -1.75, a1: sd > 0 ? 1.75 : -0.95, z0: -1.55, z1: -0.95, scale: 1.025, nz: 6, na: 8 }), glass));
       // the door rail
       root.add(G(new THREE.BoxGeometry(0.04, 0.04, 2.2), metalM, sd * 1.0, 2.55, -0.5));
       // a step
       root.add(G(new THREE.BoxGeometry(0.28, 0.04, 0.7), dark, sd * 1.1, 0.72, 0.2));
     }
+    // the sliding door on the hoist side: its own panel of the hull and window, open in the hover
+    this.door = new THREE.Group();
+    this.door.add(G(loft(S, { a0: -2.2, a1: -0.9, z0: -1.0, z1: 0.7, scale: 1.035, nz: 14, na: 14, uv: true, color: livery }), paint));
+    this.door.add(G(loft(S, { a0: -1.75, a1: -0.98, z0: -0.7, z1: 0.5, scale: 1.05, nz: 8, na: 8 }), glass));
+    root.add(this.door);
+    this.doorOpen = 0;
+    // inside: the cabin floor, a seat bench and a medical bag by the door
+    root.add(G(new THREE.BoxGeometry(1.3, 0.06, 2.0), dark, 0, 0.9, -0.2));
+    root.add(G(new THREE.BoxGeometry(1.2, 0.45, 0.5), new THREE.MeshStandardMaterial({ color: 0x2a3140, roughness: 0.8 }), 0, 1.15, -1.0));
+    root.add(G(new THREE.BoxGeometry(0.45, 0.3, 0.3), new THREE.MeshStandardMaterial({ color: 0xd8342c, roughness: 0.7 }), 0.3, 1.08, 0.35));
     // the frame bar down the middle of the windscreen
     root.add(G(new THREE.BoxGeometry(0.05, 0.04, 1.4).rotateX(-0.75), dark, 0, 2.28, 1.95));
     // the engine deck: cowlings, exhausts, intakes
@@ -144,6 +212,12 @@ export class Helicopter {
     this.rotor.position.set(0, 3.42, -0.25);
     this.rotor.add(G(new THREE.CylinderGeometry(0.3, 0.26, 0.18, 16), dark));
     this.rotor.add(G(new THREE.SphereGeometry(0.16, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), metalM, 0, 0.08, 0));
+    // the swashplate under the hub and its pitch links up to each blade's horn
+    this.rotor.add(G(new THREE.CylinderGeometry(0.24, 0.24, 0.05, 18), metalM, 0, -0.2, 0));
+    for (let i = 0; i < 4; i++) {
+      const a = (i * Math.PI) / 2 + 0.35;
+      this.rotor.add(G(new THREE.CylinderGeometry(0.015, 0.015, 0.22, 5), metalM, Math.cos(a) * 0.22, -0.08, -Math.sin(a) * 0.22));
+    }
     for (let i = 0; i < 4; i++) {
       const b = new THREE.BoxGeometry(5.0, 0.045, 0.32, 10, 1, 1);
       const p = b.attributes.position;
@@ -155,6 +229,8 @@ export class Helicopter {
       b.computeVertexNormals();
       b.translate(2.75, 0, 0);
       const m = G(b, dark);
+      // the blade's root: a cuff and grip on the hub
+      m.add(G(new THREE.BoxGeometry(0.42, 0.1, 0.2), metalM, 0.42, 0, 0));
       m.rotation.y = (i * Math.PI) / 2;
       this.rotor.add(m);
       // a yellow tip
@@ -186,8 +262,8 @@ export class Helicopter {
     const cross = crossTex();
     const reg = label('SL-RX1', 256, 64, null, '#ffffff');
     for (const s of [-1, 1]) {
-      const w = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 0.34), new THREE.MeshBasicMaterial({ map: word, transparent: true }));
-      w.position.set(s * 0.32, 2.15, -3.9); w.rotation.y = s * Math.PI / 2;
+      const w = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.28), new THREE.MeshBasicMaterial({ map: word, transparent: true }));
+      w.position.set(s * 0.302, 2.17, -4.3); w.rotation.y = s * (Math.PI / 2 + 0.06);
       root.add(w);
       const c = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.62), new THREE.MeshStandardMaterial({ map: cross, transparent: true, roughness: 0.4 }));
       c.position.set(s * 0.9, 2.05, -1.65); c.rotation.y = s * Math.PI / 2;
@@ -240,8 +316,41 @@ export class Helicopter {
   // the stretcher's bed, in the world
   bed(out) { return this.stretcher.localToWorld(out.set(0, 0.12, 0)); }
 
-  update(dt, rpm = 1) {
+  // the crew, once the people have loaded: the pilot up front in a white helmet, and the medic
+  // in the doorway (seen once the door slides open)
+  addCrew(outfit) {
+    if (this.crew || avatarKits.length < 2) return;
+    this.crew = true;
+    const helmet = new THREE.MeshPhysicalMaterial({ color: 0xf2f3f5, roughness: 0.25, clearcoat: 0.8 });
+    const visor = new THREE.MeshStandardMaterial({ color: 0x1a2230, roughness: 0.05, metalness: 0.8 });
+    const put = (kit, kind, o, at, yaw, lean) => {
+      const m = posedOne(kit, o, kind);
+      const pel = m.userData.pelvis;
+      m.geometry.translate(-pel.x, -pel.y, -pel.z);
+      m.geometry.rotateY(yaw);
+      m.geometry.translate(at.x, at.y, at.z);
+      m.castShadow = false;
+      this.group.add(m);
+      // a flight helmet over the head
+      const head = kit.bindP[kit.I('Bip01_Head')].clone().sub(pel);
+      head.applyAxisAngle(new THREE.Vector3(1, 0, 0), lean).applyAxisAngle(UPV, yaw).add(at);
+      const h = new THREE.Mesh(new THREE.SphereGeometry(0.135, 14, 10), helmet);
+      h.position.copy(head).add(new THREE.Vector3(0, 0.1, 0)); h.scale.set(1, 1.05, 1.12);
+      const v = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 6, -0.9, 1.8, 1.0, 0.7), visor);
+      v.rotation.y = yaw; v.position.copy(h.position);
+      this.group.add(h, v);
+    };
+    put(avatarKits[0], 'sit', { ...outfit, jacket: 0x1f2a3c, pants: 0x1f2a3c, jacket2: 0x1f2a3c, pants2: 0x1f2a3c, jpat: 0, ppat: 0 }, new THREE.Vector3(-0.36, 1.42, 1.15), 0, -0.12);
+    // the hoist operator sits in the doorway, legs out over the skid, watching the cable
+    put(avatarKits[1], 'sit', { ...outfit, jacket: 0xd8342c, pants: 0x2a2f3a, jacket2: 0xd8342c, pants2: 0x2a2f3a, jpat: 0, ppat: 0 }, new THREE.Vector3(-0.62, 1.1, -0.2), -Math.PI / 2, -0.12);
+  }
+
+  update(dt, rpm = 1, open = false) {
     this.t += dt;
+    // the sliding door rolls back along its rail for the hoist
+    this.doorOpen += ((open ? 1 : 0) - this.doorOpen) * Math.min(1, dt * 1.6);
+    const k = this.doorOpen * this.doorOpen * (3 - 2 * this.doorOpen);
+    this.door.position.set(-0.05 * Math.min(1, k * 4), 0, -1.55 * k);
     this.spin += dt * 38 * rpm;
     this.rotor.rotation.y = this.spin;
     this.tailRotor.rotation.x = this.spin * 4;

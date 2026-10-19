@@ -15,6 +15,13 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 }
 
+extension UIFont {
+    func italic() -> UIFont {
+        guard let d = fontDescriptor.withSymbolicTraits([.traitItalic, .traitBold]) else { return self }
+        return UIFont(descriptor: d, size: pointSize)
+    }
+}
+
 final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
@@ -52,11 +59,21 @@ final class BundleSchemeHandler: NSObject, WKURLSchemeHandler {
     func webView(_ webView: WKWebView, stop task: WKURLSchemeTask) {}
 }
 
+// the page tells the app when its own loading screen is up (so the native splash can go)
+final class PageMessages: NSObject, WKScriptMessageHandler {
+    var onLoading: (() -> Void)?
+    func userContentController(_ c: WKUserContentController, didReceive message: WKScriptMessage) {
+        if message.body as? String == "loading" { onLoading?() }
+    }
+}
+
 final class GameViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
     private static let live = URL(string: "https://reidwcoleman.github.io/alpenglow/?app=1")!
     private static let offline = URL(string: "\(BundleSchemeHandler.scheme)://app/index.html?app=1")!
     private var web: WKWebView!
     private var usingOffline = false
+    private var splash: UIView?
+    private let messages = PageMessages()
     override var prefersStatusBarHidden: Bool { true }
     override var prefersHomeIndicatorAutoHidden: Bool { true }
     override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge { .all }
@@ -70,6 +87,8 @@ final class GameViewController: UIViewController, WKNavigationDelegate, WKUIDele
         cfg.allowsInlineMediaPlayback = true
         cfg.mediaTypesRequiringUserActionForPlayback = []
         cfg.websiteDataStore = .default()
+        cfg.userContentController.add(messages, name: "shredline")
+        messages.onLoading = { [weak self] in self?.hideSplash() }
         web = WKWebView(frame: view.bounds, configuration: cfg)
         web.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         web.scrollView.isScrollEnabled = false
@@ -84,7 +103,55 @@ final class GameViewController: UIViewController, WKNavigationDelegate, WKUIDele
         if #available(iOS 16.4, *) { web.isInspectable = true }
         #endif
         view.addSubview(web)
+        showSplash()
         web.load(URLRequest(url: Self.live, cachePolicy: .useProtocolCachePolicy, timeoutInterval: 12))
+    }
+
+    // the same picture and name the page's loading screen opens with, from the bundled copy,
+    // up from the first frame until the page has painted its own
+    private func showSplash() {
+        let v = UIView(frame: view.bounds)
+        v.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        v.backgroundColor = view.backgroundColor
+        let art = Bundle.main.resourceURL!.appendingPathComponent("Web/art/yard.webp")
+        if let img = UIImage(contentsOfFile: art.path) {
+            let iv = UIImageView(image: img)
+            iv.frame = v.bounds; iv.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            iv.contentMode = .scaleAspectFill; iv.clipsToBounds = true
+            v.addSubview(iv)
+            let shade = CAGradientLayer()
+            shade.frame = CGRect(x: 0, y: 0, width: max(view.bounds.width, view.bounds.height), height: max(view.bounds.width, view.bounds.height))
+            shade.colors = [UIColor(white: 0.03, alpha: 0.55).cgColor, UIColor(white: 0.03, alpha: 0.05).cgColor, UIColor(white: 0.03, alpha: 0.85).cgColor]
+            shade.locations = [0, 0.4, 1]
+            iv.layer.addSublayer(shade)
+        }
+        let title = UILabel()
+        title.text = "SHREDLINE"
+        title.font = UIFont.systemFont(ofSize: 56, weight: .black).italic()
+        title.textColor = .white
+        title.layer.shadowColor = UIColor.black.cgColor; title.layer.shadowOpacity = 0.35; title.layer.shadowRadius = 10; title.layer.shadowOffset = .zero
+        title.translatesAutoresizingMaskIntoConstraints = false
+        v.addSubview(title)
+        let spin = UIActivityIndicatorView(style: .medium)
+        spin.color = .white; spin.startAnimating()
+        spin.translatesAutoresizingMaskIntoConstraints = false
+        v.addSubview(spin)
+        NSLayoutConstraint.activate([
+            title.leadingAnchor.constraint(equalTo: v.safeAreaLayoutGuide.leadingAnchor, constant: 28),
+            title.topAnchor.constraint(equalTo: v.safeAreaLayoutGuide.topAnchor, constant: 20),
+            spin.trailingAnchor.constraint(equalTo: v.safeAreaLayoutGuide.trailingAnchor, constant: -28),
+            spin.bottomAnchor.constraint(equalTo: v.safeAreaLayoutGuide.bottomAnchor, constant: -22),
+        ])
+        view.addSubview(v)
+        splash = v
+        // (never longer than this, whatever the page does)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in self?.hideSplash() }
+    }
+
+    private func hideSplash() {
+        guard let v = splash else { return }
+        splash = nil
+        UIView.animate(withDuration: 0.35, delay: 0.1, options: [.curveEaseOut], animations: { v.alpha = 0 }, completion: { _ in v.removeFromSuperview() })
     }
 
     private func goOffline() {

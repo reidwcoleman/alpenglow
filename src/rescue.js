@@ -24,6 +24,7 @@ export class Rescue {
   // the player has gone down hard and isn't getting up
   start(p) {
     const g = this.g;
+    this.heli.addCrew(p.model.outfit);
     this.active = true; this.p = p;
     this.phase = 'down'; this.t = 0; this.T = 0;
     this.prevState = g.state;
@@ -52,7 +53,17 @@ export class Rescue {
     if (!this.active) return;
     const g = this.g, p = this.p, H = this.heli;
     this.t += dt; this.T += dt;
-    if (H.group.visible) H.update(dt, this.phase === 'hospital' ? Math.max(0.15, 1 - this.t * 0.25) : 1);
+    if (H.group.visible) H.update(dt, this.phase === 'hospital' ? Math.max(0.15, 1 - this.t * 0.25) : 1, ['lower', 'load', 'winch'].includes(this.phase) || (this.phase === 'inbound' && this.t > 4.5));
+    // the downwash: snow blown out from under it when it's low over the slope
+    if (H.group.visible && ['inbound', 'lower', 'load', 'winch', 'away'].includes(this.phase)) {
+      const hp = H.group.position, gy = heightAt(hp.x, hp.z), alt = hp.y - gy;
+      const k = Math.max(0, 1 - alt / 34) * (this.phase === 'away' ? Math.max(0, 1 - this.t / 2) : 1);
+      for (let i = 0, n = Math.round(k * 8); i < n; i++) {
+        const a = Math.random() * Math.PI * 2, r = 2 + Math.random() * 9 * k, v = 5 + Math.random() * 7;
+        const x = hp.x + Math.cos(a) * r, z = hp.z + Math.sin(a) * r;
+        g.particles.emit(x, heightAt(x, z) + 0.2, z, Math.cos(a) * v, 1 + Math.random() * 2.5, Math.sin(a) * v, 1.5, 0.9 + Math.random() * 0.8, 1.6, 1);
+      }
+    }
     // its sound: by how near it is
     g.audio.rotor(H.group.visible && this.phase !== 'hospital' && this.phase !== 'lift' ? Math.max(0, 1 - g.camera.position.distanceTo(H.group.position) / 420) : 0);
     const site = this.site;
@@ -232,6 +243,8 @@ export class Rescue {
     if (!this.chair) {
       this.chair = new THREE.Mesh(props.chairGeo, props.vc);
       this.chair.castShadow = true;
+      // its bubble, up
+      this.chair.add(new THREE.Mesh(props.bubbleMesh.geometry, props.bubbleMesh.material));
       g.scene.add(this.chair);
     }
     if (this.seat) g.scene.remove(this.seat);

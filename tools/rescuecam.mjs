@@ -26,11 +26,13 @@ if (cam) {
   await page.evaluate(([c, rel, what]) => {
     const g = window.__game, r = g.rescue;
     const base = what === 'lift' ? r.chair.position : what === 'heli' ? r.heli.group.position : g.props.hospital.door;
-    const add = (a) => (rel === '1' ? [a[0] + base.x, a[1] + base.y, a[2] + base.z] : a);
+    // (round the helicopter the offsets are in its own frame: +z its nose, +x its left)
+    const add = (a) => (what === 'heli' && rel === '1' ? r.heli.group.localToWorld(new base.constructor(...a)).toArray() : rel === '1' ? [a[0] + base.x, a[1] + base.y, a[2] + base.z] : a);
     window.__freeCam = { pos: add(c.pos), look: add(c.look), fov: c.fov ?? 50 };
   }, [c, rel, what]);
   await page.waitForTimeout(600);
 }
+if (process.env.CLEAN !== '0') await page.evaluate(() => { for (const id of ['dest', 'rescue']) document.getElementById(id)?.classList.add('hidden'); });
 await page.screenshot({ path: out, quality: 80 });
 console.log('saved', out);
 await browser.close();

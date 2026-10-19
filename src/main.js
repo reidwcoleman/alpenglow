@@ -16,6 +16,7 @@ import { FarRiders } from './farriders.js';
 import { batchStatic } from './batch.js';
 import { QUALITY_NAME } from './gfx.js';
 import { Pool } from './pool.js';
+import { paintTextures } from './proctex.js';
 import { AIController } from './ai.js';
 import { randomOutfit } from './skiermodel.js';
 import { Input } from './input.js';
@@ -209,6 +210,8 @@ class Game {
       this.terrain.update(this.camera.position.x, this.camera.position.z, 1e9);
       this.forest.update(this.camera, 0, this.env.sunDir);
       await this.renderer.compileAsync(scene, this.camera).catch(() => this.renderer.compile(scene, this.camera));
+      // the buildings' painted stone, timber and concrete (proctex.js)
+      await paintTextures(nextFrame);
       // and every texture up to the GPU a few at a time (the first frame would otherwise do the
       // lot at once, a second or more of nothing on a phone)
       await this.uploadTextures();
@@ -250,6 +253,8 @@ class Game {
     window.__lift = this.props.liftPoints;
     window.__ready = true;
     this.cloud.start();
+    // keep the game on the device for next time (sw.js; the published site only)
+    if (import.meta.env.PROD && 'serviceWorker' in navigator) setTimeout(() => navigator.serviceWorker.register(BASE + 'sw.js').catch(() => {}), 3000);
   }
 
   async uploadTextures() {
@@ -1715,7 +1720,7 @@ class Game {
     this.forest.update(cam, this.time, this.env.sunDir);
     this.props.updateLift(this.time, cam.position);
     this.props.updatePeople(cam.position);
-    this.props.updateNets(dt);
+    this.props.updateNets(dt, cam.position);
     this.smash.update(dt);
     this.lights.update(cam, focus);
     this.cheerT = Math.max(0, (this.cheerT ?? 0) - dt);

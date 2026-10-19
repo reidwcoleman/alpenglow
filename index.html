@@ -757,7 +757,9 @@
       if (bar) { bar.style.width = (shown * 100).toFixed(2) + '%'; rider.style.left = (shown * 100).toFixed(2) + '%'; pct.textContent = Math.round(shown * 100) + '%'; }
       if (shown < target) raf = requestAnimationFrame(step);
     }
-    document.addEventListener('DOMContentLoaded', function () {
+    // (called straight after the loading screen's markup, before the game's code has even
+    // arrived, so the park's picture and a tip are up at once)
+    window.__paintLoading = function () {
       var l = document.getElementById('loading');
       l.style.setProperty('--art', 'url(art/' + id + '.webp)');
       document.getElementById('loadpark').textContent = names[id];
@@ -769,7 +771,9 @@
         tip.classList.add('fade');
         setTimeout(function () { put(); tip.classList.remove('fade'); }, 350);
       }, 3200);
-    });
+      // the iPhone app's own splash can go now
+      try { window.webkit.messageHandlers.shredline.postMessage('loading'); } catch (e) {}
+    };
   })();
 </script>
 
@@ -789,6 +793,7 @@
     <div class="row"><div class="msg" id="loadmsg">Shaping the mountain…</div><div class="pct" id="loadpct">0%</div></div>
   </div>
 </div>
+<script>window.__paintLoading();</script>
 
 <div id="menu" class="hidden">
   <div class="m-bg"></div>
