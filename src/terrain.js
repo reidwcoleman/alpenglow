@@ -80,6 +80,7 @@ export function makeSnowMaterial(env) {
         vPiste = aPiste; vIce = aIce;`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
+        #define OLD_LAYERS ${LO ? 2 : 3}
         uniform sampler2D uNoise; uniform vec3 uSunDir; uniform vec3 uSunCol;
         uniform sampler2D uSnowC, uSnowN, uSnowR, uRockC, uRockN, uRockR; uniform vec3 uCond;
         varying vec3 vWPos; varying vec3 vWNrm; varying float vPiste; varying float vIce;
@@ -87,6 +88,38 @@ export function makeSnowMaterial(env) {
         float pk() { return vPiste * (1.0 - uCond.x * 0.85); }
         float hash12(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
         float gRock; float gSnowRough; float gRockRough; vec2 gSnowUv1; vec2 gSnowUv2; float gSnowMix; vec3 gTriW;
+        float gOld; float gOldG;
+        // the lines earlier riders left: in lanes down the fall line, each a pair of carved
+        // grooves (or one wide one) swinging through its turns, broken where it was skied over.
+        // Returns the groove (0..1) in x and its slope across in y.
+        vec2 oldTracks(vec2 wp, float dens, float px) {
+          vec2 acc = vec2(0.0);
+          for (int i = 0; i < OLD_LAYERS; i++) {
+            float fi = float(i);
+            float lane = 6.5 + fi * 2.9;
+            vec2 q = wp + vec2(fi * 3.7, fi * 37.0);
+            float cell = floor(q.x / lane);
+            float r = hash12(vec2(cell, fi * 7.1));
+            if (r > dens) continue;
+            float r2 = hash12(vec2(cell + 3.3, fi)), r3 = hash12(vec2(cell, fi + 9.9));
+            float wl = 11.0 + r2 * 17.0, amp = (0.8 + r3 * 2.2) * (lane * 0.18), ph = r * 40.0;
+            float a = q.y * 6.2832 / wl + ph;
+            float cx = (cell + 0.5) * lane + sin(a) * amp;
+            float sl = cos(a) * amp * 6.2832 / wl;
+            float d = (q.x - cx) / sqrt(1.0 + sl * sl);
+            // the line comes and goes: skied over, filled in
+            float on = smoothstep(0.35, 0.6, texture2D(uNoise, vec2(q.y * 0.004 + cell * 0.37, fi * 0.3 + cell * 0.11)).r);
+            if (on < 0.01) continue;
+            // (a pixel wider than a groove: its average instead of a shimmer)
+            float w = max(0.024, px * 0.7);
+            float k = 0.024 / w;
+            float g1 = exp(-pow((d - 0.1) / w, 2.0)), g2 = exp(-pow((d + 0.1) / w, 2.0));
+            float gg = (g1 + g2) * k * on;
+            float dg = (-2.0 * (d - 0.1) / (w * w) * g1 - 2.0 * (d + 0.1) / (w * w) * g2) * k * on;
+            acc += vec2(gg, dg);
+          }
+          return acc;
+        }
         mat2 rot2(float a) { float c = cos(a), s = sin(a); return mat2(c, -s, s, c); }`)
       .replace('#include <color_fragment>', `#include <color_fragment>
         {
@@ -137,6 +170,15 @@ export function makeSnowMaterial(env) {
           float ribFade = 1.0 - smoothstep(0.12, 0.45, fwidth(rib) / 6.2832);
           snow *= 1.0 + smoothstep(0.8, 1.0, pk()) * ribFade * 0.028 * sin(rib) * (0.7 + 0.3 * nM.b);
           gSnowRough = mix(texture2D(uSnowR, gSnowUv1).g, texture2D(uSnowR, gSnowUv2).g, gSnowMix);
+          // earlier riders' lines (more on the piste, fewer under fresh snow; the ice is scraped bare)
+          gOld = 0.0; gOldG = 0.0;
+          if (dist < 110.0) {
+            float px = length(fwidth(wp));
+            vec2 ot = oldTracks(wp, mix(0.3, 0.62, vPiste) * (1.0 - uCond.x * 0.55), px);
+            float fo = (1.0 - smoothstep(55.0, 110.0, dist)) * (1.0 - gRock) * (1.0 - vIce);
+            gOld = clamp(ot.x, 0.0, 1.0) * fo; gOldG = ot.y * fo;
+            snow *= 1.0 - gOld * 0.16;
+          }
           // scanned rock, triplanar so cliffs don't smear
           vec3 rock = vec3(0.2);
           gRockRough = 0.8;
@@ -191,6 +233,8 @@ export function makeSnowMaterial(env) {
           }
           g *= 1.0 - gRock;
           g *= 1.0 - vIce * 0.85;
+          // the old grooves' walls
+          g.x += clamp(gOldG * 0.012, -0.5, 0.5);
           nW = normalize(nW + vec3(g.x, 0.0, g.y) * 1.6);
           if (gRock > 0.01) {
             vec3 q = vWPos / 9.0;

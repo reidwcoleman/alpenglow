@@ -29,6 +29,52 @@ const frag = /* glsl */`
     #include <fog_fragment>
   }`;
 
+// spray: two kinds of snow in every throw. Grains (a crust's crystals and clumps) fly on
+// their own ballistic arcs, fall fast and glint; the mist (the fine powder) hangs, spreads and
+// drifts down slowly. Both are lit by the sun as little spheres.
+const sprayVert = /* glsl */`
+  attribute float aSize; attribute float aAlpha; attribute float aSeed;
+  varying float vAlpha; varying float vSeed;
+  uniform float uScale;
+  #include <fog_pars_vertex>
+  void main() {
+    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    gl_Position = projectionMatrix * mvPosition;
+    gl_PointSize = aSize * uScale / max(0.1, -mvPosition.z);
+    vAlpha = aAlpha; vSeed = aSeed;
+    #include <fog_vertex>
+  }`;
+const sprayFrag = /* glsl */`
+  uniform vec3 uColor; uniform vec3 uSunV; uniform float uTime;
+  varying float vAlpha; varying float vSeed;
+  #include <fog_pars_fragment>
+  void main() {
+    vec2 c = (gl_PointCoord - 0.5) * 2.0;
+    float r2 = dot(c, c);
+    if (r2 > 1.0) discard;
+    vec3 n = vec3(c.x, -c.y, sqrt(1.0 - r2));
+    float ndl = max(dot(n, uSunV), 0.0);
+    vec3 col; float a;
+    if (vSeed < 0.45) {
+      // a grain: crisp, round, sunlit on one side, blue in its own shade
+      a = smoothstep(1.0, 0.7, r2);
+      col = uColor * (0.55 + 0.75 * ndl) + vec3(0.02, 0.035, 0.07) * (1.0 - ndl);
+      // now and then one catches the sun
+      float tw = fract(vSeed * 91.7 + uTime * (2.0 + vSeed * 9.0));
+      col += uColor * smoothstep(0.93, 1.0, tw) * 2.5 * ndl;
+    } else {
+      // the mist: soft, barely shaded
+      a = (1.0 - r2); a *= a;
+      col = uColor * (0.85 + 0.25 * ndl);
+    }
+    gl_FragColor = vec4(col, a * vAlpha);
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
+    #include <fog_fragment>
+  }`;
+
+const _sv = new THREE.Vector3();
+
 export class Particles {
   constructor(scene, max = 9000) {
     this.max = max;
@@ -39,6 +85,8 @@ export class Particles {
     this.size = new Float32Array(max);
     this.base = new Float32Array(max);
     this.alpha = new Float32Array(max);
+    this.seed = new Float32Array(max);
+    for (let i = 0; i < max; i++) this.seed[i] = Math.random();
     const g = new THREE.BufferGeometry();
     this.aP = new THREE.BufferAttribute(this.p, 3).setUsage(THREE.DynamicDrawUsage);
     this.aS = new THREE.BufferAttribute(this.size, 1).setUsage(THREE.DynamicDrawUsage);
@@ -46,12 +94,15 @@ export class Particles {
     g.setAttribute('position', this.aP);
     g.setAttribute('aSize', this.aS);
     g.setAttribute('aAlpha', this.aA);
+    g.setAttribute('aSeed', new THREE.BufferAttribute(this.seed, 1));
     this.uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
       uColor: { value: new THREE.Color(1, 1, 1) },
       uScale: { value: 600 },
+      uSunV: { value: new THREE.Vector3(0, 1, 0) },
+      uTime: { value: 0 },
     }]);
     this.mat = new THREE.ShaderMaterial({
-      uniforms: this.uniforms, vertexShader: vert, fragmentShader: frag,
+      uniforms: this.uniforms, vertexShader: sprayVert, fragmentShader: sprayFrag,
       transparent: true, depthWrite: false, fog: true,
     });
     this.points = new THREE.Points(g, this.mat);
@@ -66,35 +117,49 @@ export class Particles {
     for (let k = 0; k < n; k++) {
       const i = this.cursor;
       this.cursor = (this.cursor + 1) % this.max;
+      const grain = this.seed[i] < 0.45;
       this.p[i * 3] = x + (Math.random() - 0.5) * 0.3;
       this.p[i * 3 + 1] = y + Math.random() * 0.15;
       this.p[i * 3 + 2] = z + (Math.random() - 0.5) * 0.3;
-      this.v[i * 3] = vx + (Math.random() - 0.5) * spread;
-      this.v[i * 3 + 1] = vy + Math.random() * spread * 0.7;
-      this.v[i * 3 + 2] = vz + (Math.random() - 0.5) * spread;
-      this.life[i] = life * (0.6 + Math.random() * 0.6);
+      // grains leave faster and stay together; the mist puffs out wider
+      const sp = grain ? spread * 0.75 : spread;
+      const kick = grain ? 1.15 : 0.9;
+      this.v[i * 3] = vx * kick + (Math.random() - 0.5) * sp;
+      this.v[i * 3 + 1] = vy * kick + Math.random() * sp * 0.7;
+      this.v[i * 3 + 2] = vz * kick + (Math.random() - 0.5) * sp;
+      this.life[i] = life * (0.6 + Math.random() * 0.6) * (grain ? 0.8 : 1.15);
       this.age[i] = 0;
-      this.base[i] = size * (0.5 + Math.random());
+      this.base[i] = size * (0.5 + Math.random()) * (grain ? 0.055 + Math.random() * 0.05 : 1);
     }
   }
 
-  update(dt, sunLit) {
+  update(dt, sunLit, sunDir, camera) {
     this.uniforms.uColor.value.copy(sunLit);
+    this.uniforms.uTime.value += dt;
+    if (sunDir && camera) this.uniforms.uSunV.value.copy(_sv.copy(sunDir).transformDirection(camera.matrixWorldInverse));
+    // grains: little drag, real gravity; the mist: heavy drag, sinks slowly
+    const dG = Math.exp(-0.7 * dt), dM = Math.exp(-2.8 * dt);
     for (let i = 0; i < this.max; i++) {
       if (this.age[i] >= this.life[i]) { this.alpha[i] = 0; continue; }
       this.age[i] += dt;
       const t = this.age[i] / this.life[i];
       const k = i * 3;
-      // light powder: strong drag, mild gravity
-      const drag = Math.exp(-2.4 * dt);
+      const grain = this.seed[i] < 0.45;
+      const drag = grain ? dG : dM;
       this.v[k] *= drag; this.v[k + 2] *= drag;
-      this.v[k + 1] = this.v[k + 1] * drag - 4.5 * dt;
+      this.v[k + 1] = this.v[k + 1] * drag - (grain ? 9.0 : 2.4) * dt;
       this.p[k] += this.v[k] * dt; this.p[k + 1] += this.v[k + 1] * dt; this.p[k + 2] += this.v[k + 2] * dt;
-      this.size[i] = this.base[i] * (0.6 + t * 1.6);
-      this.alpha[i] = (1 - t) * Math.min(1, t * 8) * 0.42;
-      if ((i & 7) === 0) {
+      if (grain) {
+        this.size[i] = this.base[i];
+        this.alpha[i] = (1 - t * t) * Math.min(1, t * 12) * 0.85;
+      } else {
+        this.size[i] = this.base[i] * (0.6 + t * 1.9);
+        this.alpha[i] = (1 - t) * Math.min(1, t * 8) * 0.36;
+      }
+      if ((i & 7) === 0 || (grain && (i & 1) === 0)) {
         const gy = heightAt(this.p[k], this.p[k + 2]);
-        if (this.p[k + 1] < gy) { this.p[k + 1] = gy; this.v[k + 1] = 0; }
+        // grains land and lie there a moment; the mist settles on the snow
+        if (this.p[k + 1] < gy) { this.p[k + 1] = gy; this.v[k + 1] = 0; if (grain) { this.v[k] *= 0.3; this.v[k + 2] *= 0.3; this.age[i] = Math.max(this.age[i], this.life[i] * 0.8); } }
       }
     }
     this.aP.needsUpdate = true; this.aS.needsUpdate = true; this.aA.needsUpdate = true;

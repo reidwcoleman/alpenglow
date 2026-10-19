@@ -155,10 +155,12 @@ class Game {
     await this.park.build();
     this.lights = new Floodlights(scene, this.quality);
     this.tracks = new Tracks(scene);
+    // (your own line keeps a ring of its own, so it stays down the hill behind you)
+    this.myTracks = new Tracks(scene, 16000);
     this.particles = new Particles(scene);
     this.snowfall = new Snowfall(scene);
     this.debris = new Debris(scene);
-    this.world = { scene, forest: this.forest, tracks: this.tracks, particles: this.particles, race: false, raceStarted: false, skiers: this.skiers, arcade: true, glades: !!MAP.glades,
+    this.world = { scene, forest: this.forest, tracks: this.tracks, myTracks: this.myTracks, particles: this.particles, race: false, raceStarted: false, skiers: this.skiers, arcade: true, glades: !!MAP.glades,
       smash: this.smash, netHit: (s, z, pen) => this.props.netHit(s, z, pen) };
     // a pole or a sign goes down: a knock, a puff of snow (and a jolt if it was you)
     this.injuries = new Injuries(scene);
@@ -1678,7 +1680,7 @@ class Game {
         const allIn = this.racers.every((r) => r.finish != null);
         if (allIn || this.time - this.playerFinishAt > 12) { this.playerFinishAt = null; this.finishRace(); }
       }
-      this.tracks.flush();
+      this.tracks.flush(); this.myTracks.flush();
     }
 
     // the replay records what you ride
@@ -1718,7 +1720,7 @@ class Game {
     }
     if (!this.paused && !replaying) {
       this.spray(dt);
-      this.particles.update(dt, this.sunLit);
+      this.particles.update(dt, this.sunLit, this.env.sunDir, this.camera);
       this.debris.update(dt);
       this.snowfall.update(dt, cam.position);
     }

@@ -86,7 +86,8 @@ export class Skier {
     this.jumpCharge = 0;
     this.time = Math.random() * 10;
     this.listeners = {};
-    this.trackSlot = world.tracks ? world.tracks.alloc() : null;
+    const T = this.isPlayer && world.myTracks ? world.myTracks : world.tracks;
+    this.trackSlot = T ? T.alloc() : null;
     this.maxAirY = 0;
     this.grind = null; this.grindCool = 0;
     this.pipeAir = false; this.takeoffY = 0; this.maxY = 0; this.takeoffSwitch = false;
@@ -306,7 +307,9 @@ export class Skier {
       const scrub = 0.9 * GRAV * 0.55 * (1 - ice * 0.5 + powder * 0.4);
       if (sp > 0.01) v.multiplyScalar(Math.max(0, sp - skid * scrub * dt) / sp);
     }
-    this.skid = this.skid * 0.85 + (skid + c.brake * Math.min(speed, 12) * 0.25) * 0.15;
+    // (a crooked landing skids out for a moment)
+    this.landSkid = Math.max(0, (this.landSkid ?? 0) - dt * 6);
+    this.skid = this.skid * 0.85 + (skid + this.landSkid + c.brake * Math.min(speed, 12) * 0.25) * 0.15;
     this.scrape = this.scrape * 0.9 + ice * Math.min(1, this.skid / 1.5 + e * speed / 40) * 0.1;
     // going backwards: the computer riders turn round; the player can ride it out switch
     if (vLong0 < -1 && !this.canSwitch) this.heading += wrapAngle(Math.atan2(v.x, v.z) - this.heading) * dt * 2;
@@ -397,9 +400,11 @@ export class Skier {
 
     // ski tracks
     this.trackDist += speed * dt;
-    if (this.trackSlot && this.trackDist > 0.45) {
+    if (this.trackSlot && this.trackDist > (this.isPlayer ? 0.3 : 0.45)) {
       this.trackDist = 0;
-      this.trackSlot.add(this.pos, this.forward(_t), n, this.skid, powder);
+      // (how far the skis are turned across the way they're going: a skid's smear is that wide)
+      const slip = speed > 1 ? wrapAngle(this.heading + this.skidYaw - Math.atan2(v.x, v.z)) : 0;
+      this.trackSlot.add(this.pos, this.forward(_t), n, this.skid, powder, this.board, Math.abs(slip) > Math.PI / 2 ? Math.PI - Math.abs(slip) : slip);
     }
     this.stuck = speed < 0.6 ? this.stuck + dt : 0;
     if (this.switchStance && (this.switchT += dt) > 4) this.switchStance = false;
@@ -557,10 +562,10 @@ export class Skier {
     const off = Math.min(mis, Math.PI - mis);
     let crash, sketchy = false;
     if (this.strict) {
-      // the player: come down more than ~50 degrees off either way, or still well into a flip,
+      // the player: come down more than ~65 degrees off either way, or still well into a flip,
       // and he goes down
-      crash = big && (pErr > 0.95 || off > 0.9 || vn > 24);
-      sketchy = !crash && big && (off > 0.42 || pErr > 0.45);
+      crash = big && (pErr > 1.25 || off > 1.15 || vn > 24);
+      sketchy = !crash && big && (off > 0.55 || pErr > 0.6);
     } else if (arc) {
       // forgiving: a bit sideways still rides away, just sketchy
       crash = big && (pErr > 1.15 || off > 1.25 || vn > 26);
@@ -574,8 +579,17 @@ export class Skier {
     // skis that come down backwards ride away backwards (the computer riders turn straight round)
     const back = switchOut && this.canSwitch;
     if (!crash && switchOut && !back) { this.heading += Math.PI; this.avgHeading = this.heading; }
-    // ride away straight: the skis snap onto the line of travel
-    if (!crash && arc) { this.heading = hor + (back ? Math.PI : 0); this.avgHeading = this.heading; }
+    // ride away straight: the skis come onto the line of travel, but a crooked landing skids
+    // round to it (the skis swing through what's left, scrubbing speed and throwing snow)
+    if (!crash && arc) {
+      const rel = wrapAngle(this.heading + this.skidYaw - hor - (back ? Math.PI : 0));
+      this.heading = hor + (back ? Math.PI : 0); this.avgHeading = this.heading;
+      if (Math.abs(rel) > 0.1) {
+        this.skidYaw = rel;
+        this.landSkid = Math.min(4, Math.abs(rel) * v.length() * 0.35);
+        v.multiplyScalar(1 - Math.min(0.15, Math.abs(Math.sin(rel)) * 0.2));
+      }
+    }
     if (!crash) { this.switchStance = switchOut; this.switchT = 0; }
     // a snowboarder who lands a half turn rides away the other foot forward
     if (!crash && this.board && switchOut) this.boardSwitch = !this.boardSwitch;
@@ -602,7 +616,11 @@ export class Skier {
     // the legs soak it up: a spring that dips and comes back
     this.springV -= Math.min(vn, 14) * 0.16;
     if (!crash) { this.pitch = 0; this.spin = 0; this.flipAcc = 0; this.trickType = null; }
-    if (this.trackSlot) this.trackSlot.break();
+    if (this.trackSlot) {
+      this.trackSlot.break();
+      // the skis slap a dent into the landing (the harder, the deeper and longer)
+      if (this.airTime > 0.25 && vn > 1.5) this.trackSlot.dent(this.pos, v, n, this.board ? 0.4 : 0.36, 0.9 + Math.min(vn, 14) * 0.06, 0.4 + Math.min(vn, 12) / 14);
+    }
     // how hard: on the head (upside down) is what really hurts
     const hit = vn + (pErr > 2.2 ? v.length() * 0.5 : pErr > 1.6 ? v.length() * 0.3 : 0);
     if (crash) this.startCrash('landing', hit); else this.emit('land', trick);
@@ -651,29 +669,40 @@ export class Skier {
     this.tLand = t;
   }
 
-  // The player's near misses: in the last third of a second, a trick that's nearly round (the
-  // skis within ~55 degrees of straight, the flip within ~80 of upright) is pulled in to land.
+  // The player's near misses: in the last half second, a trick that's nearly round (the skis
+  // within ~85 degrees of straight, the flip within ~155 of upright) is pulled in to land.
   // Further off than that nothing saves it.
   landMagnet(dt) {
     if (this.airTime < 0.2 || this.pipeAir) { this.magnet = null; return; }
     this.probeLand(dt);
-    if (this.tLand > 0.32) { this.magnet = null; return; }
+    if (this.tLand > 0.45) { this.magnet = null; return; }
     const hor = Math.atan2(this.vel.x, this.vel.z);
-    if (this.magnet == null) {
+    // (a combo can still be upgraded by another tap: follow what it's aiming for now)
+    if (this.magnet == null || (this.auto?.plan && this.assist)) {
       const f = (this.heading - hor) / Math.PI;
       // (a combo aims for the trick it was asked for; otherwise the nearest clean landing)
       const spin = this.auto?.plan && this.assist ? this.assist.spin : Math.round(f);
-      const pitch = this.trickType ? (this.auto?.plan && this.assist?.pitch != null ? this.assist.pitch : Math.round(this.pitch / TAU) * TAU) : null;
-      const ok = Math.abs((spin - f) * Math.PI) < 0.95 && (pitch == null || Math.abs(pitch - this.pitch) < 1.4);
+      let pitch = null, reach = 2.75;
+      if (this.trickType) {
+        if (this.auto?.plan && this.assist?.pitch != null) pitch = this.assist.pitch;
+        else {
+          // halfway round or so, it goes on round the way it's turning rather than back
+          const near = Math.round(this.pitch / TAU) * TAU;
+          const ahead = (this.flipDir > 0 ? Math.ceil(this.pitch / TAU) : Math.floor(this.pitch / TAU)) * TAU;
+          const dA = Math.abs(ahead - this.pitch), dN = Math.abs(near - this.pitch);
+          if (dA < 3.6 && dA <= dN + 0.8) { pitch = ahead; reach = 3.6; } else pitch = near;
+        }
+      }
+      const ok = Math.abs((spin - f) * Math.PI) < 1.5 && (pitch == null || Math.abs(pitch - this.pitch) < reach);
       this.magnet = ok ? { spin, pitch } : false;
     }
     const m = this.magnet;
     if (!m) return;
     const k = Math.min(1, dt / Math.max(this.tLand - 0.03, dt * 1.5));
-    const dS = clamp((m.spin * Math.PI + hor - this.heading) * k, -12 * dt, 12 * dt);
+    const dS = clamp((m.spin * Math.PI + hor - this.heading) * k, -16 * dt, 16 * dt);
     this.heading += dS; this.spin += dS; this.spinVel = dS / dt;
     if (m.pitch != null) {
-      const dP = clamp((m.pitch - this.pitch) * k, -12 * dt, 12 * dt);
+      const dP = clamp((m.pitch - this.pitch) * k, -16 * dt, 16 * dt);
       this.pitch += dP; this.flipAcc += dP; this.flipVel = 0;
     }
   }
@@ -724,12 +753,12 @@ export class Skier {
       // the body turns at its own pace: done before touchdown, or a crash
       // (it turns faster when it has to, up to a limit, to come round before touchdown)
       const left = Math.max(0.1, tl - 0.18);
-      const sr = Math.min(11, Math.max(7.4 * (A.grab ? 1.12 : 1) * (this.popped ? 1.06 : 1), Math.abs(a.spin * Math.PI + hor - this.heading) / left));
+      const sr = Math.min(13, Math.max(7.4 * (A.grab ? 1.12 : 1) * (this.popped ? 1.06 : 1), Math.abs(a.spin * Math.PI + hor - this.heading) / left));
       const dS = clamp(a.spin * Math.PI + hor - this.heading, -sr * dt, sr * dt);
       this.heading += dS; this.spin += dS; this.spinVel = dS / dt;
       if (a.pitch != null) {
         const fr = TRICKS[this.trickType]?.rate ?? 5.6;
-        const pr = Math.min(fr * 1.5, Math.max(fr * (this.perfectPop ? 1.08 : 1) * (A.grab ? 1.12 : 1), Math.abs(a.pitch - this.pitch) / left));
+        const pr = Math.min(fr * 1.8, Math.max(fr * (this.perfectPop ? 1.08 : 1) * (A.grab ? 1.12 : 1), Math.abs(a.pitch - this.pitch) / left));
         const dP = clamp(a.pitch - this.pitch, -pr * dt, pr * dt);
         this.pitch += dP; this.flipAcc += dP;
       }
@@ -833,7 +862,10 @@ export class Skier {
       // (a rider who falls at speed keeps sliding: he's back up while still moving)
       const mu = (this.crashPhase === 'tumble' ? 0.42 : 0.6) + this.surf.powder * 0.25 - this.surf.ice * 0.15;
       if (sp > 0.01) v.multiplyScalar(Math.max(0, sp - (mu * GRAV * n.y + 0.035 * sp * sp) * dt) / sp);
-    }
+      // the body ploughs a trench down the snow
+      this.trackDist += sp * dt;
+      if (this.trackSlot && sp > 0.6 && this.trackDist > 0.35) { this.trackDist = 0; this.trackSlot.add(this.pos, _t.copy(v).normalize(), n, 2, 1); }
+    } else if (this.trackSlot?.last) this.trackSlot.break();
     const sp = v.length();
     if (this.crashPhase === 'tumble') {
       this.tumble += this.tumbleRate * dt;
@@ -844,6 +876,7 @@ export class Skier {
         if (sp > 4 && this.pos.y <= gy + 0.05) {
           v.y += 0.8 + Math.min(sp, 30) * 0.07;
           this.emit('tumbleHit', { speed: sp });
+          this.trackSlot?.dent(this.pos, v, n, 0.55, 1.2, 1);
         }
       }
       this.cartAngle += this.cartwheel * dt;
@@ -1181,7 +1214,7 @@ export class Skier {
       if (!BLOB.tex) {
         const c = document.createElement('canvas'); c.width = c.height = 64;
         const g = c.getContext('2d'), r = g.createRadialGradient(32, 32, 2, 32, 32, 31);
-        r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(0.45, 'rgba(255,255,255,0.55)'); r.addColorStop(1, 'rgba(255,255,255,0)');
+        r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(0.3, 'rgba(255,255,255,0.6)'); r.addColorStop(0.65, 'rgba(255,255,255,0.15)'); r.addColorStop(1, 'rgba(255,255,255,0)');
         g.fillStyle = r; g.fillRect(0, 0, 64, 64);
         BLOB.tex = new THREE.CanvasTexture(c);
         BLOB.geo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
@@ -1198,8 +1231,9 @@ export class Skier {
     b.position.set(this.pos.x, gy + 0.03, this.pos.z);
     b.quaternion.setFromUnitVectors(UP, _bn).multiply(_bq.setFromAxisAngle(UP, this.heading));
     const lying = this.crash > 0 ? 1 : 0;
-    b.scale.set(0.95 + h * 0.5 + lying * 0.6, 1, (this.board ? 1.5 : 1.9) + h * 0.5 + lying * 0.2);
-    b.material.opacity = 0.32 * Math.max(0, 1 - h / 3);
+    // (just the contact darkening under the skis: the sun casts the real shadow)
+    b.scale.set(0.6 + h * 0.4 + lying * 0.7, 1, (this.board ? 1.3 : 1.75) + h * 0.4 + lying * 0.3);
+    b.material.opacity = 0.26 * Math.max(0, 1 - h / 2);
   }
 
   dispose() {

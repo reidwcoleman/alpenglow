@@ -38,6 +38,8 @@ Pick one on the illustrated map (Ride > the park card), by day or by night. Each
 
 Every part of every run has its name and difficulty sprayed on the snow where it starts, on the trail signs at its edges and in the corner of the HUD as you ride in.
 
+Every rider leaves tracks, lit like the snow round them: carved turns leave two sharp grooves with a lip of pushed-up snow (one wide one for a board), skids a scraped glossy smear with a berm thrown to the outside, powder a deep trench, landings a slapped dent and falls a crater and a trench down the hill. Your own line keeps a ring of its own so it stays behind you; old track fades as it's reused. The pistes already carry the lines of earlier riders (fewer under fresh snow). Spray is two kinds of snow: grains that fly on their own arcs, glint and land, and a fine mist that hangs and drifts down. (`node tools/behind.mjs out.jpg [z] [wait]` looks back up the hill at your tracks.)
+
 ## Modes
 - **The Run**: top to bottom with a timer, score, minimap and a results card. Hold R for 2 s to restart.
 - **Ski Park** (The Yard): laps of the terrain park. L picks a line, and holding R takes you to the top of yours.
@@ -100,7 +102,7 @@ Riding backwards on skis the rider turns his shoulders and looks over one of the
 
 The letter keys work in both schemes. On a rail, A/D swap the slide a quarter turn and Space pops off. Touch controls appear on phones and tablets.
 
-A spin or flip turns while you hold it and carries on with its momentum when you let go, slowing (about a sixth of a turn more from full speed). A combo starts on the tap that makes it (another tap upgrades it in the air: LL is a 360, a third L makes it a 540) and turns faster when it has to, up to a limit, to come round before touchdown. In the last third of a second a trick that's nearly round (the skis within about 55 degrees of straight, a flip within about 80 of upright) is pulled in to land; further off than that and you crash (a bit off is a sketchy landing). The computer riders still get a landing assist. The Tricks tab is a trick book that ticks off each family the first time you land it; new tricks call out "NEW TRICK" and count on the results card.
+A spin or flip turns while you hold it and carries on with its momentum when you let go, slowing (about a sixth of a turn more from full speed). A combo starts on the tap that makes it (another tap upgrades it in the air: LL is a 360, a third L makes it a 540) and turns faster when it has to, up to a limit, to come round before touchdown. In the last half second a trick that's nearly round (the skis within about 85 degrees of straight, a flip within about 155 of upright) is pulled in to land; further off than that and you crash (a bit off is a sketchy landing, and a crooked one skids round to the line, throwing snow). The computer riders still get a landing assist. The Tricks tab is a trick book that ticks off each family the first time you land it; new tricks call out "NEW TRICK" and count on the results card.
 
 ## Boosts
 Land a trick clean and it boosts you out of it, more for bigger tricks (stomped: a bit more).
