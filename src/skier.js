@@ -2,6 +2,10 @@
 // air drag (upright vs tuck), edge grip that bends the velocity through a
 // carve and turns into a speed-scrubbing skid past its limit, ballistic
 // airtime off any crest or kicker, and crashes on bad landings or impacts.
+// The player's skis carve the sidecut's arc while the snow holds it (pressure
+// building through the turn, a little rebound out of it) and slip into a skid
+// past it; the load on them follows the terrain's curve (rollers unweight, dips
+// press). tools/groundbench.mjs measures it all without a browser.
 import * as THREE from 'three';
 import { heightAt, normalAt, centerX, halfWidth, centerSlope, surfaceAt, RAILS, railAt, PIPE, pipeWalls, FINISH_Z, JUMPS } from './course.js';
 import { SkierModel, BOARD_NAME } from './skiermodel.js';
@@ -222,6 +226,27 @@ export class Skier {
       this.surf.powder = powder; this.surf.ice = ice;
     }
 
+    // the player rides the full carve / skid model below; the computer riders keep the simpler
+    // one their lines are tuned on
+    const P = this.isPlayer;
+    // --- the load on the skis: the snow's curve along the way they're going. A hollow presses
+    // the legs (more grip, more friction), a crest or a roller unweights them (light, loose skis)
+    const hs = Math.hypot(v.x, v.z);
+    let load = Math.max(n.y, 0.2);
+    if (P && hs > 2) {
+      const L = 1.4, ux = v.x / hs, uz = v.z / hs, x = this.pos.x, z = this.pos.z;
+      const ha = heightAt(x + ux * L, z + uz * L), hb = heightAt(x - ux * L, z - uz * L), h0 = heightAt(x, z);
+      const s1 = (ha - hb) / (2 * L);
+      const kap = (ha + hb - 2 * h0) / (L * L) / Math.pow(1 + s1 * s1, 1.5);
+      load += (speed * speed * kap) / GRAV;
+    }
+    // (the legs soak up the sharpest of it)
+    this.load = (this.load ?? 1) + (clamp(load, 0.1, 3.2) - (this.load ?? 1)) * Math.min(1, dt * 7);
+    const N = P ? GRAV * Math.max(this.load, 0.1) : GRAV * Math.max(n.y, 0.2);
+    // (the edges' hold follows the load, but the legs keep the skis on the snow over a crest and
+    // stiffen against a compression: it doesn't swing all the way with it)
+    const Ng = P ? GRAV * clamp(this.load, 0.45, 1.7) : N;
+
     // --- edging: skis roll onto edge progressively, release quicker ---
     const edgeT = clamp(c.steer, -1, 1) * EDGE_MAX * (1 - c.brake * 0.5);
     const rolling = Math.abs(edgeT) > Math.abs(this.edge) && Math.sign(edgeT) === Math.sign(this.edge || edgeT);
@@ -229,12 +254,51 @@ export class Skier {
     this.edge += clamp(edgeT - this.edge, -rate * dt, rate * dt);
     const e = Math.abs(this.edge);
     // carved arc from the sidecut (R = Rsc / tan(edge)); rotary pivot when slow
+    // (in powder the skis sink and can't bend into as clean an arc)
     const carveRate = (speed * Math.tan(Math.min(e, 1.2))) / this.sidecut * (1 - powder * 0.35);
     const pivot = 2.3 * (1 - smoothstep(0, 10, speed)) * Math.abs(c.steer);
     const dir = Math.sign(this.edge || c.steer);
-    // (never turning the skis faster than the edges can bend the line: a clean carve, no skid)
-    const carveCap = c.brake > 0.05 || !this.isPlayer ? 99 : (this.grip * GRAV * 0.95) / Math.max(speed, 1);
-    this.heading += -dir * Math.max(Math.min(carveRate, carveCap), pivot) * (1 - c.brake * 0.3) * dt;
+    // what the snow will hold: peak grip in g, on the edge you've got, under the load there is
+    // (ice lets go, powder is soft, a bent and pressured ski bites harder)
+    const edgeHold = 0.3 + 0.7 * smoothstep(0.03, 0.55, e); // flat skis drift
+    this.press = this.press ?? 0;
+    let maxGrip = this.grip * Ng * edgeHold * (1 - ice * 0.55) * (1 - powder * 0.2) * (1 - c.brake * 0.6) * (W?.grip ?? 1) * (1 + (P ? 0.15 * this.press : 0));
+    // a board holds a little less on its heel edge (regular stance: steering left)
+    if (this.board && this.edge < 0) maxGrip *= 0.93;
+    let slipT = 0;
+    if (!P || c.brake > 0.05) {
+      // braking (or a computer rider): the skis pivot as far as asked and skid round
+      this.heading += -dir * Math.max(carveRate, pivot) * (1 - c.brake * 0.3) * dt;
+    } else {
+      // Carve or skid. The edge asks for the sidecut's arc (a = v^2 / R); the rider tips only as
+      // far as he can balance (~1.2x the corduroy's grip). If the snow holds what's asked, the
+      // skis run clean in their own groove; if not, they slip: the line bends only as hard as the
+      // grip allows and the skis pivot past it into a skid, which scrubs speed (F sin slip)
+      const aDem = speed * carveRate;
+      // (fast, the hard turn asks more than the edges hold: they wash out a little and scrub it off)
+      const r = Math.min(aDem, this.grip * Ng * (1.2 + 0.6 * smoothstep(17, 30, speed))) / Math.max(maxGrip, 0.1);
+      slipT = r > 1 ? 0.42 * (1 - Math.exp(-(r - 1) * 1.2)) : 0;
+      const hv = Math.atan2(v.x, v.z);
+      // (riding switch the tails lead: the slip is measured from the other way)
+      const ref = Math.abs(wrapAngle(this.heading - hv)) > Math.PI / 2 ? hv + Math.PI : hv;
+      const slip = wrapAngle(this.heading - ref);
+      const tsg = -dir;
+      const wTurn = Math.min(aDem, maxGrip * Math.cos(slipT)) / Math.max(speed, 1);
+      // (how much the rider is steering the skis' angle to the line: only on an edge, and moving)
+      // (a butter pivots the skis on purpose: leave them be)
+      const ctrl = this.butter ? 0 : smoothstep(0.05, 0.4, e) * smoothstep(1.5, 4, speed);
+      const want = tsg * wTurn * dt + (tsg * slipT - slip) * Math.min(1, dt * 7) * ctrl;
+      const piv = tsg * pivot * dt;
+      this.heading += Math.abs(piv) > Math.abs(want) ? piv : want;
+      // catching an edge: sliding well sideways and rolling onto the downhill edge, it bites and
+      // throws you forward over the skis (a stumble, not a fall)
+      this.catchCool = Math.max(0, (this.catchCool ?? 0) - dt);
+      if (ctrl > 0.5 && speed > 10 && Math.abs(slip) > 0.3 && e > 0.45 && Math.sign(this.edge) === Math.sign(slip) && !this.catchCool) {
+        this.catchCool = 1.5; this.flailT = Math.max(this.flailT, 0.45);
+        v.multiplyScalar(0.95); this.springV -= 1.2;
+        this.emit('edgeCatch', { speed });
+      }
+    }
     this.avgHeading += wrapAngle(this.heading - this.avgHeading) * Math.min(1, dt / 1.1);
     // in the pipe the skis go where the speed goes: up a wall, over, and back down
     const inPipe = pipeAt(this.pos.x, this.pos.z);
@@ -248,7 +312,6 @@ export class Skier {
     const side = _s.crossVectors(n, f).normalize(); // skier's left
     // --- forces ---
     _a.set(0, -GRAV, 0);
-    const N = GRAV * Math.max(n.y, 0.2);
     if (speed > 0.05) {
       // groomed ~0.045, ice glides, powder bogs down until the skis plane
       // (you ride on fast wax off-piste and in the parks: speed comes easily; the computer
@@ -273,19 +336,17 @@ export class Skier {
       const stroke = 0.55 + 0.9 * Math.max(0, Math.sin(this.skatePhase * 2));
       _a.addScaledVector(f, (this.isPlayer ? 3.8 : 2.5) * (1 - vLong0 / skMax) * stroke);
     }
-    // hockey stop / snowplough (weaker on ice)
+    // hockey stop / snowplough: the skis thrown across, the edges scraping. Sideways friction on
+    // corduroy is ~0.6 g; ice gives far less, powder and slush pile up against the skis
     if (c.brake > 0 && speed > 0.1) {
-      const b = c.brake * (0.55 * N + 0.004 * speed * speed) * (1 - ice * 0.45);
+      const b = P ? c.brake * (((this.board ? 0.48 : 0.64) + powder * 0.25 + (W?.wet ?? 0) * 0.1) * N + 0.0025 * speed * speed) * (1 - ice * 0.75)
+        : c.brake * (0.55 * N + 0.004 * speed * speed) * (1 - ice * 0.45);
       _a.addScaledVector(v, -Math.min(b, speed / dt) / speed);
     }
     v.addScaledVector(_a, dt);
 
     // --- edge grip: bend velocity toward the ski, skid when it can't ---
     const vLat = v.dot(side);
-    const edgeHold = 0.3 + 0.7 * smoothstep(0.03, 0.55, e); // flat skis drift
-    let maxGrip = this.grip * N * edgeHold * (1 - ice * 0.55) * (1 - powder * 0.2) * (1 - c.brake * 0.6) * (W?.grip ?? 1);
-    // a board holds a little less on its heel edge (regular stance: steering left)
-    if (this.board && this.edge < 0) maxGrip *= 0.93;
     if (onWall) {
       maxGrip *= 0.12; // on a wall: let it fall back down
       // and riders pump the transition on the way down
@@ -295,21 +356,56 @@ export class Skier {
     const applied = clamp(need, -maxGrip, maxGrip);
     const sp0 = v.length();
     v.addScaledVector(side, applied * dt);
-    // carving turns your speed, it doesn't take it away: the edge bends the line, and only
-    // braking (or a real skid off the edges) costs speed
-    if (this.isPlayer && c.brake < 0.05 && !onWall && sp0 > 0.5) v.multiplyScalar(sp0 / Math.max(1e-3, v.length()));
     const rem = Math.abs(vLat + applied * dt);
+    // carving turns your speed, it doesn't take it away: the edge bends the line. A skid's
+    // grip pushes across skis that point off the line, so part of it pushes back against the
+    // way you're going (F sin slip): that's what a skid costs
+    // (thrown sideways to stop, the brake below does the stopping: on ice it hardly can)
+    if (P && !onWall && sp0 > 0.5) {
+      // (a butter's pivot is a press, not a skid: it has its own drag)
+      const kS = this.butter ? 0 : c.brake > 0.05 ? 0.5 * (1 - ice * 0.7) : 1;
+      const keep = Math.max(0, sp0 - Math.abs(applied) * Math.min(1, Math.abs(vLat) / sp0) * (rem > 0.02 ? kS : 0) * dt);
+      v.multiplyScalar(keep / Math.max(1e-3, v.length()));
+    }
     this.latAcc = this.latAcc * 0.8 + applied * 0.2;
     // skidding scrubs speed (little on ice, a lot in powder)
-    const skid = Math.min(rem, 6) * (onWall ? 0.08 : inPipe !== null ? 0.35 : 1) * (c.brake > 0.05 || !this.isPlayer ? 1 : 0.25);
-    if (skid > 0.05) {
+    let skid;
+    if (P && c.brake < 0.05) {
+      // (the player's skid has paid its F sin slip already: what's left is the snow the skis
+      // shove sideways, a lot of it in powder and slush)
+      skid = Math.min(rem, 6) * (onWall ? 0.08 : inPipe !== null ? 0.35 : 1);
+      const plough = this.butter ? 0 : skid * (0.12 * (1 - ice * 0.7) + powder * 0.9 + (W?.wet ?? 0) * 0.15);
       const sp = v.length();
-      const scrub = 0.9 * GRAV * 0.55 * (1 - ice * 0.5 + powder * 0.4);
-      if (sp > 0.01) v.multiplyScalar(Math.max(0, sp - skid * scrub * dt) / sp);
+      if (plough > 0.01 && sp > 0.01) v.multiplyScalar(Math.max(0, sp - plough * dt) / sp);
+    } else {
+      skid = Math.min(rem, 6) * (onWall ? 0.08 : inPipe !== null ? 0.35 : 1) * (c.brake > 0.05 && P ? 0.15 : 1);
+      if (skid > 0.05) {
+        const sp = v.length();
+        const scrub = 0.9 * GRAV * 0.55 * (1 - ice * 0.5 + powder * 0.4);
+        if (sp > 0.01) v.multiplyScalar(Math.max(0, sp - skid * scrub * dt) / sp);
+      }
+    }
+    if (P) {
+      // pressure builds through a clean carve (the ski bends deeper into its groove and bites
+      // harder) and is lost in a skid; let it go at the transition and the ski's rebound and the
+      // legs' pump send you out of the turn a touch quicker
+      const clean = c.brake < 0.05 && e > 0.3 && speed > 6 ? Math.min(1, e / 0.8) * (1 - smoothstep(0.05, 0.16, slipT)) : 0;
+      this.press += (clean - this.press) * Math.min(1, dt * (clean > this.press ? 1.6 : 4));
+      this.pressPeak = Math.max(this.pressPeak ?? 0, this.press);
+      const es = e > 0.15 ? Math.sign(this.edge) : 0;
+      if (es && es !== this.edgeSide) {
+        if (this.edgeSide && this.pressPeak > 0.35 && speed > 5 && speed < 30 && !onWall) {
+          v.addScaledVector(f, 0.7 * this.pressPeak * (1 - smoothstep(20, 30, speed)));
+          this.springV += 0.6 * this.pressPeak; // the unweighting at the cross-over
+        }
+        this.edgeSide = es; this.pressPeak = 0;
+      }
     }
     // (a crooked landing skids out for a moment)
     this.landSkid = Math.max(0, (this.landSkid ?? 0) - dt * 6);
-    this.skid = this.skid * 0.85 + (skid + this.landSkid + c.brake * Math.min(speed, 12) * 0.25) * 0.15;
+    // (how much the skis are sliding: the spray, the smear and the scraping sound)
+    const skidVis = P ? (c.brake > 0.05 ? skid / 0.15 : skid * 0.45) : skid;
+    this.skid = this.skid * 0.85 + (skidVis + this.landSkid + c.brake * Math.min(speed, 12) * 0.25) * 0.15;
     this.scrape = this.scrape * 0.9 + ice * Math.min(1, this.skid / 1.5 + e * speed / 40) * 0.1;
     // going backwards: the computer riders turn round; the player can ride it out switch
     if (vLong0 < -1 && !this.canSwitch) this.heading += wrapAngle(Math.atan2(v.x, v.z) - this.heading) * dt * 2;
@@ -381,6 +477,8 @@ export class Skier {
       const vn = v.dot(n);
       if (vn < 0) { v.addScaledVector(n, -vn); gInst = n.y + -vn / dt / GRAV; }
       else gInst = n.y - Math.min(0.6, below * 0); // light over crests
+      // (the player feels the snow's curve ahead of time: light over a roller, pressed in a dip)
+      if (P) gInst = vn < 0 ? Math.max(gInst, this.load) : this.load;
     }
     this.gload += (clamp(gInst, 0, 4) - this.gload) * Math.min(1, dt * 9);
 
@@ -1184,7 +1282,8 @@ export class Skier {
       lean: crashed ? 0 : 0.85 * Math.tanh(this.lean / 0.85),
       angulate: this.board ? 0.55 : 0.7,
       // the skis speeding up under him (+) or checked (-): the upper body rocks with it
-      fore: crashed || !this.onGround ? 0 : clamp(this.accelS ?? 0, -6, 6) / 6,
+      // (deep and slow in powder he sits back a little to keep the tips up)
+      fore: crashed || !this.onGround ? 0 : clamp(this.accelS ?? 0, -6, 6) / 6 - this.surf.powder * 0.25 * (1 - smoothstep(6, 16, sp)),
       crouch: clamp(crouch, 0, 1),
       tuck: crashed || (this.skating && !this.board) ? 0 : clamp(c.tuck * smoothstep(5, 9, sp), 0, 1) * (1 - airK * 0.5),
       plow: c.brake > 0 && sp < 9 && !this.isPlayer && !this.board ? 1 : 0,
@@ -1207,9 +1306,13 @@ export class Skier {
       twist: crashed ? 0 : clamp(wrapAngle(this.avgHeading - this.heading) * 0.85, -0.7, 0.7) * (1 - this.backK) + lookS * 0.62,
       skate: this.skating && !crashed && !this.board ? 1 : 0,
       skatePhase: this.skatePhase,
-      edge: this.onGround && !crashed ? this.edge : 0,
-      flex: this.onGround && !crashed ? clamp(Math.abs(this.lean) * 1.1 * this.gload, 0, 1) + clamp(Math.abs(this.spring) * 4, 0, 0.5) : 0,
-      chatter: this.onGround && !crashed ? smoothstep(15, 30, sp) * (0.25 + this.surf.ice * 2.5) * (0.6 + 0.4 * Math.abs(this.lean)) : 0,
+      // (skidding, the skis come off their edges a little: flatter, sliding)
+      edge: this.onGround && !crashed ? this.edge * (1 - 0.3 * smoothstep(0.6, 2.5, this.skid)) : 0,
+      // the ski bends deeper as the pressure builds through a clean carve
+      flex: this.onGround && !crashed ? clamp(Math.abs(this.lean) * 1.1 * this.gload + (this.press ?? 0) * 0.25, 0, 1) + clamp(Math.abs(this.spring) * 4, 0, 0.5) : 0,
+      // (and chatters at speed on hard snow, and when the edges skip across it in a skid)
+      chatter: this.onGround && !crashed ? smoothstep(15, 30, sp) * (0.25 + this.surf.ice * 2.5) * (0.6 + 0.4 * Math.abs(this.lean))
+        + smoothstep(0.5, 2.5, this.skid) * smoothstep(5, 14, sp) * (0.3 + this.surf.ice * 1.2) * (1 - this.surf.powder) : 0,
       wind: crashed ? 0 : smoothstep(3, 22, Math.hypot(this.vel.x, this.vel.y, this.vel.z)),
       slap: this.onGround && !crashed ? clamp(Math.abs(this.springV) * 0.12, 0, 0.6) : 0,
       switch: !!this.boardSwitch,
