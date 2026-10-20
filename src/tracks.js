@@ -5,6 +5,7 @@
 // powder a deep trench, landings and falls a crater. Old track fades out as the ring wraps.
 import * as THREE from 'three';
 import { heightAt } from './course.js';
+import { LO } from './gfx.js';
 
 // kinds (the shader's profiles)
 const CARVE = 0, SKID = 1, POWDER = 2, BOARD = 3, CRATER = 4;
@@ -152,6 +153,7 @@ function makeTrackMaterial(uHead, segs) {
         vAge = mod(uHead - float(gl_VertexID / 4) - 1.0 + uSegs, uSegs) / uSegs;`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
+        ${LO ? '#define T_LO\n#define T_SH_STEPS 4' : '#define T_SH_STEPS 8'}
         varying vec4 vInfo; varying vec3 vSide; varying vec3 vTWPos; varying vec3 vTN; varying float vAge;
         float tHash(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
         float tNoise(vec2 p) {
@@ -174,9 +176,14 @@ function makeTrackMaterial(uHead, segs) {
             float rake = (tNoise(vec2(u * 9.0, v * 0.35)) - 0.5) * 0.18 + (tNoise(vec2(u * 31.0, v * 0.8)) - 0.5) * 0.08;
             return -0.12 * (1.0 - smoothstep(0.6, 0.95, a)) + rake * (1.0 - smoothstep(0.7, 1.0, a))
               + 0.55 * exp(-pow((u - 0.84) / 0.11, 2.0)) * (0.7 + 0.6 * tNoise(vec2(v * 1.7, 3.0)));
-          } else if (kind < 2.5) { // powder: a deep trench with crumbling walls
-            float wall = smoothstep(0.86, 0.5, a + (tNoise(vec2(v * 2.2, u * 2.0)) - 0.5) * 0.14);
-            return -wall * (0.9 + 0.1 * tNoise(vec2(v * 5.0, u * 6.0))) + 0.25 * exp(-pow((a - 0.9) / 0.08, 2.0));
+          } else if (kind < 2.5) { // powder: a deep trench, its walls crumbling, clods fallen in,
+            // the snow it pushed aside heaped in a lumpy berm along each side
+            float n1 = tNoise(vec2(v * 2.2, u * 2.0)), n2 = tNoise(vec2(v * 7.0, u * 5.0 + 3.0));
+            float wall = smoothstep(0.88, 0.52, a + (n1 - 0.5) * 0.16 + (n2 - 0.5) * 0.09);
+            float clods = smoothstep(0.66, 0.92, tNoise(vec2(v * 6.5, u * 7.0))) * 0.24 * smoothstep(0.15, 0.55, a) * wall;
+            float berm = 0.32 * exp(-pow((a - 0.93) / 0.1, 2.0)) * (0.55 + 0.7 * tNoise(vec2(v * 3.3, u * 3.0 + 7.0)))
+              + 0.12 * smoothstep(0.75, 1.0, tNoise(vec2(v * 9.0, u * 8.0))) * smoothstep(0.75, 0.95, a);
+            return -wall * (0.92 + 0.08 * n2) + clods + berm;
           } else if (kind < 3.5) { // a board's carve: one wide trench, flat-bottomed
             return -smoothstep(0.9, 0.62, a) * 0.8 + 0.3 * exp(-pow((a - 0.9) / 0.07, 2.0));
           }
@@ -184,14 +191,51 @@ function makeTrackMaterial(uHead, segs) {
           float r = length(vec2(u, v)) + (tNoise(vec2(u * 3.0, v * 3.0)) - 0.5) * 0.18;
           return -(1.0 - smoothstep(0.0, 0.85, r)) * (0.8 + 0.4 * tNoise(vec2(u * 6.0, v * 6.0))) + 0.3 * exp(-pow((r - 0.9) / 0.08, 2.0));
         }
-        float gTDepth; float gTAlpha;`)
+        // how steep a "depth" per unit u is, for each kind's real size (its depth over its half-width)
+        float tK(float kind) { return kind < 0.5 ? 0.36 : kind < 1.5 ? 0.18 : kind < 2.5 ? 0.7 : kind < 3.5 ? 0.35 : 0.5; }
+        // the sun across the profile: does the groove's own wall (or berm) stand between it and here?
+        float tShadow(float u, float v, float kind, float h, vec3 L, vec3 tn, vec3 ts) {
+          float ln = dot(L, tn), ls = dot(L, ts);
+          if (ln <= 0.0) return 1.0;
+          float dir = ls < 0.0 ? -1.0 : 1.0, rate = ln / max(abs(ls), 1e-3) / tK(kind);
+          float s = 1.0;
+          // (phones: fewer, longer steps)
+          for (int i = 1; i <= T_SH_STEPS; i++) {
+            float du = float(i) * 0.96 / float(T_SH_STEPS);
+            s = min(s, clamp((h + rate * du - tProf(u + dir * du, v, kind)) * 5.0 + 1.0, 0.0, 1.0));
+          }
+          return s;
+        }
+        float gTDepth; float gTAlpha; float gU; float gTBlur; float gTDu;`)
       .replace('#include <color_fragment>', `#include <color_fragment>
         {
           float u = vInfo.x, v = vInfo.y, kind = vInfo.z;
           tCarveW = clamp(fwidth(u) * 0.8, 0.0, 0.5);
-          float h = tProf(u, v, kind);
           // far off, a thin groove is less than a pixel: its average shade instead of shimmer
           float blur = smoothstep(0.3, 1.0, fwidth(u));
+          gTBlur = blur;
+          // a deep trench seen from the side: its near wall hides part of its floor and you see the far
+          // wall instead (the view ray marched down through the profile)
+          #ifndef T_LO
+          if ((kind > 1.5 && kind < 2.5 || kind > 3.5) && blur < 0.99) {
+            vec3 V = normalize(cameraPosition - vTWPos), tn = normalize(vTN), ts = normalize(vSide);
+            float vn = max(dot(V, tn), 0.1), sl = dot(V, ts) / vn * tK(kind);
+            float h0 = 0.1, d0 = h0 - tProf(u, v, kind), pu = u, uu = u;
+            if (d0 > 0.0) {
+              for (int i = 1; i <= 10; i++) {
+                float hh = h0 - float(i) * 0.12, ui = u - sl * (h0 - hh);
+                float d = hh - tProf(ui, v, kind);
+                if (d <= 0.0) { uu = mix(pu, ui, d0 / (d0 - d)); break; }
+                pu = ui; d0 = d;
+              }
+            }
+            u = mix(uu, u, blur);
+          }
+          #endif
+          gU = u;
+          float h = tProf(u, v, kind);
+          float e = 0.03 + tCarveW * 0.5;
+          gTDu = (tProf(u + e, v, kind) - tProf(u - e, v, kind)) / (2.0 * e);
           gTDepth = mix(h, kind < 0.5 ? -0.18 : kind < 1.5 ? -0.08 : kind < 2.5 ? -0.55 : -0.4, blur);
           // the snow down in a groove is in its own shade, a little blue; lips catch the light
           float cav = clamp(-gTDepth, 0.0, 1.0), lip = clamp(gTDepth, 0.0, 1.0);
@@ -202,8 +246,10 @@ function makeTrackMaterial(uHead, segs) {
           vec3 col = mix(snow, snow * vec3(0.7, 0.8, 0.95), cav * depth) * (1.0 + lip * 0.04);
           // a skid's scraped snow is a touch greyer and packed
           if (kind > 0.5 && kind < 1.5) col *= 0.96 + 0.04 * tNoise(vec2(u * 14.0, v * 0.5));
+          // powder: the crumbled walls and clods are fluffier, a touch brighter than the packed floor
+          if (kind > 1.5 && kind < 2.5) col *= 0.97 + 0.06 * tNoise(vec2(v * 11.0, u * 10.0));
           // only where the snow's been touched shows: the flat round it is the slope's own
-          float edge = smoothstep(1.0, 0.82, abs(u));
+          float edge = smoothstep(1.0, 0.82, abs(vInfo.x));
           if (kind > 3.5) edge *= smoothstep(1.0, 0.8, abs(v));
           float touched = kind > 0.5 && kind < 1.5 ? 0.85 : clamp(abs(gTDepth) * 3.0, 0.0, 1.0);
           float fade = 1.0 - smoothstep(0.7, 1.0, vAge);
@@ -211,21 +257,34 @@ function makeTrackMaterial(uHead, segs) {
           diffuseColor = vec4(col, gTAlpha);
         }`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-        // an edge polishes the bottom of its groove a little; a skid buffs the snow it scrapes
-        roughnessFactor = vInfo.z < 0.5 || (vInfo.z > 2.5 && vInfo.z < 3.5) ? mix(0.72, 0.56, clamp(-gTDepth, 0.0, 1.0)) : vInfo.z < 1.5 ? 0.6 : 0.8;`)
+        {
+          // an edge leaves the cut face of its groove polished (it glints when the sun's low along it);
+          // a skid buffs the snow it scrapes to a sheen, in streaks along the way it slid
+          float kind = vInfo.z, steep = clamp(abs(gTDu) * 0.35, 0.0, 1.0) * (1.0 - gTBlur);
+          if (kind < 0.5 || (kind > 2.5 && kind < 3.5)) roughnessFactor = mix(mix(0.7, 0.55, clamp(-gTDepth, 0.0, 1.0)), 0.36, steep);
+          else if (kind < 1.5) roughnessFactor = mix(0.42, 0.3, tNoise(vec2(gU * 26.0, vInfo.y * 0.12))) + 0.25 * smoothstep(0.6, 0.95, abs(gU));
+          else roughnessFactor = 0.85;
+        }`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         {
-          float u = vInfo.x, v = vInfo.y, kind = vInfo.z;
-          float e = 0.03 + tCarveW * 0.5;
-          float du = (tProf(u + e, v, kind) - tProf(u - e, v, kind)) / (2.0 * e);
+          float u = gU, v = vInfo.y, kind = vInfo.z;
           float dv = (tProf(u, v + 0.05, kind) - tProf(u, v - 0.05, kind)) / 0.1;
-          float blur = smoothstep(0.3, 1.0, fwidth(u));
-          // how steep a "depth" per unit u is, for each kind's real size
-          float k = (kind < 0.5 ? 0.36 : kind < 1.5 ? 0.18 : kind < 2.5 ? 0.7 : kind < 3.5 ? 0.35 : 0.5) * (1.0 - blur);
+          float k = tK(kind) * (1.0 - gTBlur);
           vec3 tn = normalize(vTN), ts = normalize(vSide), tf = normalize(cross(ts, tn));
-          vec3 nW = normalize(tn - ts * du * k - tf * dv * k * (kind > 3.5 ? 1.0 : 0.15));
+          vec3 nW = normalize(tn - ts * gTDu * k - tf * dv * k * (kind > 3.5 ? 1.0 : 0.15));
           normal = normalize((viewMatrix * vec4(nW, 0.0)).xyz);
-        }`);
+        }`)
+      .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
+        #if NUM_DIR_LIGHTS > 0
+        {
+          // the groove's walls throw their shadow across it: at a low sun every track stands out
+          vec3 L = normalize((vec4(directionalLights[0].direction, 0.0) * viewMatrix).xyz);
+          float s = mix(tShadow(gU, vInfo.y, vInfo.z, gTDepth, L, normalize(vTN), normalize(vSide)), 1.0, gTBlur);
+          // (the sunlit walls throw some of it back in: snow is bright even in its own shade)
+          s = 0.2 + 0.8 * s;
+          reflectedLight.directDiffuse *= s; reflectedLight.directSpecular *= s;
+        }
+        #endif`);
   };
   return mat;
 }

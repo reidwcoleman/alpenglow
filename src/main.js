@@ -161,6 +161,7 @@ class Game {
     this.snowfall = new Snowfall(scene);
     this.dust = new DiamondDust(scene);
     this.debris = new Debris(scene);
+    this.debris.fx = this.particles;
     this.world = { scene, forest: this.forest, tracks: this.tracks, myTracks: this.myTracks, particles: this.particles, race: false, raceStarted: false, skiers: this.skiers, arcade: true, glades: !!MAP.glades,
       smash: this.smash, netHit: (s, z, pen) => this.props.netHit(s, z, pen) };
     // a pole or a sign goes down: a knock, a puff of snow (and a jolt if it was you)
@@ -337,6 +338,17 @@ class Game {
     // snow spray: lit like snow (albedo ~0.9 over pi) by the sun and the sky
     const e = this.env;
     this.sunLit = new THREE.Color(p.sun).multiplyScalar(e.sunL * Math.max(0.15, e.sunDir.y) * 0.29).addScalar(e.skyL * 0.29);
+    // (and its parts, for snow in the air: the sun full on, the sky's blue fill, the light the
+    // slope throws back up under it)
+    const sunI = e.sun.intensity, skyI = e.skyL * (p.envK ?? 1);
+    const sky = new THREE.Color(0.86, 0.94, 1.1).multiplyScalar(skyI * 0.29);
+    this.sprayLight = {
+      sun0: new THREE.Color(p.sun).multiplyScalar(sunI * 0.29), sun: new THREE.Color(), sky,
+      bounce: new THREE.Color(p.sun).multiplyScalar(sunI * Math.max(0, e.sunDir.y) * 0.29).addScalar(skyI * 0.29).multiplyScalar(0.85),
+      sunset: p.sunset ?? null,
+      // falling flakes: the sky's light and some of the sun's (at night the floodlights catch them)
+      flake: sky.clone().add(new THREE.Color(p.sun).multiplyScalar(sunI * 0.29 * 0.45)).multiplyScalar(night ? 2.2 : 1),
+    };
   }
 
   // a random sky and snow for this run
@@ -1548,7 +1560,8 @@ class Game {
   burst(s, n, spread) {
     if (this.camera.position.distanceTo(s.pos) > 160) return;
     const v = s.vel;
-    this.particles.emit(s.pos.x, s.pos.y + 0.1, s.pos.z, v.x * 0.35, 1.5, v.z * 0.35, spread + 2, 0.55, 1.2, Math.round(n));
+    // a ring of crystals, a cloud that hangs, clumps knocked loose (more of all of it in deep snow)
+    this.particles.impact(s.pos.x, s.pos.y + 0.05, s.pos.z, v.x, v.z, n / 80, s.surf?.powder ?? 0, spread);
   }
 
   spray(dt) {
@@ -1577,14 +1590,14 @@ class Game {
           const ox = s.pos.x - fx * 0.72 + lx * o * 0.095 + lx * out * 0.06, oz = s.pos.z - fz * 0.72 + lz * o * 0.095 + lz * out * 0.06;
           const k = 1.2 + edge * 2.6 + pw * 1.5;
           this.particles.emit(ox, y, oz, vx * 0.55 + lx * out * k, 0.7 + edge * 1.1 + pw * 1.2, vz * 0.55 + lz * out * k,
-            0.6 + pw * 1.2, 0.36 + pw * 0.3, 0.75 + pw * 0.5, n, 0.1, 2.2 - pw);
+            0.6 + pw * 1.2, 0.36 + pw * 0.3, 0.75 + pw * 0.5, n, 0.1, 2.2 - pw, 1 + pw, 0.3 + pw * 0.3);
         }
       } else if (edge > 0.01) {
         // a board's carve: one long rooster tail off the tail edge
         const n = rnd(edge * (70 + sp * 7) * dt * near * (1 + pw * 1.5));
         const k = 1.4 + edge * 2.8 + pw * 1.5;
         if (n) this.particles.emit(s.pos.x - fx * 0.6 + lx * out * 0.1, y, s.pos.z - fz * 0.6 + lz * out * 0.1, vx * 0.55 + lx * out * k, 0.9 + edge * 1.2 + pw * 1.2, vz * 0.55 + lz * out * k,
-          0.6 + pw * 1.2, 0.28 + pw * 0.3, 0.75 + pw * 0.5, n, 0.1, 2.2 - pw);
+          0.6 + pw * 1.2, 0.28 + pw * 0.3, 0.75 + pw * 0.5, n, 0.1, 2.2 - pw, 1 + pw, 0.3 + pw * 0.3);
       }
       // skids and stops: the whole length of the edges scrapes, a curtain of snow thrown out
       const skid = Math.min(4, s.skid) + (s.controls.brake ? 1.2 : 0);
@@ -1595,13 +1608,27 @@ class Game {
           const ox = s.pos.x + fx * along + lx * out * 0.16, oz = s.pos.z + fz * along + lz * out * 0.16;
           const k = 1.6 + skid * 1.1 + pw;
           this.particles.emit(ox, y, oz, vx * 0.35 + lx * out * k, 1.1 + skid * 0.45 + pw * 0.8, vz * 0.35 + lz * out * k,
-            1.0 + pw * 1.5 + skid * 0.25, 0.3 + Math.min(skid, 3) * 0.07 + pw * 0.35, 0.8 + pw * 0.6, 1, 0.12);
+            1.0 + pw * 1.5 + skid * 0.25, 0.3 + Math.min(skid, 3) * 0.07 + pw * 0.35, 0.8 + pw * 0.6, 1, 0.12, 1, 1.3 + pw, 0.6 + pw * 0.2);
+        }
+        // a hard stop in soft snow scrapes up clumps that tumble out ahead of the skis
+        const nc = rnd(skid * Math.min(1, sp / 10) * (1 - ice) * (0.25 + pw * 1.6) * 7 * dt * near);
+        if (nc) {
+          const k = 1.4 + skid * 0.8;
+          this.particles.emitChunks(s.pos.x + lx * out * 0.25, y + 0.05, s.pos.z + lz * out * 0.25, vx * 0.45 + lx * out * k, 1.2 + skid * 0.4, vz * 0.45 + lz * out * k, 1.6, 0.05 + pw * 0.06, nc);
         }
       }
-      // deep snow: the boots plough a plume whatever the skis are doing
+      // deep snow: the boots plough through it, throwing a plume up past the knees that billows
+      // and hangs in the air behind; a turn sends a wave of it to the outside; clumps break off
+      // the trench walls and roll
       if (pw > 0.15) {
-        const n = rnd(pw * sp * 2.2 * dt * near);
-        if (n) this.particles.emit(s.pos.x + fx * 0.3, y + 0.15, s.pos.z + fz * 0.3, vx * 0.3, 1.3, vz * 0.3, 1.6, 0.5 + pw * 0.3, 1.2, n, 0.35);
+        const n = rnd(pw * sp * 6 * dt * near);
+        if (n) this.particles.emit(s.pos.x + fx * 0.2, y + 0.2, s.pos.z + fz * 0.2, vx * 0.35, 1.2 + pw, vz * 0.35, 1.8, 0.26 + pw * 0.16, 1.3, n, 0.6, 1.5, 1.6 + pw, 0.42);
+        const turn = smoothstep(0.15, 0.7, Math.abs(s.lean));
+        const nw = rnd(pw * turn * sp * 3 * dt * near);
+        if (nw) this.particles.emit(s.pos.x + lx * out * 0.35, y + 0.1, s.pos.z + lz * out * 0.35, vx * 0.4 + lx * out * (2 + pw * 2), 2 + pw * 1.6, vz * 0.4 + lz * out * (2 + pw * 2),
+          1.4, 0.4 + pw * 0.25, 1.1, nw, 0.4, 1.5, 1.4 + pw, 0.6);
+        const nc = rnd(pw * sp * 0.5 * dt * near);
+        if (nc) this.particles.emitChunks(s.pos.x + lx * out * 0.35, y + 0.1, s.pos.z + lz * out * 0.35, vx * 0.35 + lx * out * 1.5, 1.4 + pw, vz * 0.35 + lz * out * 1.5, 1.8, 0.06 + pw * 0.06, nc);
       }
     }
   }
@@ -1765,10 +1792,14 @@ class Game {
     }
     if (!this.paused && !replaying) {
       this.spray(dt);
-      this.particles.update(dt, this.sunLit, this.env.sunDir, this.camera);
+      // snow in the air: the sun only where it still reaches (an alpenglow evening leaves the runs in shade)
+      const SL = this.sprayLight;
+      if (SL) SL.sun.copy(SL.sun0).multiplyScalar(SL.sunset ? smoothstep(SL.sunset[0], SL.sunset[1], cam.position.y) : 1);
+      this.particles.update(dt, SL, this.env.sunDir, this.camera, this.world.wind);
+      this.particles.weather(dt, cam.position, this.world.wind);
       this.dust.update(dt, this.camera.position, this.env.sunDir, this.env.sun.color);
       this.debris.update(dt);
-      this.snowfall.update(dt, cam.position);
+      this.snowfall.update(dt, cam.position, this.world.wind, SL?.flake, this.renderer.getDrawingBufferSize(this._fallRes ??= new THREE.Vector2()));
     }
     const focus = this.player && this.state !== 'menu' ? this.player.pos : cam.position;
     this.terrain.update(cam.position.x, cam.position.z, 4);
