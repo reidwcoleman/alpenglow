@@ -5,7 +5,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { avatarKits, AvatarRig } from './avatar.js';
 import { ITEMS } from './meta.js';
 import { helmetGeometry, helmetMaterial, beanieGeometry, goggleGeometry, lensGeometry, strapGeometry, skiBootGeometry, boardBootGeometry,
-  skiGeometry, boardGeometry, skiBindingGeometry, boardBindingGeometry, poleGeometry, designTexture } from './gear.js';
+  skiGeometry, boardGeometry, skiBindingGeometry, boardBindingGeometry, poleGeometry, gearMaterials } from './gear.js';
 
 const THIGH = 0.44, SHIN = 0.45, UPPER = 0.29, FORE = 0.28, POLE = 1.18;
 
@@ -174,16 +174,11 @@ export class SkierModel {
     // helmets: gloss, matte or chrome, maybe a stripe; a beanie is soft knit
     const fin = outfit.helmetFin ?? 0;
     const helmetM = outfit.beanie ? M(outfit.beanie, 0.95, 0, { vertexColors: true }) : helmetMaterial(outfit.helmet, outfit.helmet2, fin);
-    const frameM = M(outfit.goggles2 ?? 0x16171c, 0.45, 0.1, { vertexColors: true });
-    const lensM = new THREE.MeshStandardMaterial({ color: outfit.goggles, metalness: 0.85, roughness: 0.1, envMapIntensity: 1.8, emissive: new THREE.Color(outfit.goggles).multiplyScalar(0.16) });
-    const strapM = M(outfit.goggles2 ?? 0x16171c, 0.8, 0, { vertexColors: true, side: THREE.DoubleSide });
+    // the kit's materials (goggles, boots, skis or board, poles, bindings) come from gear.js
+    const { frameM, lensM, strapM, bootM, skiM, poleM, bindM } = gearMaterials(outfit, this.board);
     const skinM = M(outfit.skin, 0.6);
     const gloveM = M(outfit.gloves, 0.75);
-    const bootM = M(outfit.boots, this.board ? 0.8 : 0.3, 0.04, { vertexColors: true });
-    const skiM = new THREE.MeshStandardMaterial({ map: this.board ? designTexture(outfit.deckDesign ?? 'logo', outfit.deck ?? 0xffffff, outfit.deck2 ?? 0x15161a, true) : designTexture(outfit.skiDesign ?? 'logo', outfit.skis, outfit.skis2 ?? 0xffffff), roughness: 0.28, metalness: 0.05 });
-    const poleM = M(outfit.poles ?? 0x9ea5b0, 0.3, 0.8, { vertexColors: true });
     const darkM = M(0x111215, 0.6);
-    const bindM = M(this.board ? outfit.deck2 ?? 0xffffff : 0xd9dde3, 0.45, 0.2, { vertexColors: true });
 
     this.group = new THREE.Group();
     this.tilt = new THREE.Group();
