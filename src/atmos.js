@@ -15,6 +15,8 @@ export const AG = {
   uFogBase: { value: 0 },
   // how much the mountain shade darkens direct light (off at night: the floodlights aren't the sun)
   uAgDirect: { value: 1 },
+  // dusk: the sun has gone off everything below x and lights all above y (the peaks keep it longest)
+  uSunset: { value: new THREE.Vector2(-1e5, -9e4) },
 };
 
 const FOG_PARS_V = `varying vec3 vAgW; uniform mat4 uCamWorld;
@@ -26,7 +28,7 @@ const FOG_V = `vAgW = (uCamWorld * mvPosition).xyz;
   vFogDepth = - mvPosition.z;
 #endif`;
 const FOG_PARS_F = `varying vec3 vAgW;
-uniform vec3 uSunDirA; uniform vec3 uSunFog; uniform float uFogFall; uniform float uFogBase; uniform float uAgDirect;
+uniform vec3 uSunDirA; uniform vec3 uSunFog; uniform float uFogFall; uniform float uFogBase; uniform float uAgDirect; uniform vec2 uSunset;
 uniform sampler2D uShadeTex; uniform vec4 uShadeBox;
 float agSun = 1.0;
 #ifdef USE_FOG
@@ -62,6 +64,7 @@ const FOG_F = `#ifdef USE_FOG
 const LIGHT_F = `#include <lights_fragment_end>
   {
     vec2 agSh = agShade();
+    agSh.r *= smoothstep(uSunset.x, uSunset.y, vAgW.y);
     agSun = agSh.r;
     reflectedLight.directDiffuse *= mix(1.0, agSh.r, uAgDirect);
     reflectedLight.directSpecular *= mix(1.0, agSh.r, uAgDirect);

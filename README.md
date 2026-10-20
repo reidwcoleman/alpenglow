@@ -42,6 +42,8 @@ Every rider leaves tracks, lit like the snow round them: carved turns leave two 
 
 The spruces carry their own share of the snowfall each, fuller crowns up close, darker far off (where the shade under the boughs wins over the snow on them), and a tree well in the snow round each trunk. On fair days cloud shadows drift across the mountain, and on cold clear ones diamond dust glitters in the air, brightest looking toward the sun. (`node tools/treecam.mjs out.jpg [z] [tod]` frames the nearest tree from a few distances; `node tools/gputime.mjs [port] [z] [tod]` times one view's render.)
 
+Each sky has its own grade after tone mapping: shade takes the sky's colour and lit snow the sun's, with a soft film S-curve (clamped before SMAA, which turns anything outside 0..1 into bright fringes on dark edges). At Alpenglow Dusk the sun has already set on the runs: it only lights terrain above about 1150 m, full above 1750 m, so the peaks glow pink over blue-shaded slopes under a sky that deepens to blue overhead. (`TODS=night,arctic node tools/tods.mjs <dir> [z]` shoots the same spot under each sky.)
+
 ## Modes
 - **The Run**: top to bottom with a timer, score, minimap and a results card. Hold R for 2 s to restart.
 - **Ski Park** (The Yard): laps of the terrain park. L picks a line, and holding R takes you to the top of yours.

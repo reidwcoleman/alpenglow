@@ -14,13 +14,16 @@ const LensShader = {
     uTime: { value: 0 },
     uVignette: { value: 0.32 },
     uWarm: { value: new THREE.Vector3(1, 1, 1) },
+    uShadowT: { value: new THREE.Vector3(1, 1, 1) },
+    uHighT: { value: new THREE.Vector3(1, 1, 1) },
+    uCurve: { value: 0 },
     uSat: { value: 1.08 },
     uCon: { value: 1.05 },
     uFlash: { value: 0 },
   },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
   fragmentShader: `
-    uniform sampler2D tDiffuse; uniform float uSpeed, uTime, uVignette, uFlash, uSat, uCon; uniform vec3 uWarm;
+    uniform sampler2D tDiffuse; uniform float uSpeed, uTime, uVignette, uFlash, uSat, uCon, uCurve; uniform vec3 uWarm, uShadowT, uHighT;
     varying vec2 vUv;
     float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }
     void main(){
@@ -47,10 +50,16 @@ const LensShader = {
       float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
       col = mix(vec3(l), col, uSat);
       col = (col - 0.5) * uCon + 0.5;
+      // split tone: the shade takes the sky's colour, the lit snow the sun's
+      col *= mix(uShadowT, uHighT, smoothstep(0.08, 0.8, l));
+      // a soft film S-curve: deeper shade without clipping the snow
+      vec3 cc = clamp(col, 0.0, 1.0);
+      col = mix(col, cc * cc * (3.0 - 2.0 * cc), uCurve);
       col *= 1.0 - uVignette * smoothstep(0.3, 0.95, r * 1.25);
       col += (h(vUv * 931.0 + uTime) - 0.5) * 0.022;
       col = mix(col, vec3(1.0), uFlash);
-      gl_FragColor = vec4(col, 1.0);
+      // (SMAA after this blends edges: anything outside 0..1 comes out as bright fringes)
+      gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
     }`,
 };
 

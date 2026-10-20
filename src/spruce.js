@@ -24,7 +24,7 @@ function boughTextures() {
   const PAL = [
     ['#10221a', '#152b1f', '#1a3224'],
     ['#1f3d28', '#25452d', '#2a4a31', '#223f2c'],
-    ['#3a5c34', '#46683a', '#385535', '#4f7040'],
+    ['#3a5136', '#435a3b', '#364a34', '#4a5f42'],
   ];
   // twigs off the stem, needles off the twigs; dark fill first, lit tips last
   const twigs = [];
@@ -93,9 +93,26 @@ function boughTextures() {
   s2.filter = 'blur(3px)';
   s2.drawImage(raw, 0, 0);
 
-  const map = new THREE.CanvasTexture(cv);
+  // the canvas keeps its colours premultiplied, so a texel at the edge of a needle comes back
+  // as a garbled bright hue (teal fringes). Take the colour from the needles laid over the dark
+  // under-bough green instead and only the alpha from the canvas.
+  const bg = document.createElement('canvas'); bg.width = W; bg.height = H;
+  const b2 = bg.getContext('2d');
+  b2.fillStyle = PAL[0][1]; b2.fillRect(0, 0, W, H);
+  b2.drawImage(cv, 0, 0);
+  const rgb = b2.getImageData(0, 0, W, H).data, al = g.getImageData(0, 0, W, H).data;
+  const px = new Uint8Array(W * H * 4);
+  for (let y = 0; y < H; y++) {
+    const o = (H - 1 - y) * W * 4, i0 = y * W * 4;
+    for (let x = 0; x < W * 4; x += 4) {
+      px[o + x] = rgb[i0 + x]; px[o + x + 1] = rgb[i0 + x + 1]; px[o + x + 2] = rgb[i0 + x + 2]; px[o + x + 3] = al[i0 + x + 3];
+    }
+  }
+  const map = new THREE.DataTexture(px, W, H);
   map.colorSpace = THREE.SRGBColorSpace;
+  map.magFilter = THREE.LinearFilter; map.minFilter = THREE.LinearMipmapLinearFilter; map.generateMipmaps = true;
   map.anisotropy = 8;
+  map.needsUpdate = true;
   const snow = new THREE.CanvasTexture(sc);
   snow.anisotropy = 8;
   return { map, snow };
@@ -313,8 +330,10 @@ function spruceMaterial(tex, U, bough, snowK = 1) {
           sM = 0.0;
         }
         float th = 1.0 - 0.6 * clamp( vSnow * uTreeSnow, 0.0, 1.2 );
-        sK = smoothstep( th, th + 0.1, sM );
+        sK = smoothstep( th + 0.01, th + 0.07, sM );
         diffuseColor.a = max( diffuseColor.a, sK );
+        // the needles poking out round a clump sit in its shade (no pale green rim)
+        diffuseColor.rgb *= 1.0 - 0.45 * smoothstep( th - 0.12, th + 0.02, sM ) * ( 1.0 - sK );
         // seen from below: the snow is a grey-green shadowed mass
         if ( !gl_FrontFacing ) { diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.05, 0.07, 0.06 ), sK ); sK = 0.0; }
         else sK *= mix( 0.82, 1.0, smoothstep( th, th + 0.35, sM ) );
@@ -323,9 +342,9 @@ function spruceMaterial(tex, U, bough, snowK = 1) {
       diffuseColor.rgb = mix( diffuseColor.rgb, ${SNOW_COL}, sK );`)
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix( roughnessFactor, 0.7, sK );')
       // (needles are matte: no sky sheen glancing off the cards' edges)
-      .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\nreflectedLight.indirectSpecular *= mix( 0.25, 0.6, sK );\n{ float cs = cloudSun( vCXZ ); reflectedLight.directDiffuse *= cs; reflectedLight.directSpecular *= cs; }')
+      .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\nreflectedLight.indirectSpecular *= mix( 0.04, 0.6, sK );\n{ float cs = cloudSun( vCXZ ); reflectedLight.directDiffuse *= cs; reflectedLight.directSpecular *= cs * mix( 0.25, 1.0, sK ); }')
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
-      normal = normalize( mix( normal, normalize( ( viewMatrix * vec4( 0.0, 1.0, 0.0, 0.0 ) ).xyz ), sK * 0.85 ) );`);
+      normal = normalize( mix( normal, normalize( ( viewMatrix * vec4( 0.0, 1.0, 0.0, 0.0 ) ).xyz ), sK * sK * 0.85 ) );`);
   };
   m.customProgramCacheKey = () => 'spruce-' + (bough ? 'b' : 's') + snowK;
   return m;

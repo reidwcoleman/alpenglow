@@ -321,6 +321,17 @@ class Game {
     const warm = { bluebird: [1.0, 1.0, 1.02], golden: [1.04, 1.0, 0.95], alpenglow: [1.05, 0.98, 1.0], storm: [0.98, 1.0, 1.03], night: [0.98, 1.0, 1.06], nightsnow: [0.97, 1.0, 1.07],
       spring: [1.02, 1.0, 0.98], arctic: [0.97, 1.0, 1.05], flurries: [0.99, 1.0, 1.03], whiteout: [0.98, 1.0, 1.02] }[this.tod] ?? [1, 1, 1];
     this.post.lens.uniforms.uWarm.value.set(...warm);
+    // shade and light tints, and how much S-curve each day gets
+    const G = {
+      bluebird: [[0.94, 0.98, 1.07], [1.02, 1.0, 0.97], 0.22], golden: [[0.9, 0.95, 1.08], [1.06, 1.0, 0.9], 0.3],
+      alpenglow: [[0.86, 0.9, 1.1], [1.07, 0.97, 0.96], 0.42], storm: [[0.97, 0.99, 1.03], [1.0, 1.0, 0.99], 0.12],
+      night: [[0.9, 0.97, 1.1], [1.04, 1.0, 0.94], 0.25], nightsnow: [[0.92, 0.97, 1.08], [1.03, 1.0, 0.96], 0.18],
+      spring: [[0.96, 0.98, 1.04], [1.04, 1.01, 0.96], 0.2], arctic: [[0.92, 0.98, 1.09], [1.0, 1.0, 1.01], 0.25],
+      flurries: [[0.96, 0.99, 1.04], [1.01, 1.0, 0.99], 0.12], whiteout: [[0.98, 0.99, 1.02], [1.0, 1.0, 1.0], 0.05],
+    }[this.tod] ?? [[1, 1, 1], [1, 1, 1], 0];
+    this.post.lens.uniforms.uShadowT.value.set(...G[0]);
+    this.post.lens.uniforms.uHighT.value.set(...G[1]);
+    this.post.lens.uniforms.uCurve.value = G[2];
     this.post.shafts.uniforms.uTint.value.set(PRESETS[this.tod].sun ?? 0xffffff).multiplyScalar(0.9);
     const p = PRESETS[this.tod];
     // snow spray: lit like snow (albedo ~0.9 over pi) by the sun and the sky

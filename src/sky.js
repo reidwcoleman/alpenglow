@@ -17,7 +17,7 @@ export const PRESETS = {
     fogD: 0.00005, fogFall: 1 / 900, sunFog: 0xffc58e, sunFogK: 0.35, key: 2.15, haze: 0.12, snow: 0, shafts: 0.12,
   },
   alpenglow: {
-    label: 'Alpenglow Dusk', hdri: 'alpenglow', az: 334, elev: 3.2, sun: 0xff9a78, sunOverSky: 0.9,
+    label: 'Alpenglow Dusk', hdri: 'alpenglow', az: 334, elev: 3.2, sun: 0xff9a78, sunOverSky: 1.4, sunset: [1150, 1750], zenith: [0.62, 0.74, 1.16],
     fogD: 0.00006, fogFall: 1 / 850, sunFog: 0xffa98a, sunFogK: 0.3, key: 2.1, haze: 0.1, snow: 0, shafts: 0.1,
   },
   night: {
@@ -78,7 +78,7 @@ const DOME_VERT = /* glsl */`
 const DOME_FRAG = /* glsl */`
   uniform sampler2D map;
   uniform float scale, yaw, rowsFrac, uHaze, uBright;
-  uniform vec3 ground, uHazeCol;
+  uniform vec3 ground, uHazeCol, uZenith;
   varying vec3 vDir;
   void main() {
     vec3 d = normalize(vDir);
@@ -95,6 +95,8 @@ const DOME_FRAG = /* glsl */`
       col *= uBright;
       col = mix(col, ground, smoothstep(0.97, 1.0, t));
     }
+    // dusk: the glow stays on the horizon, the sky overhead goes deep blue
+    col *= mix(vec3(1.0), uZenith, smoothstep(0.0, 0.38, d.y));
     // melt the horizon into the scene's haze so far ridges and sky agree
     float hz = uHaze * (1.0 - smoothstep(-0.04, 0.06 + uHaze * 0.45, d.y));
     col = mix(col, uHazeCol, clamp(hz, 0.0, 1.0));
@@ -108,7 +110,7 @@ export class Environment {
     this.mat = new THREE.ShaderMaterial({
       uniforms: {
         map: { value: null }, scale: { value: 1 }, yaw: { value: 0 }, rowsFrac: { value: 0.53 }, uBright: { value: 1 },
-        ground: { value: new THREE.Color(0.5, 0.52, 0.56) }, uHaze: { value: 0 }, uHazeCol: { value: new THREE.Color() },
+        ground: { value: new THREE.Color(0.5, 0.52, 0.56) }, uHaze: { value: 0 }, uHazeCol: { value: new THREE.Color() }, uZenith: { value: new THREE.Color(1, 1, 1) },
       },
       vertexShader: DOME_VERT, fragmentShader: DOME_FRAG, side: THREE.BackSide, depthWrite: false, fog: false,
     });
@@ -184,6 +186,7 @@ export class Environment {
     this.sun.color.set(p.sun);
     this.sun.intensity = sunL * (p.moonK ?? 1);
     u.uBright.value = p.domeK ?? 1;
+    u.uZenith.value.setRGB(...(p.zenith ?? [1, 1, 1]));
     const horiz = sunL * Math.max(0, this.sunDir.y) + skyL;
     this.renderer.toneMappingExposure = p.key / horiz;
     this.exposure = this.renderer.toneMappingExposure;
@@ -198,6 +201,7 @@ export class Environment {
     AG.uSunDirA.value.copy(this.sunDir);
     AG.uSunFog.value.set(p.sunFog).multiplyScalar(lum(m.horizon) * 1.6 * (p.sunFogK ?? 1));
     AG.uFogFall.value = p.fogFall;
+    if (p.sunset) AG.uSunset.value.set(...p.sunset); else AG.uSunset.value.set(-1e5, -9e4);
     // image-based light from the same dome (haze off: the fog is applied per surface)
     const hz = u.uHaze.value;
     u.uHaze.value = 0;
