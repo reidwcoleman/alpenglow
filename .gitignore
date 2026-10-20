@@ -6,3 +6,4 @@ art/src
 ios/Web
 dist-app
 ios/build
+.claude/worktrees
