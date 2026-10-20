@@ -367,6 +367,8 @@ export class SkierModel {
     }
     this.lagR = clamp(sw.r - p.lean, -0.3, 0.3);
     this.lagF = clamp(sw.f, -1, 1);
+    // on the snow: the skid, the legs' give, standing still and the pole plants fold in here
+    p = this.ground(p, dt);
     this.tilt.rotation.set(0, 0, p.lean);
     if (this.board) {
       // riding switch: the other foot leads, the body faces the other edge
@@ -416,6 +418,7 @@ export class SkierModel {
     const hipH = 0.93 - crouch * 0.22 - tuck * 0.33 - air * 0.12 - g * 0.08 + Math.sin(p.t * 9) * 0.004 + al * 0.085;
     const hipZ = -0.035 - crouch * 0.05 - tuck * 0.12 - (this.lagF || 0) * 0.05;
     j.pelvis.set(-p.lean * 0.1 - (pushL - pushR) * 0.09, hipH, hipZ);
+    if (this.gm) j.pelvis.x += this.gm.sway;
     // upper body: forward pitch and counter-roll (angulation), plus its swing
     const pitch = 0.22 + crouch * 0.28 + tuck * 0.95 + air * 0.15 + g * 0.25 + (this.lagF || 0) * 0.14;
     // (in the tipped frame: back toward upright, so the shoulders stay level-ish over the edges)
@@ -471,11 +474,8 @@ export class SkierModel {
       o.lerp(tmpV.set(G.hand === 'L' ? -0.5 : 0.5, hipH + 0.32, hipZ + 0.1), g);
     }
     if (this.twistNow) for (const h of [j.hdL, j.hdR]) h.sub(j.pelvis).applyQuaternion(tmpQ.setFromAxisAngle(Y, this.twistNow)).add(j.pelvis);
-    // pole plant: reach the inside hand forward and down
-    if (p.polePlant > 0) {
-      const h = p.poleSide > 0 ? j.hdL : j.hdR;
-      h.z += p.polePlant * 0.16; h.y -= p.polePlant * 0.08;
-    }
+    // on the snow: hands forward where he can see them, and the pole plant
+    this.groundArms(p);
     this.flail(p, hipH, hipZ, 1);
     for (const [s, sg] of [[0, 1], [1, -1]]) this.ep[s].set(sg * 0.6, -0.6, -0.5).normalize().applyQuaternion(tmpQ.setFromAxisAngle(Y, this.twistNow));
   }
@@ -537,6 +537,7 @@ export class SkierModel {
     j.hdR.set(-0.3, hipH - 0.02, hipZ + 0.14 + reach);
     j.hdL.lerp(tmpV.set(0.22, hipH + 0.05, hipZ + 0.4), tuck);
     j.hdR.lerp(tmpV.set(-0.05, hipH + 0.02, hipZ + 0.42), tuck);
+    this.boardArms(p, hipH, hipZ, ts);
     if (air > 0) {
       const tight = clamp(Math.abs(p.spinRate || 0) / 7, 0, 1);
       j.hdL.lerp(tmpV.set(0.55 - tight * 0.3, hipH + 0.3 - tight * 0.05, 0.05 + tight * 0.2), air);
@@ -607,7 +608,7 @@ export class SkierModel {
     P.collar.position.copy(j.neck);
     P.collar.quaternion.setFromUnitVectors(Y, j.spine);
     // the head looks where it's going: up off the spine, turned toward the line (and into a spin)
-    const headUp = (this._headUp ??= new THREE.Vector3()).copy(j.spine).lerp(Y, 0.55 + tuck * 0.2).normalize();
+    const headUp = (this._headUp ??= new THREE.Vector3()).copy(j.spine).lerp(this.upW ?? Y, 0.55 + tuck * 0.2).normalize();
     j.head.copy(j.neck).addScaledVector(headUp, 0.12);
     const yaw = this.board ? 1.15 + (p.look || 0) : this.twistNow * 1.15 + (p.look || 0);
     const hq = (this._hq ??= new THREE.Quaternion()).setFromUnitVectors(Y, headUp).multiply(tmpQ.setFromAxisAngle(Y, clamp(yaw, -1.95, 1.95)));
@@ -658,10 +659,240 @@ export class SkierModel {
     for (const [s, hd, pole] of [[1, j.hdL, P.poleL], [-1, j.hdR, P.poleR]]) {
       const tip = tmpV.set(hd.x + s * 0.12, 0.06, hd.z - 0.62);
       tip.lerp(tmpV2.set(hd.x + s * 0.06, hd.y + 0.12, hd.z - 1.15), Math.max(tuck, air * 0.7));
-      if (p.polePlant > 0 && s === p.poleSide) tip.lerp(tmpV2.set(hd.x + s * 0.18, 0.0, hd.z + 0.45), p.polePlant);
       const dir = tip.sub(hd).normalize();
+      this.groundPole(s, hd, dir, p);
       pole.position.copy(hd);
       pole.quaternion.setFromUnitVectors(Y, dir.negate());
     }
+  }
+
+  // ---------------- on the snow ----------------
+  // What the body is doing over the snow, read off the group's own motion (so every caller gets
+  // it): its speed, the line it's travelling against the way the skis point (a skid), the snow
+  // rising and falling under the boots, standing still; and when to plant a pole. Returns the
+  // pose params with all that folded in (a reused copy: the caller's object is left alone).
+  ground(p, dt) {
+    const G = (this.gm ??= {
+      last: new THREE.Vector3(), v: new THREE.Vector3(), vl: new THREE.Vector3(), has: false,
+      vy: 0, susp: 0, onT: 0, sp: 0, slip: 0, skid: 0, skidL: 0, stop: 1, lean: 0, dLean: 0, peak: 0, peakS: 0, trans: 0,
+      pl: 0, plT: 0, plS: 1, plCool: 0, anchor: new THREE.Vector3(), from: new THREE.Vector3(),
+      seed: Math.random() * 100, q: {}, sway: 0, look: 0, dt: 0,
+    });
+    G.dt = dt;
+    const snow = !p.crash && this.airS < 0.05 && this.gAmt < 0.05;
+    const pos = this.group.position;
+    if (dt > 0) {
+      const d = tmpV.subVectors(pos, G.last);
+      if (!G.has || d.lengthSq() > 16) { G.v.set(0, 0, 0); G.vy = 0; G.susp = 0; G.has = true; }
+      else {
+        d.multiplyScalar(1 / dt);
+        const vy = d.y;
+        G.v.lerp(d, Math.min(1, dt * 10));
+        // the legs soak up the snow: the hips ride a smoothed line while the boots follow every
+        // bump and dip (they fold over a roll, reach down into a hollow)
+        if (snow && (G.onT += dt) > 0.3) {
+          G.vy += (vy - G.vy) * Math.min(1, dt * 8);
+          G.susp += (G.vy - vy) * dt;
+        } else { if (!snow) G.onT = 0; G.vy = vy; }
+        G.susp = clamp(G.susp * (1 - Math.min(1, dt * 5)), -0.1, 0.04);
+      }
+      G.last.copy(pos);
+    }
+    // the travel in the skis' own frame: +z along them, +x to his left
+    const vl = G.vl.copy(G.v).applyQuaternion(tmpQ.copy(this.group.quaternion).invert());
+    const sp = Math.hypot(vl.x, vl.z);
+    let slip = sp > 0.8 ? Math.atan2(vl.x, vl.z) : 0;
+    // (riding backwards is still a straight run)
+    if (slip > Math.PI / 2) slip -= Math.PI; else if (slip < -Math.PI / 2) slip += Math.PI;
+    G.sp = sp;
+    const k6 = Math.min(1, dt * 6);
+    G.skid += ((snow ? sstep(0.3, 0.85, Math.abs(slip)) * sstep(1.5, 4, sp) : 0) - G.skid) * k6;
+    G.slip += (slip - G.slip) * k6;
+    G.skidL += ((snow ? Math.sign(vl.x) * sstep(0.3, 0.85, Math.abs(slip)) * sstep(1.5, 5, sp) : 0) - G.skidL) * k6;
+    G.stop += ((snow ? 1 - sstep(0.6, 2.5, sp) : 0) - G.stop) * Math.min(1, dt * 2.5);
+    // how fast the body is rolling from one edge to the other
+    const dL = dt > 0 ? (p.lean - G.lean) / dt : 0;
+    G.lean = p.lean;
+    G.dLean += (clamp(dL, -8, 8) - G.dLean) * Math.min(1, dt * 12);
+    // cross-under: the legs fold as the skis come back under the body between two turns
+    G.trans += ((snow ? clamp(Math.abs(G.dLean) / 2.5, 0, 1) * (1 - sstep(0.12, 0.45, Math.abs(p.lean))) : 0) - G.trans) * Math.min(1, dt * 10);
+
+    // the pole plant: as the edges let go at the end of a turn, the outside hand (the downhill
+    // one, the inside of the turn to come) swings its pole forward; the tip touches the snow as the
+    // body crosses over the skis, he rides past it, and it comes away
+    if (Math.abs(p.lean) > 0.1 && Math.sign(p.lean) !== G.peakS) { G.peakS = Math.sign(p.lean); G.peak = 0; }
+    G.peak = Math.max(G.peak, Math.abs(p.lean));
+    G.plCool -= dt;
+    const can = snow && !this.board && !this.gearOff && sp > 3.5 && p.tuck < 0.3 && !p.skate && G.stop < 0.3 && G.skid < 0.4 && !p.flail;
+    if (!can) { if (G.pl === 1 || G.pl === 2) { G.pl = 3; G.plT = 0; G.from.set(G.plS * 0.3, -0.75, -0.6).normalize(); } }
+    else if (G.pl === 0 && G.plCool <= 0 && G.peak > 0.28 && Math.abs(p.lean) > 0.05) {
+      const edge = p.edge || 0;
+      const roll = Math.sign(edge) === -Math.sign(p.lean) && Math.abs(edge) > 0.05;
+      const ease = G.dLean * Math.sign(p.lean) < -1.4 && Math.abs(p.lean) < G.peak * 0.75;
+      if (roll || ease) { G.pl = 1; G.plT = 0; G.plS = Math.sign(p.lean); G.plCool = 0.55; }
+    }
+    if (G.pl) {
+      G.plT += dt;
+      if (G.pl === 3 && G.plT > 0.28) G.pl = 0;
+    }
+
+    const q = Object.assign(G.q, p);
+    // a skid (a hockey stop): the skis go across under him, he leans back up the hill against
+    // them, hips and knees into the slope, and the upper body stays square to the line he's
+    // sliding down
+    q.lean = clamp(p.lean + G.skidL * (this.board ? 0.3 : 0.6), -0.9, 0.9);
+    q.angulate = (p.angulate ?? 0.7) * (1 - 0.3 * G.skid);
+    if (!this.board) q.twist = (p.twist || 0) + G.skid * clamp(G.slip, -1.1, 1.1) * 0.62;
+    else if (snow) q.twist = (p.twist || 0) - clamp(p.lean / 0.6, -1, 1) * 0.2 - (this.lagR || 0) * 0.6;
+    // standing still: upright and easy, breathing, weight drifting from foot to foot, looking about
+    const t = p.t, sd = G.seed, st = G.stop;
+    const breath = Math.sin(t * 1.9 + sd);
+    G.sway = st * (0.022 * Math.sin(t * 0.55 + sd) + 0.01 * Math.sin(t * 1.3 + sd * 2));
+    q.crouch = clamp(p.crouch - G.susp * 4.2 + G.trans * 0.22 + G.skid * 0.12 - st * 0.06 + breath * (0.012 + st * 0.02), 0, 1.15);
+    // the head: looking about when stopped, toward the next turn as the pole goes in
+    const lookT = st * (0.4 * Math.sin(t * 0.37 + sd) + 0.22 * Math.sin(t * 0.83 + sd * 3)) + (G.pl === 1 || G.pl === 2 ? G.plS * 0.2 : 0);
+    G.look += (lookT - G.look) * Math.min(1, dt * 4);
+    q.look = (p.look || 0) + G.look;
+    // the head stays level with the horizon while the body tips over (in the body's frame:
+    // the world's up, leaned back the other way)
+    const ul = q.lean * 0.8 * (1 - this.airS);
+    const up = (this.upW ??= new THREE.Vector3());
+    if (!this.board) up.set(Math.sin(ul), Math.cos(ul), 0);
+    else up.set(0, Math.cos(ul), (this.sw ? 1 : -1) * Math.sin(ul));
+    return q;
+  }
+
+  // the snow's height at x in the tipped body frame (it tips the other way)
+  snowAt(x, lean) { return -x * Math.tan(clamp(lean, -0.9, 0.9)); }
+
+  // a pole's direction: (x, z) over the ground in the upper body's turned frame, falling by vy
+  poleDir(out, x, z, vy) {
+    const t = this.twistNow || 0, c = Math.cos(t), sn = Math.sin(t);
+    const r = Math.sqrt(1 - vy * vy) / (Math.hypot(x, z) || 1);
+    return out.set((x * c + z * sn) * r, -vy, (z * c - x * sn) * r);
+  }
+
+  // the hands: forward and wide in front of the body, where he can see them, held in the upper
+  // body's own frame so they turn with it (the inside one leads); the pole hand's plant
+  groundArms(p) {
+    const j = this.j, G = this.gm;
+    if (!G) return;
+    const w = (1 - this.airS) * (1 - this.gAmt) * (p.crash ? 0 : 1) * (1 - clamp(p.flail || 0, 0, 1));
+    if (w < 0.001) return;
+    const al = Math.abs(p.lean), lr = this.lagR || 0, lf = this.lagF || 0, st = G.stop, sk = G.skid;
+    const inS = p.lean > 0 ? -1 : 1;
+    const ch = (this._gch ??= new THREE.Vector3()).copy(j.pelvis).addScaledVector(j.spine, 0.44);
+    const T = (this._gt ??= new THREE.Vector3());
+    for (const [s, h] of [[1, j.hdL], [-1, j.hdR]]) {
+      // (the inside hand leads, forward and up over the inside knee; the outside one stays level)
+      const inside = s === inS ? al : 0, lead = s === inS ? al : -al * 0.4;
+      T.copy(ch)
+        .addScaledVector(j.side, s * (0.31 + st * 0.03 + sk * 0.07 + inside * 0.06))
+        .addScaledVector(j.fwd, 0.42 + lead * 0.14 - st * 0.08)
+        .addScaledVector(j.spine, -0.17 + inside * 0.12 - st * 0.05);
+      // (they swing with the body's weight)
+      T.x += lr * 0.2; T.y += Math.abs(lr) * 0.08; T.z -= lf * 0.1;
+      h.lerp(T, w * (1 - p.tuck));
+    }
+    // skating: both poles push, in time with the stride
+    if (p.skate) {
+      const ph = Math.sin((p.skatePhase || 0) * 2);
+      for (const [s, h] of [[1, j.hdL], [-1, j.hdR]]) { h.z += ph * 0.12 * w; h.y += ph * 0.07 * w; h.x += s * 0.02 * w; }
+    }
+    if (!G.pl) return;
+    const s = G.plS, h = s > 0 ? j.hdL : j.hdR, L = POLE - 0.07;
+    if (G.pl === 1) {
+      // the swing: hand forward and down a little, the wrist flicks the tip ahead
+      const e = sstep(0, 1, G.plT / 0.15);
+      h.z += 0.12 * e * w; h.y += 0.04 * e * w; h.x += s * 0.04 * e * w;
+      if (G.plT >= 0.15) {
+        // the tip goes in: ahead and a little out, a pole's length from the hand
+        const A = G.anchor;
+        const v = clamp((h.y - this.snowAt(h.x + s * 0.3, p.lean)) / L, 0.3, 0.99);
+        this.poleDir(A, s * 0.6, 0.8, v).multiplyScalar(L).add(h);
+        A.y = this.snowAt(A.x, p.lean);
+        G.pl = 2; G.plT = 0;
+      }
+    }
+    if (G.pl === 2) {
+      // planted: the tip stays where it went in while he rides past it, the hand swings round it
+      const A = G.anchor, dt = G.dt;
+      A.x -= G.vl.x * dt; A.z -= G.vl.z * dt; A.y = this.snowAt(A.x, p.lean);
+      h.z += 0.12 * w; h.y += 0.04 * w; h.x += s * 0.04 * w;
+      const d = (this._gd ??= new THREE.Vector3()).subVectors(h, A);
+      h.copy(A).addScaledVector(d.normalize(), L);
+      if (A.z < h.z - 0.3 || G.plT > 0.3) {
+        G.pl = 3; G.plT = 0;
+        G.from.subVectors(A, h).normalize();
+      }
+    } else if (G.pl === 3) {
+      const e = 1 - sstep(0, 1, G.plT / 0.28);
+      h.z += 0.12 * e * w; h.y += 0.04 * e * w;
+    }
+  }
+
+  // a pole on the snow: carried tips back and a little out, clear of the snow; swung forward and
+  // planted; leant on when he's standing still. dir (hand to tip) is blended toward it
+  groundPole(s, hd, dir, p) {
+    const G = this.gm;
+    if (!G) return;
+    const w = (1 - this.airS) * (1 - this.gAmt) * (p.crash ? 0 : 1) * (1 - Math.max(p.tuck, clamp(p.flail || 0, 0, 1)));
+    if (w < 0.001) return;
+    const L = POLE, A = (this._pa ??= new THREE.Vector3()), B = (this._pb ??= new THREE.Vector3());
+    const lean = p.lean, lf = clamp(this.lagF || 0, -1, 1);
+    const hRel = hd.y - this.snowAt(hd.x + s * 0.25, lean);
+    const vy = clamp((hRel - 0.24) / L, 0.3, 0.92);
+    this.poleDir(A, s * (0.4 + G.skid * 0.4), -1 + lf * 0.3 + G.skid * 0.3, vy);
+    // skating: the poles push off beside the boots
+    if (p.skate) {
+      const ph = Math.sin((p.skatePhase || 0) * 2);
+      const v2 = clamp((hRel + 0.02) / L, 0.3, 0.99);
+      this.poleDir(B, s * 0.25, -0.35 - ph * 0.5, v2);
+      A.lerp(B, 0.6 * clamp(0.5 - ph, 0, 1)).normalize();
+    }
+    // stopped: leaning on them, the tips in the snow ahead and out to the side
+    if (G.stop > 0.01) {
+      const v2 = clamp((hRel + 0.02) / L, 0.3, 0.99);
+      this.poleDir(B, s * 0.5, 0.6, v2);
+      A.lerp(B, G.stop).normalize();
+    }
+    let planted = G.stop > 0.6;
+    if (G.pl && s === G.plS) {
+      const v3 = clamp((hRel + 0.02) / L, 0.3, 0.99);
+      this.poleDir(B, s * 0.6, 0.8, v3);
+      if (G.pl === 1) A.lerp(B, sstep(0, 1, G.plT / 0.15)).normalize();
+      else if (G.pl === 2) { A.subVectors(G.anchor, hd).normalize(); planted = true; }
+      else A.lerp(G.from, 1 - sstep(0, 1, G.plT / 0.28)).normalize();
+    }
+    // never through the snow: a tip that would go in skims over it instead (out to the side)
+    if (!planted) {
+      const floor = hd.y - this.snowAt(hd.x + A.x * L, lean) - 0.03;
+      if (-A.y * L > floor) {
+        const ny = -clamp(floor / L, 0.05, 0.99), hz = Math.hypot(A.x, A.z);
+        if (hz < 0.05) { A.x = s; A.z = 0; } else { A.x /= hz; A.z /= hz; }
+        const r = Math.sqrt(1 - ny * ny);
+        A.x *= r; A.z *= r; A.y = ny;
+      }
+    }
+    dir.lerp(A, w).normalize();
+  }
+
+  // a snowboarder's arms on the snow: relaxed, swinging with the body, reaching over the toe edge
+  // on a heelside turn and the front hand pointing down the turn on a toeside one; easy when stopped
+  boardArms(p, hipH, hipZ, ts) {
+    const j = this.j, G = this.gm;
+    if (!G) return;
+    const w = (1 - this.airS) * (1 - this.gAmt) * (p.crash ? 0 : 1) * (1 - p.tuck);
+    if (w < 0.001) return;
+    const lr = this.lagR || 0, st = G.stop, toe = Math.max(0, ts), heel = Math.max(0, -ts);
+    const T = (this._gt ??= new THREE.Vector3());
+    T.set(0.45 + toe * 0.05, hipH + 0.07 - toe * 0.08 + heel * 0.06, hipZ + 0.1 + heel * 0.16 + toe * 0.06);
+    T.z -= lr * 0.25; T.y += Math.abs(lr) * 0.06;
+    T.lerp(tmpV2.set(0.24, hipH - 0.1, hipZ + 0.1), st);
+    j.hdL.lerp(T, w);
+    T.set(-0.38 - heel * 0.04, hipH - 0.02 + heel * 0.06, hipZ + 0.04 + heel * 0.18 - toe * 0.04);
+    T.z += lr * 0.2;
+    T.lerp(tmpV2.set(-0.24, hipH - 0.12, hipZ + 0.06), st);
+    j.hdR.lerp(T, w);
   }
 }
