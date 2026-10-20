@@ -49,7 +49,7 @@ export class Tracks {
       last: null, along: 0,
       break() { this.last = null; },
       // skid: how much the skis are sliding sideways (m/s-ish); slip: their angle to the travel
-      add(pos, fwd, n, skid, powder = 0, board = false, slip = 0) {
+      add(pos, fwd, n, skid, powder = 0, board = false, slip = 0, edge = 0) {
         _side.crossVectors(n, fwd).normalize();
         const cur = { x: pos.x, y: pos.y, z: pos.z, sx: _side.x, sz: _side.z };
         const L = this.last;
@@ -58,14 +58,30 @@ export class Tracks {
           if (d < 3) {
             const v0 = this.along, v1 = (this.along += d);
             // which way the turn throws its snow: to the outside of the curve
-            const turn = Math.sign(L.sx * cur.sz - L.sz * cur.sx) || 1;
-            if (powder > 0.5) sys.quad(L, cur, 0, (board ? 0.42 : 0.34) + Math.min(skid, 3) * 0.16, v0, v1, POWDER, 0.95, n, 0);
-            else if (skid > 0.6) {
+            // (kept while the line runs nearly straight, so a smear's berm doesn't hop sides)
+            const cr = L.sx * cur.sz - L.sz * cur.sx;
+            const turn = Math.abs(cr) > 0.004 ? Math.sign(cr) : L.turn ?? 1;
+            cur.turn = turn;
+            // (widths and strengths ease from one segment into the next: no steps in the mark)
+            if (powder > 0.5) {
+              const w = (board ? 0.42 : 0.34) + Math.min(skid, 3) * 0.16;
+              cur.w = L.kind === POWDER ? L.w + (w - L.w) * 0.5 : w; cur.kind = POWDER;
+              sys.quad(L, cur, 0, [L.kind === POWDER ? L.w : cur.w, cur.w], v0, v1, POWDER, 0.95, n, 0);
+            } else if (skid > 0.6) {
               // the skis sweep a smear as wide as they're turned across the line
               const w = Math.min(0.95, (board ? 0.3 : 0.22) + Math.min(skid, 4) * 0.12 + Math.abs(Math.sin(slip)) * 0.55);
-              sys.quad(L, cur, 0, w, v0, v1, SKID, Math.min(1, 0.45 + skid * 0.2), n, turn);
+              const a = Math.min(1, 0.45 + skid * 0.2);
+              const prev = L.kind === SKID;
+              cur.w = prev ? L.w + (w - L.w) * 0.45 : w; cur.a = prev ? L.a + (a - L.a) * 0.45 : a; cur.kind = SKID;
+              // (the first and last of a smear fade in and out)
+              sys.quad(L, cur, 0, [prev ? L.w : cur.w * 0.6, cur.w], v0, v1, SKID, [prev ? L.a : 0, cur.a], n, turn);
             } else if (board) sys.quad(L, cur, 0, 0.17, v0, v1, BOARD, 1, n, 0);
-            else for (const o of [0.1, -0.1]) sys.quad(L, cur, o, 0.065, v0, v1, CARVE, 1, n, 0);
+            else {
+              // each ski cuts its own line, the inside one (less weight on it) a little shallower; the wall is on the
+              // side the skis are tipped toward (flat skis: a light press, no wall)
+              const tip = Math.sign(edge) || 1, k = Math.min(1, Math.abs(edge) * 2.2);
+              for (const o of [0.095, -0.095]) sys.quad(L, cur, o, 0.075, v0, v1, CARVE, 0.55 + 0.45 * k * (o * tip > 0 ? 1 : 0.8), n, tip);
+            }
           }
         }
         this.last = cur;
@@ -81,21 +97,24 @@ export class Tracks {
     };
   }
 
+  // w and alpha: one value, or [at a, at b]
   quad(a, b, off, w, v0, v1, kind, alpha, n, side) {
+    const wa = Array.isArray(w) ? w[0] : w, wb = Array.isArray(w) ? w[1] : w;
+    const aa = Array.isArray(alpha) ? alpha[0] : alpha, ab = Array.isArray(alpha) ? alpha[1] : alpha;
     const i = this.next;
     this.next = (this.next + 1) % this.segs;
     const v = i * 4;
     const P = this.pos, N = this.nrm, S = this.sid, I = this.inf;
     for (let k = 0; k < 4; k++) {
-      const e = k < 2 ? a : b, s = k & 1 ? -1 : 1;
-      const x = e.x + e.sx * (off + w * s), z = e.z + e.sz * (off + w * s);
+      const e = k < 2 ? a : b, s = k & 1 ? -1 : 1, we = k < 2 ? wa : wb;
+      const x = e.x + e.sx * (off + we * s), z = e.z + e.sz * (off + we * s);
       const j = (v + k) * 3;
       P[j] = x; P[j + 1] = heightAt(x, z) + 0.03; P[j + 2] = z;
       N[j] = n.x; N[j + 1] = n.y; N[j + 2] = n.z;
       S[j] = e.sx * (side || 1); S[j + 1] = 0; S[j + 2] = e.sz * (side || 1);
       const q = (v + k) * 4;
       // u across (flipped so +1 is the outside of the turn for a skid), along, kind, strength
-      I[q] = s * (side || 1); I[q + 1] = k < 2 ? v0 : v1; I[q + 2] = kind; I[q + 3] = alpha;
+      I[q] = s * (side || 1); I[q + 1] = k < 2 ? v0 : v1; I[q + 2] = kind; I[q + 3] = k < 2 ? aa : ab;
     }
     this.uHead.value = this.next;
     if (i < this.dirtyMin) this.dirtyMin = i;
@@ -139,11 +158,18 @@ function makeTrackMaterial(uHead, segs) {
           vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
           return mix(mix(tHash(i), tHash(i + vec2(1, 0)), f.x), mix(tHash(i + vec2(0, 1)), tHash(i + vec2(1, 1)), f.x), f.y);
         }
+        // how much a carve's cut is softened (its size in pixels: crisp close up, no shimmer far off)
+        float tCarveW = 0.0;
         // the surface's height across (u) and along (v) a track, in "depths"
         float tProf(float u, float v, float kind) {
           float a = abs(u);
-          if (kind < 0.5) { // a carved line: a sharp trench, its lip of pushed-up snow
-            return -exp(-pow(u / 0.34, 2.0)) + 0.32 * exp(-pow((a - 0.72) / 0.16, 2.0)) * (0.8 + 0.4 * tNoise(vec2(v * 3.0, u)));
+          if (kind < 0.5) { // a carved line: the edge cuts a clean wall (u < 0 side), the base
+            // leaves a ramp rising to the other side, a little rim of snow pushed out past it
+            float w = tCarveW;
+            float wall = smoothstep(-0.42 - w, -0.34 + w, u);
+            float ramp = 1.0 - smoothstep(-0.36 - w, 0.5 + w, u);
+            float rim = 0.16 * exp(-pow((u - 0.62) / (0.12 + w), 2.0)) * (0.8 + 0.4 * tNoise(vec2(v * 2.0, 1.0)));
+            return -wall * ramp + rim;
           } else if (kind < 1.5) { // a skid: scraped flat, raked along, a berm thrown to the outside
             float rake = (tNoise(vec2(u * 9.0, v * 0.35)) - 0.5) * 0.18 + (tNoise(vec2(u * 31.0, v * 0.8)) - 0.5) * 0.08;
             return -0.12 * (1.0 - smoothstep(0.6, 0.95, a)) + rake * (1.0 - smoothstep(0.7, 1.0, a))
@@ -162,15 +188,17 @@ function makeTrackMaterial(uHead, segs) {
       .replace('#include <color_fragment>', `#include <color_fragment>
         {
           float u = vInfo.x, v = vInfo.y, kind = vInfo.z;
+          tCarveW = clamp(fwidth(u) * 0.8, 0.0, 0.5);
           float h = tProf(u, v, kind);
           // far off, a thin groove is less than a pixel: its average shade instead of shimmer
-          float blur = smoothstep(0.25, 0.9, fwidth(u));
-          gTDepth = mix(h, kind < 0.5 ? -0.3 : kind < 1.5 ? -0.08 : kind < 2.5 ? -0.55 : -0.4, blur);
+          float blur = smoothstep(0.3, 1.0, fwidth(u));
+          gTDepth = mix(h, kind < 0.5 ? -0.18 : kind < 1.5 ? -0.08 : kind < 2.5 ? -0.55 : -0.4, blur);
           // the snow down in a groove is in its own shade, a little blue; lips catch the light
           float cav = clamp(-gTDepth, 0.0, 1.0), lip = clamp(gTDepth, 0.0, 1.0);
           // (the slope's own albedo, so the touched snow sits in it)
           vec3 snow = vec3(0.448, 0.458, 0.472);
-          float depth = kind < 0.5 ? 0.42 : kind < 1.5 ? 0.3 : kind < 2.5 ? 0.5 : 0.42;
+          // (a carve's cut is shown by its light and shade, not painted dark)
+          float depth = kind < 0.5 ? 0.16 : kind < 1.5 ? 0.3 : kind < 2.5 ? 0.5 : 0.42;
           vec3 col = mix(snow, snow * vec3(0.7, 0.8, 0.95), cav * depth) * (1.0 + lip * 0.04);
           // a skid's scraped snow is a touch greyer and packed
           if (kind > 0.5 && kind < 1.5) col *= 0.96 + 0.04 * tNoise(vec2(u * 14.0, v * 0.5));
@@ -188,12 +216,12 @@ function makeTrackMaterial(uHead, segs) {
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         {
           float u = vInfo.x, v = vInfo.y, kind = vInfo.z;
-          float e = 0.035;
+          float e = 0.03 + tCarveW * 0.5;
           float du = (tProf(u + e, v, kind) - tProf(u - e, v, kind)) / (2.0 * e);
           float dv = (tProf(u, v + 0.05, kind) - tProf(u, v - 0.05, kind)) / 0.1;
-          float blur = smoothstep(0.25, 0.9, fwidth(u));
+          float blur = smoothstep(0.3, 1.0, fwidth(u));
           // how steep a "depth" per unit u is, for each kind's real size
-          float k = (kind < 0.5 ? 0.5 : kind < 1.5 ? 0.18 : kind < 2.5 ? 0.7 : kind < 3.5 ? 0.35 : 0.5) * (1.0 - blur);
+          float k = (kind < 0.5 ? 0.36 : kind < 1.5 ? 0.18 : kind < 2.5 ? 0.7 : kind < 3.5 ? 0.35 : 0.5) * (1.0 - blur);
           vec3 tn = normalize(vTN), ts = normalize(vSide), tf = normalize(cross(ts, tn));
           vec3 nW = normalize(tn - ts * du * k - tf * dv * k * (kind > 3.5 ? 1.0 : 0.15));
           normal = normalize((viewMatrix * vec4(nW, 0.0)).xyz);

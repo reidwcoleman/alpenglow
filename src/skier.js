@@ -404,7 +404,7 @@ export class Skier {
       this.trackDist = 0;
       // (how far the skis are turned across the way they're going: a skid's smear is that wide)
       const slip = speed > 1 ? wrapAngle(this.heading + this.skidYaw - Math.atan2(v.x, v.z)) : 0;
-      this.trackSlot.add(this.pos, this.forward(_t), n, this.skid, powder, this.board, Math.abs(slip) > Math.PI / 2 ? Math.PI - Math.abs(slip) : slip);
+      this.trackSlot.add(this.pos, this.forward(_t), n, this.skid, powder, this.board, Math.abs(slip) > Math.PI / 2 ? Math.PI - Math.abs(slip) : slip, this.lean);
     }
     this.stuck = speed < 0.6 ? this.stuck + dt : 0;
     if (this.switchStance && (this.switchT += dt) > 4) this.switchStance = false;
@@ -1168,16 +1168,23 @@ export class Skier {
     this.shiftyS += ((free && c.up ? 1 : 0) - this.shiftyS) * Math.min(1, vdt * 9);
     this.daffyS += ((free && c.down ? 1 : 0) - this.daffyS) * Math.min(1, vdt * 9);
     const gCrouch = clamp((this.gload - 1) * 0.32, -0.12, 0.5);
+    // fore-aft acceleration, smoothed, for the body's rock
+    const spNow = this.speed;
+    if (this.lastSp != null && vdt > 0) this.accelS = (this.accelS ?? 0) + ((spNow - this.lastSp) / vdt - (this.accelS ?? 0)) * Math.min(1, vdt * 6);
+    this.lastSp = spNow;
     // riding backwards: he turns his shoulders and looks back over one of them to see where he's going
     const back = this.skiSwitch && this.onGround && !crashed && !this.grind;
     if (back && Math.abs(c.steer) > 0.3) this.lookSide = -Math.sign(c.steer);
     this.backK = (this.backK ?? 0) + ((back ? 1 : 0) - (this.backK ?? 0)) * Math.min(1, vdt * 6);
     const lookS = (this.lookSide ?? 1) * this.backK;
-    let crouch = 0.18 + Math.abs(this.lean) * (this.board ? 0.26 : 0.42) + this.compress * 0.35 + gCrouch + this.jumpCharge * 0.5 + (c.brake > 0 ? 0.25 : 0) - this.spring * 1.6;
+    let crouch = 0.18 + Math.abs(this.lean) * (this.board ? 0.26 : 0.12) + this.compress * 0.35 + gCrouch * (this.board ? 1 : 0.7) + this.jumpCharge * 0.5 + (c.brake > 0 ? 0.25 : 0) - this.spring * 1.6;
     if (crashed) crouch = this.crashPhase === 'up' ? 0.9 * this.lie + 0.3 : 0.55;
     m.pose({
-      lean: crashed ? 0 : this.lean,
-      angulate: 0.55,
+      // (the body's tilt eases off past ~40 degrees: angulation takes the rest)
+      lean: crashed ? 0 : 0.85 * Math.tanh(this.lean / 0.85),
+      angulate: this.board ? 0.55 : 0.7,
+      // the skis speeding up under him (+) or checked (-): the upper body rocks with it
+      fore: crashed || !this.onGround ? 0 : clamp(this.accelS ?? 0, -6, 6) / 6,
       crouch: clamp(crouch, 0, 1),
       tuck: crashed || (this.skating && !this.board) ? 0 : clamp(c.tuck * smoothstep(5, 9, sp), 0, 1) * (1 - airK * 0.5),
       plow: c.brake > 0 && sp < 9 && !this.isPlayer && !this.board ? 1 : 0,
@@ -1201,6 +1208,10 @@ export class Skier {
       skate: this.skating && !crashed && !this.board ? 1 : 0,
       skatePhase: this.skatePhase,
       edge: this.onGround && !crashed ? this.edge : 0,
+      flex: this.onGround && !crashed ? clamp(Math.abs(this.lean) * 1.1 * this.gload, 0, 1) + clamp(Math.abs(this.spring) * 4, 0, 0.5) : 0,
+      chatter: this.onGround && !crashed ? smoothstep(15, 30, sp) * (0.25 + this.surf.ice * 2.5) * (0.6 + 0.4 * Math.abs(this.lean)) : 0,
+      wind: crashed ? 0 : smoothstep(3, 22, Math.hypot(this.vel.x, this.vel.y, this.vel.z)),
+      slap: this.onGround && !crashed ? clamp(Math.abs(this.springV) * 0.12, 0, 0.6) : 0,
       switch: !!this.boardSwitch,
       t: this.time,
     });

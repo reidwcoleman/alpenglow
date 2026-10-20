@@ -443,6 +443,9 @@ export function skiGeometry() {
   return once('ski', () => {
     const L = 1.72, segs = 64, split = 96 / 128;
     const pos = [], uv = [], idx = [];
+    // morphs (relative): 0 the ski bent into an arc under the boot (tip and tail up), 1 the
+    // forebody flapping (chatter, a hard landing)
+    const bend = [], flap = [];
     for (let i = 0; i <= segs; i++) {
       const t = i / segs; // 0 tail, 1 tip
       const z = -L * 0.45 + t * L;
@@ -461,6 +464,8 @@ export function skiGeometry() {
       uv.push(0, v, split, v, 0.81, v, 0.81, v);
       pos.push(w, y + T, z, w, y, z, -w, y + T, z, -w, y, z);
       uv.push(0.97, v, 0.97, v, 0.97, v, 0.97, v);
+      const zb = z / (L * 0.5), db = 0.06 * zb * zb, df = 0.035 * Math.max(0, (t - 0.5) / 0.5) ** 1.6;
+      for (let k = 0; k < 8; k++) { bend.push(0, db, 0); flap.push(0, df, 0); }
     }
     for (let i = 0; i < segs; i++) {
       const a = i * 8, b = a + 8;
@@ -474,6 +479,8 @@ export function skiGeometry() {
     g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     g.setIndex(idx);
     g.computeVertexNormals();
+    g.morphAttributes.position = [new THREE.Float32BufferAttribute(bend, 3), new THREE.Float32BufferAttribute(flap, 3)];
+    g.morphTargetsRelative = true;
     return g;
   });
 }

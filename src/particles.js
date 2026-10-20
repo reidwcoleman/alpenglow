@@ -31,41 +31,66 @@ const frag = /* glsl */`
 
 // spray: two kinds of snow in every throw. Grains (a crust's crystals and clumps) fly on
 // their own ballistic arcs, fall fast and glint; the mist (the fine powder) hangs, spreads and
-// drifts down slowly. Both are lit by the sun as little spheres.
+// drifts down slowly. Each is a camera-facing quad: a grain is drawn stretched along the way it
+// is flying (the streak it leaves in a frame), the mist as a ragged puff.
 const sprayVert = /* glsl */`
-  attribute float aSize; attribute float aAlpha; attribute float aSeed;
-  varying float vAlpha; varying float vSeed;
-  uniform float uScale;
+  attribute vec3 iPos; attribute vec3 iVel; attribute float aSize; attribute float aAlpha; attribute float aSeed;
+  varying float vAlpha; varying float vSeed; varying vec2 vUv; varying float vLen;
   #include <fog_pars_vertex>
   void main() {
-    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    vec4 mvPosition = modelViewMatrix * vec4(iPos, 1.0);
+    vec2 c = position.xy;
+    vSeed = aSeed; vAlpha = aAlpha; vUv = c; vLen = 1.0;
+    if (aSeed < 0.45) {
+      // a streak: the size across, the distance flown in a sixtieth of a second along
+      vec3 vv = (modelViewMatrix * vec4(iVel, 0.0)).xyz;
+      float sp = length(vv.xy);
+      vec2 d = sp > 1e-3 ? vv.xy / sp : vec2(1.0, 0.0);
+      float L = aSize + min(sp * 0.008, aSize * 2.5);
+      vLen = L / aSize;
+      mvPosition.xy += d * c.x * L * 0.5 + vec2(-d.y, d.x) * c.y * aSize * 0.5;
+      // (a streak thinner than a pixel still shows, fainter)
+      float px = aSize * 700.0 / max(0.1, -mvPosition.z);
+      vAlpha *= min(1.0, px / 1.6);
+      mvPosition.xy += vec2(-d.y, d.x) * c.y * max(0.0, 1.6 / 700.0 * -mvPosition.z - aSize) * 0.5;
+    } else {
+      // a puff, turned by its seed so no two are alike
+      float a = aSeed * 40.0;
+      mat2 r = mat2(cos(a), sin(a), -sin(a), cos(a));
+      mvPosition.xy += r * c * aSize * 0.5;
+    }
     gl_Position = projectionMatrix * mvPosition;
-    gl_PointSize = aSize * uScale / max(0.1, -mvPosition.z);
-    vAlpha = aAlpha; vSeed = aSeed;
     #include <fog_vertex>
   }`;
 const sprayFrag = /* glsl */`
   uniform vec3 uColor; uniform vec3 uSunV; uniform float uTime;
-  varying float vAlpha; varying float vSeed;
+  varying float vAlpha; varying float vSeed; varying vec2 vUv; varying float vLen;
   #include <fog_pars_fragment>
+  float sh(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+  float sn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(sh(i), sh(i + vec2(1, 0)), f.x), mix(sh(i + vec2(0, 1)), sh(i + vec2(1, 1)), f.x), f.y); }
   void main() {
-    vec2 c = (gl_PointCoord - 0.5) * 2.0;
-    float r2 = dot(c, c);
-    if (r2 > 1.0) discard;
-    vec3 n = vec3(c.x, -c.y, sqrt(1.0 - r2));
-    float ndl = max(dot(n, uSunV), 0.0);
     vec3 col; float a;
     if (vSeed < 0.45) {
-      // a grain: crisp, round, sunlit on one side, blue in its own shade
-      a = smoothstep(1.0, 0.7, r2);
-      col = uColor * (0.55 + 0.75 * ndl) + vec3(0.02, 0.035, 0.07) * (1.0 - ndl);
+      // a streak with round ends: brightest at its head
+      vec2 q = vec2(vUv.x * vLen, vUv.y);
+      float dx = max(0.0, abs(q.x) - (vLen - 1.0));
+      float r2 = dx * dx + q.y * q.y;
+      if (r2 > 1.0) discard;
+      a = smoothstep(1.0, 0.3, r2) * mix(0.4, 1.0, (vUv.x + 1.0) * 0.5) / vLen;
+      float ndl = 0.5 + 0.5 * uSunV.y;
+      col = uColor * (0.75 + 0.45 * ndl);
       // now and then one catches the sun
       float tw = fract(vSeed * 91.7 + uTime * (2.0 + vSeed * 9.0));
-      col += uColor * smoothstep(0.93, 1.0, tw) * 2.5 * ndl;
+      col += uColor * smoothstep(0.93, 1.0, tw) * 2.2;
     } else {
-      // the mist: soft, barely shaded
-      a = (1.0 - r2); a *= a;
-      col = uColor * (0.85 + 0.25 * ndl);
+      // the mist: soft, ragged at the edges, lit a little on the sun's side
+      float r2 = dot(vUv, vUv);
+      if (r2 > 1.0) discard;
+      float n = sn(vUv * 2.3 + vSeed * 31.0) * 0.6 + sn(vUv * 5.1 - vSeed * 17.0) * 0.4;
+      a = max(0.0, (1.0 - r2) * (1.0 - r2) * (0.35 + 0.95 * n) - 0.08);
+      vec3 nn = vec3(vUv.x, -vUv.y, sqrt(1.0 - r2));
+      col = uColor * (0.85 + 0.25 * max(dot(nn, uSunV), 0.0));
     }
     gl_FragColor = vec4(col, a * vAlpha);
     #include <tonemapping_fragment>
@@ -87,17 +112,23 @@ export class Particles {
     this.alpha = new Float32Array(max);
     this.seed = new Float32Array(max);
     for (let i = 0; i < max; i++) this.seed[i] = Math.random();
-    const g = new THREE.BufferGeometry();
-    this.aP = new THREE.BufferAttribute(this.p, 3).setUsage(THREE.DynamicDrawUsage);
-    this.aS = new THREE.BufferAttribute(this.size, 1).setUsage(THREE.DynamicDrawUsage);
-    this.aA = new THREE.BufferAttribute(this.alpha, 1).setUsage(THREE.DynamicDrawUsage);
-    g.setAttribute('position', this.aP);
+    // one quad, drawn once per particle
+    const g = new THREE.InstancedBufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0], 3));
+    g.setIndex([0, 1, 2, 0, 2, 3]);
+    const inst = (a, n) => new THREE.InstancedBufferAttribute(a, n).setUsage(THREE.DynamicDrawUsage);
+    this.aP = inst(this.p, 3);
+    this.aV = inst(this.v, 3);
+    this.aS = inst(this.size, 1);
+    this.aA = inst(this.alpha, 1);
+    g.setAttribute('iPos', this.aP);
+    g.setAttribute('iVel', this.aV);
     g.setAttribute('aSize', this.aS);
     g.setAttribute('aAlpha', this.aA);
-    g.setAttribute('aSeed', new THREE.BufferAttribute(this.seed, 1));
+    g.setAttribute('aSeed', new THREE.InstancedBufferAttribute(this.seed, 1));
+    g.instanceCount = max;
     this.uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
       uColor: { value: new THREE.Color(1, 1, 1) },
-      uScale: { value: 600 },
       uSunV: { value: new THREE.Vector3(0, 1, 0) },
       uTime: { value: 0 },
     }]);
@@ -105,7 +136,7 @@ export class Particles {
       uniforms: this.uniforms, vertexShader: sprayVert, fragmentShader: sprayFrag,
       transparent: true, depthWrite: false, fog: true,
     });
-    this.points = new THREE.Points(g, this.mat);
+    this.points = new THREE.Mesh(g, this.mat);
     this.points.frustumCulled = false;
     this.points.renderOrder = 2;
     scene.add(this.points);
@@ -113,14 +144,17 @@ export class Particles {
     this.live = 0;
   }
 
-  emit(x, y, z, vx, vy, vz, spread, size, life, n = 1) {
+  // (jit: how far round the point they start; grainK > 1 makes more of them grains than mist)
+  emit(x, y, z, vx, vy, vz, spread, size, life, n = 1, jit = 0.3, grainK = 1) {
     for (let k = 0; k < n; k++) {
-      const i = this.cursor;
+      let i = this.cursor;
       this.cursor = (this.cursor + 1) % this.max;
+      // a carve's fan is mostly crystals: skip on to a grain slot now and then
+      if (grainK > 1 && this.seed[i] >= 0.45 && Math.random() < 1 - 1 / grainK) { i = this.cursor; this.cursor = (this.cursor + 1) % this.max; }
       const grain = this.seed[i] < 0.45;
-      this.p[i * 3] = x + (Math.random() - 0.5) * 0.3;
-      this.p[i * 3 + 1] = y + Math.random() * 0.15;
-      this.p[i * 3 + 2] = z + (Math.random() - 0.5) * 0.3;
+      this.p[i * 3] = x + (Math.random() - 0.5) * jit;
+      this.p[i * 3 + 1] = y + Math.random() * jit * 0.5;
+      this.p[i * 3 + 2] = z + (Math.random() - 0.5) * jit;
       // grains leave faster and stay together; the mist puffs out wider
       const sp = grain ? spread * 0.75 : spread;
       const kick = grain ? 1.15 : 0.9;
@@ -129,7 +163,8 @@ export class Particles {
       this.v[i * 3 + 2] = vz * kick + (Math.random() - 0.5) * sp;
       this.life[i] = life * (0.6 + Math.random() * 0.6) * (grain ? 0.8 : 1.15);
       this.age[i] = 0;
-      this.base[i] = size * (0.5 + Math.random()) * (grain ? 0.055 + Math.random() * 0.05 : 1);
+      // (the mist starts as small puffs and spreads)
+      this.base[i] = size * (0.5 + Math.random()) * (grain ? 0.035 + Math.random() * 0.04 : 0.6);
     }
   }
 
@@ -154,7 +189,7 @@ export class Particles {
         this.alpha[i] = (1 - t * t) * Math.min(1, t * 12) * 0.85;
       } else {
         this.size[i] = this.base[i] * (0.6 + t * 1.9);
-        this.alpha[i] = (1 - t) * Math.min(1, t * 8) * 0.36;
+        this.alpha[i] = (1 - t) * Math.min(1, t * 8) * 0.46;
       }
       if ((i & 7) === 0 || (grain && (i & 1) === 0)) {
         const gy = heightAt(this.p[k], this.p[k + 2]);
@@ -162,7 +197,7 @@ export class Particles {
         if (this.p[k + 1] < gy) { this.p[k + 1] = gy; this.v[k + 1] = 0; if (grain) { this.v[k] *= 0.3; this.v[k + 2] *= 0.3; this.age[i] = Math.max(this.age[i], this.life[i] * 0.8); } }
       }
     }
-    this.aP.needsUpdate = true; this.aS.needsUpdate = true; this.aA.needsUpdate = true;
+    this.aP.needsUpdate = true; this.aV.needsUpdate = true; this.aS.needsUpdate = true; this.aA.needsUpdate = true;
   }
 }
 

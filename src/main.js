@@ -14,7 +14,7 @@ import { Particles, Snowfall, DiamondDust } from './particles.js';
 import { Skier } from './skier.js';
 import { FarRiders } from './farriders.js';
 import { batchStatic } from './batch.js';
-import { QUALITY_NAME } from './gfx.js';
+import { QUALITY_NAME, LO } from './gfx.js';
 import { Pool } from './pool.js';
 import { paintTextures } from './proctex.js';
 import { AIController } from './ai.js';
@@ -157,7 +157,7 @@ class Game {
     this.tracks = new Tracks(scene);
     // (your own line keeps a ring of its own, so it stays down the hill behind you)
     this.myTracks = new Tracks(scene, 16000);
-    this.particles = new Particles(scene);
+    this.particles = new Particles(scene, LO ? 8000 : 14000);
     this.snowfall = new Snowfall(scene);
     this.dust = new DiamondDust(scene);
     this.debris = new Debris(scene);
@@ -1553,27 +1553,56 @@ class Game {
 
   spray(dt) {
     const cam = this.camera.position;
+    const rnd = (n) => { n = Math.max(0, n); return Math.floor(n) + (Math.random() < n % 1 ? 1 : 0); };
     for (const s of this.skiers) {
       if (!s.onGround || s.crash > 0) continue;
       const sp = s.speed;
       if (sp < 3) continue;
       const d = cam.distanceTo(s.pos);
       if (d > 130) continue;
-      const carve = Math.abs(s.lean) * sp;
+      const near = d < 18 ? 1.6 : d < 45 ? 1 : 0.45;
       const pw = s.surf.powder, ice = s.surf.ice;
-      // powder throws plumes, ice barely sprays at all
-      const rate = (s.skid * 10 + Math.max(0, carve - 8) * 0.9 + (s.controls.brake ? 8 : 0) + pw * sp * 1.6) * Math.min(1, sp / 10) * (sp > 6 ? 1 : 0.3) * (1 - ice * 0.75);
-      let n = rate * dt;
-      n = Math.floor(n) + (Math.random() < n % 1 ? 1 : 0);
-      if (!n) continue;
-      // spray flies to the outside of the turn
-      const sx = Math.cos(s.heading), sz = -Math.sin(s.heading); // skier's left
-      const out = -Math.sign(s.latAcc || 1);
-      const k = 1.8 + s.skid * 1.4;
-      this.particles.emit(
-        s.pos.x + sx * out * 0.3 - Math.sin(s.heading) * 0.3, s.pos.y + 0.05, s.pos.z + sz * out * 0.3 - Math.cos(s.heading) * 0.3,
-        s.vel.x * 0.4 + sx * out * k, 1.4 + s.skid * 0.5, s.vel.z * 0.4 + sz * out * k,
-        1.6 + pw * 1.5, 0.32 + Math.min(s.skid, 3) * 0.08 + pw * 0.35, 0.85 + pw * 0.6, n);
+      const h = s.heading, fx = Math.sin(h), fz = Math.cos(h), lx = Math.cos(h), lz = -Math.sin(h);
+      // the outside of the turn (where the snow goes): the way the skis are tipped away from
+      const out = Math.sign(s.lean || -(s.latAcc || 1)) || 1;
+      const vx = s.vel.x, vz = s.vel.z;
+      const y = s.pos.y + 0.03;
+      // a hard carve: the tails of both skis peel a thin fan of crystals off the edge, most from
+      // the outside ski (it carries the weight), flying out and back low over the snow
+      const edge = smoothstep(0.22, 0.75, Math.abs(s.lean)) * smoothstep(7, 18, sp) * (1 - ice * 0.7);
+      if (edge > 0.01 && !s.board) {
+        for (const [o, w] of [[out, 1], [-out, 0.45]]) {
+          const n = rnd(edge * w * (55 + sp * 6) * dt * near * (1 + pw * 1.5));
+          if (!n) continue;
+          const ox = s.pos.x - fx * 0.72 + lx * o * 0.095 + lx * out * 0.06, oz = s.pos.z - fz * 0.72 + lz * o * 0.095 + lz * out * 0.06;
+          const k = 1.2 + edge * 2.6 + pw * 1.5;
+          this.particles.emit(ox, y, oz, vx * 0.55 + lx * out * k, 0.7 + edge * 1.1 + pw * 1.2, vz * 0.55 + lz * out * k,
+            0.6 + pw * 1.2, 0.36 + pw * 0.3, 0.75 + pw * 0.5, n, 0.1, 2.2 - pw);
+        }
+      } else if (edge > 0.01) {
+        // a board's carve: one long rooster tail off the tail edge
+        const n = rnd(edge * (70 + sp * 7) * dt * near * (1 + pw * 1.5));
+        const k = 1.4 + edge * 2.8 + pw * 1.5;
+        if (n) this.particles.emit(s.pos.x - fx * 0.6 + lx * out * 0.1, y, s.pos.z - fz * 0.6 + lz * out * 0.1, vx * 0.55 + lx * out * k, 0.9 + edge * 1.2 + pw * 1.2, vz * 0.55 + lz * out * k,
+          0.6 + pw * 1.2, 0.28 + pw * 0.3, 0.75 + pw * 0.5, n, 0.1, 2.2 - pw);
+      }
+      // skids and stops: the whole length of the edges scrapes, a curtain of snow thrown out
+      const skid = Math.min(4, s.skid) + (s.controls.brake ? 1.2 : 0);
+      if (skid > 0.25) {
+        const n = rnd((skid * 85 + pw * sp * 3) * Math.min(1, sp / 8) * dt * near * (1 - ice * 0.6));
+        for (let i = 0; i < n; i++) {
+          const along = Math.random() * 1.4 - 0.65;
+          const ox = s.pos.x + fx * along + lx * out * 0.16, oz = s.pos.z + fz * along + lz * out * 0.16;
+          const k = 1.6 + skid * 1.1 + pw;
+          this.particles.emit(ox, y, oz, vx * 0.35 + lx * out * k, 1.1 + skid * 0.45 + pw * 0.8, vz * 0.35 + lz * out * k,
+            1.0 + pw * 1.5 + skid * 0.25, 0.3 + Math.min(skid, 3) * 0.07 + pw * 0.35, 0.8 + pw * 0.6, 1, 0.12);
+        }
+      }
+      // deep snow: the boots plough a plume whatever the skis are doing
+      if (pw > 0.15) {
+        const n = rnd(pw * sp * 2.2 * dt * near);
+        if (n) this.particles.emit(s.pos.x + fx * 0.3, y + 0.15, s.pos.z + fz * 0.3, vx * 0.3, 1.3, vz * 0.3, 1.6, 0.5 + pw * 0.3, 1.2, n, 0.35);
+      }
     }
   }
 

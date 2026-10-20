@@ -80,6 +80,7 @@ export function randomOutfit(rnd, racer = false) {
 const Y = new THREE.Vector3(0, 1, 0);
 const tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3(), tmpQ = new THREE.Quaternion();
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 
 function ik(A, C, l1, l2, pole, out) {
   const d0 = tmpV.subVectors(C, A);
@@ -135,6 +136,32 @@ const BOARD_GRAB = {
 export const BOARD_NAME = { mute: 'indy', tail: 'tail', japan: 'melon', safety: 'method', critical: 'stalefish', nose: 'nose' };
 
 const packGeo = {};
+// the pack: a rounded bag, narrower at the top, its outer face bellied out with what's in it
+function packBodyGeometry() {
+  const g = new RoundedBoxGeometry(0.3, 0.46, 0.15, 4, 0.06);
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    let x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const nx = x / 0.15, ny = y / 0.23;
+    x *= 1 - 0.13 * Math.max(0, ny);
+    if (z < 0) z *= 1 + 0.55 * (1 - nx * nx) * (1 - 0.7 * ny * ny);
+    p.setXYZ(i, x, y, z);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+// the lid over the top, draped down the outer face
+function packLidGeometry() {
+  const g = new RoundedBoxGeometry(0.27, 0.09, 0.2, 3, 0.04);
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    // (droops at the front, domed in the middle)
+    p.setXYZ(i, x, y - Math.max(0, -z - 0.04) * 0.5 + 0.015 * (1 - (x / 0.135) ** 2), z);
+  }
+  g.computeVertexNormals();
+  return g.translate(0, 0.215, -0.015);
+}
 
 export class SkierModel {
   constructor(outfit, bib = 0) {
@@ -208,18 +235,27 @@ export class SkierModel {
     }
     // a freeride pack on the back (not on a race suit), and the jacket's hood bunched behind the neck
     if (!outfit.racer) {
-      const packM = M(0x2a2d33, 0.85);
+      const packM = M(outfit.pack ?? 0x2b2f36, 0.82);
       const pack = new THREE.Group();
-      const body = new THREE.Mesh(packGeo.body ??= new RoundedBoxGeometry(0.3, 0.44, 0.14, 3, 0.05), packM);
-      const lid = new THREE.Mesh(packGeo.lid ??= new RoundedBoxGeometry(0.28, 0.1, 0.15, 2, 0.04).translate(0, 0.21, 0.01), M(outfit.jacket2 ?? 0x3a3f46, 0.7));
-      const pocket = new THREE.Mesh(packGeo.pocket ??= new RoundedBoxGeometry(0.22, 0.2, 0.05, 2, 0.02).translate(0, -0.08, -0.08), packM);
+      // (pack frame: +z against the back, -z the outer face, +y up)
+      const body = new THREE.Mesh(packGeo.body ??= packBodyGeometry(), packM);
+      const lid = new THREE.Mesh(packGeo.lid ??= packLidGeometry(), M(outfit.jacket2 ?? 0x3a3f46, 0.7));
+      const pocket = new THREE.Mesh(packGeo.pocket ??= new RoundedBoxGeometry(0.17, 0.13, 0.04, 3, 0.017).translate(0, -0.11, -0.112).rotateX(0.12), M(0x3d424b, 0.8));
       const strapM = M(0x16181c, 0.9);
-      for (const sx of [-0.09, 0.09]) {
-        const st = new THREE.Mesh(packGeo.strap ??= new THREE.BoxGeometry(0.045, 0.34, 0.03).translate(0, 0.05, 0.11).rotateX(-0.2), strapM);
+      for (const sx of [-0.085, 0.085]) {
+        const st = new THREE.Mesh(packGeo.strap ??= new RoundedBoxGeometry(0.05, 0.36, 0.022, 2, 0.008).translate(0, 0.04, 0.1).rotateX(-0.22), strapM);
         st.position.x = sx; pack.add(st);
       }
-      const handle = new THREE.Mesh(packGeo.handle ??= new THREE.CylinderGeometry(0.012, 0.012, 0.3, 6).translate(0.07, -0.02, -0.075), M(0xb8bcc4, 0.4, 0.6));
-      pack.add(body, lid, pocket, handle);
+      // compression straps round the outer face, with their buckles
+      for (const y of [0.075, -0.035]) {
+        const cs = new THREE.Mesh(packGeo.cstrap ??= new THREE.TorusGeometry(0.2, 0.006, 4, 20, 1.5).rotateX(Math.PI / 2).rotateY(Math.PI / 2 + 0.75).scale(1, 1, 0.59), strapM);
+        cs.position.y = y; pack.add(cs);
+        const bk = new THREE.Mesh(packGeo.buckle ??= new THREE.BoxGeometry(0.03, 0.018, 0.01).translate(0.05, 0, -0.118), M(0x111214, 0.5));
+        bk.position.y = y; pack.add(bk);
+      }
+      const handle = new THREE.Mesh(packGeo.handle ??= new THREE.CylinderGeometry(0.011, 0.011, 0.24, 8).translate(-0.075, 0.02, -0.128), M(0x2e3238, 0.45, 0.5));
+      const grip = new THREE.Mesh(packGeo.grip ??= new THREE.CylinderGeometry(0.008, 0.008, 0.07, 6).rotateZ(Math.PI / 2).translate(-0.075, 0.15, -0.128), M(0x16181c, 0.6));
+      pack.add(body, lid, pocket, handle, grip);
       for (const m of pack.children) m.castShadow = true;
       this.frame.add(pack);
       P.pack = pack;
@@ -321,6 +357,16 @@ export class SkierModel {
     this.gAmt += ((p.grab ? 1 : 0) - this.gAmt) * Math.min(1, dt * (p.grab ? 14 : 9));
     if (this.gAmt < 0.01) this.gKind = null;
     this.airS += (p.air - this.airS) * Math.min(1, dt * 10);
+    // the upper body has weight: it lags into a new turn and swings past, rocks back when the
+    // skis speed up under it and forward when they're checked, and the arms follow it
+    const sw = (this.swing ??= { r: p.lean, vr: 0, f: 0, vf: 0 });
+    if (dt > 0) {
+      const h = Math.min(dt, 1 / 30);
+      sw.vr += (70 * (p.lean - sw.r) - 9 * sw.vr) * h; sw.r += sw.vr * h;
+      sw.vf += (55 * ((p.fore || 0) - sw.f) - 8 * sw.vf) * h; sw.f += sw.vf * h;
+    }
+    this.lagR = clamp(sw.r - p.lean, -0.3, 0.3);
+    this.lagF = clamp(sw.f, -1, 1);
     this.tilt.rotation.set(0, 0, p.lean);
     if (this.board) {
       // riding switch: the other foot leads, the body faces the other edge
@@ -329,17 +375,21 @@ export class SkierModel {
       this.lowerBoard(sw ? { ...p, lean: -p.lean, edge: -(p.edge || 0) } : p);
     } else this.lowerSki(p);
     this.upper(p);
+    if (this.rig && this.real) this.rig.mesh.material.userData.u.uFlap.value.set(p.t % 600, p.wind || 0);
   }
 
   lowerSki(p) {
     const j = this.j, P = this.parts;
     const crouch = p.crouch, tuck = p.tuck, air = this.airS;
-    const stance = 0.105 + p.plow * 0.16;
+    const al = Math.abs(p.lean) * (1 - air);
+    const stance = 0.105 + p.plow * 0.16 + sstep(0.2, 0.8, al) * 0.02;
     j.ankL.set(stance, 0.17, 0);
     j.ankR.set(-stance, 0.17, 0);
-    // inner leg is shorter when edged: lift the inside foot a little
-    const innerLift = Math.abs(p.lean) * 0.09;
-    if (p.lean > 0) j.ankR.y += innerLift; else j.ankL.y += innerLift;
+    // long leg, short leg: tipped over, both skis stay on the snow, so the inside leg folds up
+    // (by the stance width times the tilt) and its ski leads a little
+    const inside = p.lean > 0 ? j.ankR : j.ankL;
+    inside.y += 2 * stance * Math.tan(Math.min(al, 0.95)) * 0.85;
+    inside.z += 0.075 * sstep(0.1, 0.7, al);
     if (air > 0) { j.ankL.y += air * 0.12; j.ankR.y += air * 0.12; }
     const G = SKI_GRAB[this.gKind] ?? SKI_GRAB.mute;
     const g = this.gAmt;
@@ -362,12 +412,14 @@ export class SkierModel {
       j.ankL.y += 0.12 + 0.3 * r * Math.max(0, Math.sin(t * 4.1 + s)); j.ankR.y += 0.05 + 0.3 * r * Math.max(0, Math.sin(t * 4.9 + 1 + s));
       j.ankL.z += 0.32 * r * Math.sin(t * 3.7 + s) + 0.12 * (1 - r); j.ankR.z += 0.32 * r * Math.sin(t * 4.3 + 2 + s) - 0.18 * (1 - r);
     }
-    const hipH = 0.93 - crouch * 0.22 - tuck * 0.33 - air * 0.12 - g * 0.08 + Math.sin(p.t * 9) * 0.004;
-    const hipZ = -0.06 - crouch * 0.07 - tuck * 0.12;
-    j.pelvis.set(-p.lean * 0.12 - (pushL - pushR) * 0.09, hipH, hipZ);
-    // upper body: forward pitch and counter-roll (angulation)
-    const pitch = 0.2 + crouch * 0.25 + tuck * 0.95 + air * 0.15 + g * 0.25;
-    const ang = -p.lean * p.angulate;
+    // (the hips sit over the outside foot, forward over the boots, not back in the seat)
+    const hipH = 0.93 - crouch * 0.22 - tuck * 0.33 - air * 0.12 - g * 0.08 + Math.sin(p.t * 9) * 0.004 + al * 0.085;
+    const hipZ = -0.035 - crouch * 0.05 - tuck * 0.12 - (this.lagF || 0) * 0.05;
+    j.pelvis.set(-p.lean * 0.1 - (pushL - pushR) * 0.09, hipH, hipZ);
+    // upper body: forward pitch and counter-roll (angulation), plus its swing
+    const pitch = 0.22 + crouch * 0.28 + tuck * 0.95 + air * 0.15 + g * 0.25 + (this.lagF || 0) * 0.14;
+    // (in the tipped frame: back toward upright, so the shoulders stay level-ish over the edges)
+    const ang = p.lean * p.angulate - (this.lagR || 0) * 0.8;
     j.spine.set(Math.sin(ang) * Math.cos(pitch), Math.cos(ang) * Math.cos(pitch), Math.sin(pitch)).normalize();
     // shifty: the hips turn the skis across while the shoulders stay
     const shifty = (p.shifty || 0) * 0.9;
@@ -384,6 +436,13 @@ export class SkierModel {
     const extraEdge = clamp((p.edge || 0) * 0.75 - p.lean, -0.45, 0.45) * (Math.abs(p.edge || 0) > Math.abs(p.lean) ? 1 : 0);
     for (const [s, ank, ski, boot, cuff, yaw, bind] of [[1, j.ankL, P.skiL, P.bootL, P.cuffL, -plowYaw + skate * 0.36 - cross, P.sbindL], [-1, j.ankR, P.skiR, P.bootR, P.cuffR, plowYaw - skate * 0.36 + cross, P.sbindR]]) {
       ski.position.set(ank.x, ank.y - 0.17, ank.z);
+      // the ski flexes: bent into its arc by the carve (the outside one more), the forebody
+      // chattering at speed and slapping on a landing
+      if (ski.morphTargetInfluences) {
+        const outside = (s > 0) === (p.lean > 0);
+        ski.morphTargetInfluences[0] = clamp((p.flex || 0) * (outside ? 1 : 0.6) - air * 0.3, -0.25, 1);
+        ski.morphTargetInfluences[1] = (p.chatter || 0) * Math.sin(p.t * 71 + s * 1.7) * 0.5 + (p.slap || 0) * Math.sin(p.t * 38);
+      }
       ski.rotation.set(air * -0.12 + tipPitch - (s > 0 ? daffy : -daffy) * 0.35, yaw - shifty, extraEdge);
       boot.position.set(ank.x, ank.y - 0.17, ank.z);
       boot.rotation.copy(ski.rotation);
@@ -392,10 +451,12 @@ export class SkierModel {
       cuff.rotation.set(0.25 + crouch * 0.2 + tuck * 0.3, yaw - shifty, 0);
     }
 
-    // hands: relaxed ready position, tuck pulls them in front of the face
-    const handY = hipH + 0.02 + crouch * 0.05;
-    j.hdL.set(0.31, handY, hipZ + 0.36).lerp(tmpV.set(0.11, hipH + 0.18, hipZ + 0.62), tuck);
-    j.hdR.set(-0.31, handY, hipZ + 0.36).lerp(tmpV.set(-0.11, hipH + 0.18, hipZ + 0.62), tuck);
+    // hands: forward and wide in the ready position (the outside one a touch lower, level with
+    // the slope), tuck pulls them in front of the face; they swing with the body
+    const handY = hipH + 0.05 + crouch * 0.05;
+    const lr = this.lagR || 0, lf = this.lagF || 0;
+    j.hdL.set(0.33 + lr * 0.25, handY - p.lean * 0.06 + Math.abs(lr) * 0.1, hipZ + 0.42 - lf * 0.12).lerp(tmpV.set(0.11, hipH + 0.18, hipZ + 0.62), tuck);
+    j.hdR.set(-0.33 + lr * 0.25, handY + p.lean * 0.06 + Math.abs(lr) * 0.1, hipZ + 0.42 - lf * 0.12).lerp(tmpV.set(-0.11, hipH + 0.18, hipZ + 0.62), tuck);
     if (air > 0) {
       // arms out for balance, pulled in tight while spinning
       const tight = clamp(Math.abs(p.spinRate || 0) / 7, 0, 1);
