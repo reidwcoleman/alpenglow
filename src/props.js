@@ -10,8 +10,13 @@ import { heightAt, centerX, halfWidth, GATES, KICKERS, LIFT, START_Z, FINISH_Z, 
 import { mulberry32, makeSimplex, smoothstep } from './noise.js';
 import { pbr } from './terrain.js';
 import { crowd, bodies } from './people.js';
+import { LO } from './gfx.js';
+import { surface, stone, larch, roofMetal } from './proctex.js';
 
-// boulders: scanned rock (triplanar) with real snow settled on the tops
+// rock: scanned rock (triplanar) worked over in the shader into bedded stone: a granite or
+// limestone tint per rock, strata bands, the cracks and undercuts the geometry carries (aAO)
+// darkened, lichen in patches on the bare faces, damp streaks down them, and snow lying on
+// the ledges and tops (aSnow, from the geometry) broken up at its edges
 function rockMaterial() {
   const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85 });
   const u = {
@@ -21,41 +26,299 @@ function rockMaterial() {
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, u);
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vRW; varying vec3 vRN;')
+      .replace('#include <common>', '#include <common>\nattribute float aAO; attribute float aSnow; varying vec3 vRW; varying vec3 vRN; varying vec3 vRL; varying vec3 vTint; varying float vAO; varying float vSnowA;')
       .replace('#include <project_vertex>', `#include <project_vertex>
         mat4 rM = modelMatrix;
         #ifdef USE_INSTANCING
           rM = modelMatrix * instanceMatrix;
         #endif
         vRW = (rM * vec4(transformed, 1.0)).xyz;
-        vRN = normalize(mat3(rM) * objectNormal);`);
+        vRN = normalize(mat3(rM) * objectNormal);
+        vRL = transformed;
+        vAO = aAO; vSnowA = aSnow;
+        {
+          float th = fract(sin(dot(mod(rM[3].xz, 997.0), vec2(12.9898, 78.233))) * 43758.5453);
+          // warm grey granite .. cold blue-grey .. pale limestone
+          vTint = th < 0.4 ? mix(vec3(1.02, 0.97, 0.9), vec3(0.9, 0.86, 0.8), th / 0.4)
+                : th < 0.75 ? mix(vec3(0.8, 0.82, 0.86), vec3(0.7, 0.72, 0.76), (th - 0.4) / 0.35)
+                : mix(vec3(1.12, 1.08, 1.0), vec3(1.2, 1.15, 1.06), (th - 0.75) / 0.25);
+        }`);
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform sampler2D uRockC, uRockN, uSnowC; varying vec3 vRW; varying vec3 vRN; float rSnow; vec3 rW;')
+      .replace('#include <common>', `#include <common>
+        uniform sampler2D uRockC, uRockN, uSnowC; varying vec3 vRW; varying vec3 vRN; varying vec3 vRL; varying vec3 vTint; varying float vAO; varying float vSnowA; float rSnow; vec3 rW;
+        float rkH(vec3 p) { p = mod(p, 289.0); return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
+        float rkN(vec3 p) {
+          vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(mix(rkH(i), rkH(i + vec3(1, 0, 0)), f.x), mix(rkH(i + vec3(0, 1, 0)), rkH(i + vec3(1, 1, 0)), f.x), f.y),
+                     mix(mix(rkH(i + vec3(0, 0, 1)), rkH(i + vec3(1, 0, 1)), f.x), mix(rkH(i + vec3(0, 1, 1)), rkH(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+        }`)
       .replace('#include <color_fragment>', `#include <color_fragment>
         {
           vec3 n = normalize(vRN);
           rW = pow(abs(n), vec3(4.0)); rW /= rW.x + rW.y + rW.z;
           vec3 q = vRW / 2.6;
           vec3 rc = texture2D(uRockC, q.zy).rgb * rW.x + texture2D(uRockC, q.xz).rgb * rW.y + texture2D(uRockC, q.xy).rgb * rW.z;
-          float j = fract(sin(dot(floor(vRW.xz * 1.7), vec2(12.9898, 78.233))) * 43758.5453);
-          rSnow = smoothstep(0.35, 0.75, n.y + (j - 0.5) * 0.25);
+          float lum = dot(rc, vec3(0.3, 0.59, 0.11));
+          vec3 base = mix(vec3(lum), rc, 0.55) * vTint;
+          // the beds: bands of lighter and darker stone up the rock
+          float sb = rkN(vec3(vRL.y * 7.0, vRL.x * 0.8, vRL.z * 0.8));
+          base *= 0.8 + 0.34 * sb;
+          // cracks and the shadowed undercut under each bed
+          base *= 1.0 - clamp(vAO, 0.0, 1.0) * 0.62;
+          float side = 1.0 - smoothstep(0.35, 0.8, n.y);
+          #ifndef ROCK_LO
+          // damp streaks running down the faces
+          float st = rkN(vec3(vRW.x * 2.6, vRW.y * 0.22, vRW.z * 2.6));
+          base *= 1.0 - smoothstep(0.55, 0.85, st) * 0.32 * side;
+          // lichen: yellow-green and rust patches, crusts of black
+          float ln = rkN(vRW * 3.4) * 0.55 + rkN(vRW * 11.0) * 0.45;
+          float lich = smoothstep(0.64, 0.7, ln) * side * smoothstep(0.3, 0.6, rkN(vRW * 0.45 + 3.0));
+          float lk = rkN(vRW * 0.6 + 7.0);
+          vec3 lc = lk < 0.45 ? vec3(0.6, 0.62, 0.42) : lk < 0.75 ? vec3(0.7, 0.52, 0.3) : vec3(0.2, 0.2, 0.19);
+          base = mix(base, lc * (0.6 + 0.6 * lum), lich * 0.45);
+          #endif
+          // snow on the ledges and tops (from the geometry), its edge broken up
+          float sj = rkN(vRW * 2.3) - 0.5;
+          rSnow = smoothstep(0.35, 0.7, vSnowA + sj * 0.5) * smoothstep(0.45, 0.75, n.y + sj * 0.25);
           vec3 sc = texture2D(uSnowC, vRW.xz / 3.1).rgb * 1.15;
-          diffuseColor.rgb = mix(rc * 0.9, sc, rSnow);
+          diffuseColor.rgb = mix(base * 1.05, sc, rSnow);
         }`)
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(0.82, 0.6, rSnow);')
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(0.86, 0.62, rSnow);')
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         {
           vec3 q = vRW / 2.6;
           vec2 tx = texture2D(uRockN, q.zy).xy * 2.0 - 1.0, ty = texture2D(uRockN, q.xz).xy * 2.0 - 1.0, tz = texture2D(uRockN, q.xy).xy * 2.0 - 1.0;
           vec3 rn = vec3(0.0, tx.y, tx.x) * rW.x + vec3(ty.x, 0.0, -ty.y) * rW.y + vec3(tz.x, tz.y, 0.0) * rW.z;
-          vec3 nW = normalize(normalize(vRN) + rn * 1.2 * (1.0 - rSnow * 0.8));
+          vec3 nW = normalize(normalize(vRN) + rn * 1.3 * (1.0 - rSnow * 0.85));
           normal = normalize((viewMatrix * vec4(nW, 0.0)).xyz);
         }`);
   };
-  m.customProgramCacheKey = () => 'rock';
+  // (the phone setting skips the lichen and the streaks)
+  if (LO) m.defines = { ROCK_LO: '' };
+  m.customProgramCacheKey = () => 'rock2' + (LO ? 'lo' : '');
   return m;
 }
 
+// a rock's shape: a lumpy ball cut flat by fracture planes, stacked into beds that each stand
+// out a little differently with a shadowed undercut beneath, split by vertical joints, then
+// snow settled on whatever faces up. type 0 granite block, 1 bedded limestone, 2 cliff slab.
+// Carries aAO (crack/undercut depth) and aSnow (how much snow lies there).
+function rockShape(detail, type, seed) {
+  const noise = makeSimplex(seed), rnd = mulberry32(seed * 7 + 3);
+  const ico = new THREE.IcosahedronGeometry(1, detail);
+  ico.deleteAttribute('normal'); ico.deleteAttribute('uv');
+  const g = mergeVertices(ico);
+  const p = g.attributes.position, n = p.count;
+  const planes = [];
+  const np = type === 0 ? 10 : 7;
+  for (let k = 0; k < np; k++) {
+    const a = rnd() * Math.PI * 2, el = (rnd() - 0.2) * (type === 0 ? 1.6 : 0.7);
+    planes.push([new THREE.Vector3(Math.cos(a) * Math.cos(el), Math.sin(el), Math.sin(a) * Math.cos(el)), 0.7 + rnd() * 0.22]);
+  }
+  // a flattish top
+  planes.push([new THREE.Vector3((rnd() - 0.5) * 0.5, 1, (rnd() - 0.5) * 0.5).normalize(), type === 2 ? 0.55 : 0.74 + rnd() * 0.15]);
+  const beds = [1.4, 3.0, 2.4][type], amp = [0.5, 1, 1.1][type], squash = [0.9, 0.66, 0.6][type];
+  const bedOut = Array.from({ length: 64 }, () => rnd());
+  const ao = new Float32Array(n), snow = new Float32Array(n);
+  const v = new THREE.Vector3();
+  for (let i = 0; i < n; i++) {
+    v.fromBufferAttribute(p, i);
+    const r = 1 + noise(v.x * 1.1, v.y * 1.1 + v.z * 0.7) * 0.24 + noise(v.x * 2.7, v.z * 2.7 + v.y * 1.9) * 0.09;
+    v.multiplyScalar(r);
+    for (const [pn, d] of planes) { const s = v.dot(pn); if (s > d) v.addScaledVector(pn, -(s - d) * 0.94); }
+    v.y *= squash;
+    // beds: dipping a little, each standing proud or set back, undercut at its foot
+    const t = (v.y + 1) * beds + v.x * 0.18 + noise(v.x * 0.9 + 3, v.z * 0.9) * 0.25;
+    const f = Math.floor(t), fr = t - f;
+    const out = 1 + ((bedOut[(f + 32) & 63] - 0.5) * 0.16 + noise(v.x * 1.7 + f * 3.1, v.z * 1.7) * 0.05) * amp;
+    const notch = (1 - smoothstep(0, 0.2, fr)) * 0.085 * amp;
+    // vertical joints
+    const ang = Math.atan2(v.z, v.x);
+    const jn = Math.abs(noise(Math.cos(ang) * 2.4 + seed, Math.sin(ang) * 2.4 + v.y * 0.5));
+    const joint = 1 - smoothstep(0, 0.08, jn);
+    const k = out - notch - joint * 0.07;
+    v.x *= k; v.z *= k;
+    ao[i] = (notch / 0.085) * 0.7 * Math.min(1, amp) + joint * 0.75;
+    p.setXYZ(i, v.x, v.y, v.z);
+  }
+  g.computeVertexNormals();
+  // snow on what faces up, banked a little thicker there (then the normals again)
+  const nr = g.attributes.normal;
+  for (let i = 0; i < n; i++) {
+    const s = smoothstep(0.6, 0.9, nr.getY(i));
+    snow[i] = s;
+    p.setY(i, p.getY(i) + s * 0.05);
+  }
+  g.computeVertexNormals();
+  g.setAttribute('aAO', new THREE.BufferAttribute(ao, 1));
+  g.setAttribute('aSnow', new THREE.BufferAttribute(snow, 1));
+  g.computeBoundingSphere();
+  return g;
+}
+
+// ---------------- alpine buildings ----------------
+// the materials the chalets share: rubble stone, larch boards, standing-seam metal, snow, dark
+// timber and paint (vertex colour), icicles, and the lit windows
+function hutMaterials(windowMat) {
+  return {
+    stone: surface(stone), larch: surface(larch), roof: surface(roofMetal),
+    snow: new THREE.MeshStandardMaterial({ color: 0xf3f6fb, vertexColors: true, roughness: 0.74 }),
+    wood: new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.82 }),
+    ice: new THREE.MeshStandardMaterial({ color: 0xdcecff, roughness: 0.06, metalness: 0.1, transparent: true, opacity: 0.78, envMapIntensity: 1.8 }),
+    window: windowMat,
+  };
+}
+
+// the window glass: warm rooms behind four panes, curtains drawn back at the sides
+function windowTex() {
+  return canvasTex(128, 128, (c, w, h) => {
+    const g = c.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, '#ffe2a8'); g.addColorStop(0.55, '#e9a85c'); g.addColorStop(1, '#6b3f22');
+    c.fillStyle = g; c.fillRect(0, 0, w, h);
+    // a lamp's pool, the curtains
+    const r = c.createRadialGradient(w * 0.6, h * 0.35, 4, w * 0.6, h * 0.35, w * 0.5);
+    r.addColorStop(0, 'rgba(255,245,215,0.9)'); r.addColorStop(1, 'rgba(255,245,215,0)');
+    c.fillStyle = r; c.fillRect(0, 0, w, h);
+    c.fillStyle = '#8a2f24'; c.fillRect(0, 0, 18, h); c.fillRect(w - 18, 0, 18, h);
+    c.fillStyle = 'rgba(0,0,0,0.25)'; for (let x = 3; x < 18; x += 5) { c.fillRect(x, 0, 1.5, h); c.fillRect(w - x, 0, 1.5, h); }
+    // the cross bars
+    c.fillStyle = '#2a1a10'; c.fillRect(w / 2 - 4, 0, 8, h); c.fillRect(0, h / 2 - 4, w, 8);
+    c.fillRect(0, 0, w, 5); c.fillRect(0, h - 5, w, 5); c.fillRect(0, 0, 5, h); c.fillRect(w - 5, 0, 5, h);
+  });
+}
+
+// One chalet into the kit, in its own frame (ridge along z, gable ends facing +-z) then turned
+// by yaw and set at (x, gy, z): a rubble-stone plinth dug into the slope, larch walls with dark
+// corner posts, a standing-seam roof under a thick, rounded load of snow with a cornice off the
+// eaves and icicles hanging from them, shuttered windows with snow on the sills, a balcony with
+// board railings, the door, a stone chimney. o: { w, d, h, rh, wood, roof, shutter, rnd,
+// plinth, balcony, start }
+function chalet(K, wins, x, gy, z, yaw, o) {
+  const { w, d, h, rh, rnd } = o;
+  const P = o.plinth ?? 1.2;
+  const put = (key, g, opts) => { g.rotateY(yaw); g.translate(x, gy, z); return K.add(key, g, opts); };
+  const B = (sx, sy, sz, px, py, pz) => new THREE.BoxGeometry(sx, sy, sz).translate(px, py, pz);
+  const RB = (sx, sy, sz, r, px, py, pz) => new RoundedBoxGeometry(sx, sy, sz, 2, r).translate(px, py, pz);
+  const DARK = 0x3a2416;
+  // plinth, walls, the gable ends up to the ridge
+  put('stone', B(w + 0.3, P + 3, d + 0.3, 0, (P - 3) / 2, 0), { tint: 0xd8d2c8, size: 1.6 });
+  put('larch', B(w, h, d, 0, P + h / 2, 0), { tint: o.wood, size: 1.4 });
+  const tri = new THREE.Shape();
+  tri.moveTo(-w / 2, 0); tri.lineTo(0, rh); tri.lineTo(w / 2, 0); tri.lineTo(-w / 2, 0);
+  put('larch', new THREE.ExtrudeGeometry(tri, { depth: d, bevelEnabled: false }).translate(0, P + h, -d / 2), { tint: o.wood, size: 1.4 });
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) put('wood', B(0.3, h + 0.1, 0.3, sx * (w / 2 - 0.1), P + h / 2, sz * (d / 2 - 0.1)), { tint: DARK });
+  put('wood', B(w + 0.12, 0.22, d + 0.12, 0, P + 0.11, 0), { tint: DARK });
+  if (h > 5.4) put('wood', B(w + 0.12, 0.2, d + 0.12, 0, P + h * 0.52, 0), { tint: DARK });
+  // the roof: two standing-seam planes (seams running down the slope), then the snow on them
+  const oh = 0.9, ohz = 0.8, a = Math.atan2(rh, w / 2), run = w / 2 + oh, L = run / Math.cos(a) + 0.1;
+  const top = P + h + rh, eaveY = top - run * Math.tan(a);
+  const snowT = 0.38 + rnd() * 0.3;
+  for (const s of [-1, 1]) {
+    const g = new THREE.BoxGeometry(L, 0.16, d + ohz * 2);
+    const pp = g.attributes.position, uv = g.attributes.uv;
+    for (let i = 0; i < pp.count; i++) uv.setXY(i, pp.getZ(i) / 2, pp.getX(i) / 2);
+    g.rotateZ(-s * a).translate(s * run / 2, top - (run / 2) * Math.tan(a) + 0.12, 0);
+    put('roof', g, { tint: o.roof, uv: true });
+    // the fascia board under the eave
+    put('wood', B(0.08, 0.3, d + ohz * 2, s * (run + 0.02), eaveY - 0.05, 0), { tint: DARK });
+    // the load of snow, thick and rounded, a little short of the eave, then the cornice curling off it
+    const sn = RB(L - 0.25, snowT, d + ohz * 2 - 0.1, Math.min(0.16, snowT / 2.2), 0, 0, 0);
+    sn.rotateZ(-s * a).translate(s * (run / 2 - 0.1), top - (run / 2 - 0.1) * Math.tan(a) + 0.2 + snowT / 2 / Math.cos(a), 0);
+    put('snow', sn);
+    const cor = new THREE.CylinderGeometry(snowT * 0.55, snowT * 0.5, d + ohz * 2 - 0.3, 10, 1).rotateX(Math.PI / 2).scale(1, 0.75, 1);
+    cor.translate(s * (run - 0.12), eaveY + 0.14 + snowT * 0.35, 0);
+    put('snow', cor);
+    // icicles off the eave, long and short
+    for (let zz = -d / 2 - ohz + 0.2; zz < d / 2 + ohz - 0.2; zz += 0.16 + rnd() * 0.3) {
+      if (rnd() < 0.25) continue;
+      const len = 0.12 + Math.pow(rnd(), 2) * (o.start ? 0.5 : 1.0), r = 0.03 + len * 0.05;
+      put('ice', new THREE.ConeGeometry(r, len, 5, 1).rotateX(Math.PI).translate(s * (run - 0.05), eaveY - 0.08 - len / 2, zz));
+    }
+  }
+  // the ridge: snow heaped along it
+  put('snow', new THREE.CylinderGeometry(snowT * 0.9, snowT * 0.9, d + ohz * 2 - 0.1, 10, 1).rotateX(Math.PI / 2).scale(1.2, 0.6, 1).translate(0, top + 0.16 + snowT * 0.6, 0));
+  // the gable trim: barge boards along both roof edges at each end
+  for (const sz of [-1, 1]) for (const s of [-1, 1]) {
+    const g = new THREE.BoxGeometry(L, 0.32, 0.08);
+    g.rotateZ(-s * a).translate(s * run / 2, top - (run / 2) * Math.tan(a) + 0.02, sz * (d / 2 + ohz));
+    put('wood', g, { tint: DARK });
+  }
+  // windows: a frame, the lit glass, painted shutters, a sill with snow on it
+  const win = (u, y, face, ww = 1.0, wh = 1.2, shut = true) => {
+    // face: 0 +z, 1 -z, 2 +x, 3 -x; u along the wall
+    const turn = [0, Math.PI, Math.PI / 2, -Math.PI / 2][face];
+    const depth = face < 2 ? d / 2 : w / 2;
+    const parts = [];
+    parts.push(['wood', B(ww + 0.22, wh + 0.22, 0.1, u, y, depth + 0.03), DARK]);
+    parts.push(['wood', B(ww + 0.4, 0.07, 0.3, u, y - wh / 2 - 0.13, depth + 0.12), DARK]);
+    parts.push(['snow', RB(ww + 0.32, 0.12, 0.24, 0.05, u, y - wh / 2 - 0.05, depth + 0.13), 0xffffff]);
+    if (shut) for (const sd of [-1, 1]) {
+      parts.push(['wood', B(ww * 0.55, wh + 0.1, 0.05, u + sd * (ww * 0.5 + 0.11 + ww * 0.275), y, depth + 0.05), o.shutter]);
+      parts.push(['snow', RB(ww * 0.55, 0.06, 0.08, 0.02, u + sd * (ww * 0.5 + 0.11 + ww * 0.275), y + wh / 2 + 0.08, depth + 0.05), 0xffffff]);
+    }
+    for (const [k, g, t] of parts) { g.rotateY(turn); put(k, g, { tint: t }); }
+    const gl = new THREE.PlaneGeometry(ww, wh).translate(u, y, depth + 0.085).rotateY(turn);
+    gl.rotateY(yaw); gl.translate(x, gy, z);
+    wins.push(gl);
+  };
+  const floors = h > 5.4 ? 2 : 1;
+  if (o.start) {
+    for (let k = 0; k < 4; k++) win(-w / 2 + 1.6 + k * ((w - 3.2) / 3), P + 1.25, 0, 1.3, 0.9, false);
+    win(-1.2, P + 1.6, 1, 1.0, 1.0); win(1.2, P + 1.6, 1, 1.0, 1.0);
+  } else {
+    for (let f = 0; f < floors; f++) {
+      const y = P + 1.55 + f * (h / floors);
+      for (const face of [0, 1]) {
+        const n = Math.max(1, Math.floor((w - 1.4) / 2.6));
+        for (let k = 0; k < n; k++) {
+          const u = -((n - 1) * 2.6) / 2 + k * 2.6;
+          if (f === 0 && face === 0 && k === Math.floor(n / 2)) continue; // the door goes there
+          if (rnd() < 0.15) continue;
+          win(u, y, face);
+        }
+      }
+      for (const face of [2, 3]) {
+        const n = Math.max(1, Math.floor((d - 1.6) / 3.2));
+        for (let k = 0; k < n; k++) if (rnd() < 0.75) win(-((n - 1) * 3.2) / 2 + k * 3.2, y, face);
+      }
+    }
+    // a small window up in each gable
+    for (const face of [0, 1]) win(0, P + h + rh * 0.38, face, 0.8, 0.9, false);
+    // the door, its little roof
+    const dx = (() => { const n = Math.max(1, Math.floor((w - 1.4) / 2.6)); return -((n - 1) * 2.6) / 2 + Math.floor(n / 2) * 2.6; })();
+    put('wood', B(1.15, 2.1, 0.12, dx, P + 1.05, d / 2 + 0.04), { tint: 0x5a3520 });
+    put('wood', B(1.4, 2.25, 0.08, dx, P + 1.1, d / 2 + 0.01), { tint: DARK });
+    put('stone', B(1.8, P + 0.1, 0.6, dx, (P + 0.1) / 2 - 0.05, d / 2 + 0.3), { tint: 0xcfc8bc, size: 1.6 });
+    // the balcony across the front, upstairs: deck, brackets, board railings, snow on it all
+    if (o.balcony && floors === 2) {
+      const by = P + h / 2 + 0.05, bw = w * 0.82, bd = 1.3;
+      put('wood', B(bw, 0.16, bd, 0, by, d / 2 + bd / 2), { tint: 0x4a2e1b });
+      put('snow', RB(bw - 0.1, 0.14, bd - 0.25, 0.06, 0, by + 0.13, d / 2 + bd / 2 - 0.05));
+      for (const sx of [-0.45, 0, 0.45]) {
+        const br = new THREE.BoxGeometry(0.14, 0.14, 1.5).rotateX(-0.75).translate(sx * bw, by - 0.55, d / 2 + 0.5);
+        put('wood', br, { tint: DARK });
+      }
+      put('wood', B(bw, 0.1, 0.12, 0, by + 1.0, d / 2 + bd - 0.06), { tint: DARK });
+      put('snow', RB(bw, 0.12, 0.16, 0.05, 0, by + 1.1, d / 2 + bd - 0.06));
+      for (let sx = -bw / 2 + 0.1; sx <= bw / 2 - 0.05; sx += 0.2) put('larch', B(0.14, 0.92, 0.04, sx, by + 0.52, d / 2 + bd - 0.06), { tint: o.wood, size: 1.4 });
+      for (const sx of [-1, 1]) for (let zz = 0.15; zz < bd; zz += 0.2) put('larch', B(0.04, 0.92, 0.14, sx * bw / 2, by + 0.52, d / 2 + zz), { tint: o.wood, size: 1.4 });
+    }
+    // the chimney through the roof, snow on its cap
+    const cx = w * 0.22, cz = -d * 0.2, ch = P + h + rh * (1 - (cx / (w / 2))) + 1.1;
+    put('stone', B(0.85, ch - P - h + 0.4, 0.85, cx, (ch + P + h - 0.4) / 2, cz), { tint: 0xc8c0b4, size: 1.6 });
+    put('wood', B(1.05, 0.12, 1.05, cx, ch + 0.06, cz), { tint: 0x2a2a2a });
+    put('snow', RB(1.0, 0.22, 1.0, 0.08, cx, ch + 0.22, cz));
+    // firewood stacked under the eave on one side
+    if (rnd() < 0.7) {
+      const sx = (rnd() < 0.5 ? -1 : 1) * (w / 2 + 0.35);
+      for (let r = 0; r < 6; r++) for (let k = 0; k < 9; k++) {
+        const lg = new THREE.CylinderGeometry(0.11, 0.11, 0.6, 6).rotateZ(Math.PI / 2).translate(sx, 0.11 + r * 0.21, -1.0 + k * 0.23 + (r % 2) * 0.1);
+        put('wood', lg, { tint: [0x8a6a4a, 0x7a5a3c, 0x9a7a58][(r + k) % 3] });
+      }
+      put('snow', RB(0.7, 0.12, 2.2, 0.05, sx, 1.42, 0));
+    }
+  }
+}
 const tmpM = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpS = new THREE.Vector3(), tmpP = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -111,19 +374,109 @@ export class Props {
     this.vc = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 });
     this.metal = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4, metalness: 0.7 });
     this.windowMat = new THREE.MeshStandardMaterial({ color: 0x1a1410, emissive: 0xffb45a, emissiveIntensity: 1.2, roughness: 0.3 });
+    this.hutKit = new Kit(); this.hutWins = [];
     this.buildLift();
     this.buildGates();
     this.buildStart();
     this.buildFinish();
     this.buildHospital();
     this.buildVillage();
+    this.finishHuts();
     this.buildMarkers();
     this.buildNets();
     this.buildRocks();
+    this.buildFences();
     this.buildPark();
     this.buildSnowGuns();
+    this.buildCats();
     this.buildSigns();
     this.buildSnowNames();
+  }
+
+  // ---------------- grooming machines ----------------
+  // piste groomers parked off the snow by the lift stations: wide rubber-and-steel tracks with
+  // their cleats, the red body and cab with dark glass, the blade out front, the tiller and its
+  // comb behind, a beacon and work lights on the roof, snow lying on the cab and the hood
+  buildCats() {
+    const P = [];
+    const C = (g, c, x, y, z) => { g.translate(x, y, z); P.push(colorize(g, c)); };
+    const red = 0xc8302a, dark = 0x1d1f24, steel = 0xb4b9c0, glass = 0x2a3a48, snow = 0xf2f5fb;
+    for (const sx of [-1.3, 1.3]) {
+      C(new RoundedBoxGeometry(0.95, 0.95, 5.0, 3, 0.4), dark, sx, 0.48, 0);
+      for (let k = 0; k < 20; k++) C(new THREE.BoxGeometry(1.0, 0.05, 0.08), 0x6b7078, sx, 0.97, -2.2 + k * 0.23);
+      for (const z of [-2.0, -0.7, 0.6, 1.9]) C(new THREE.CylinderGeometry(0.3, 0.3, 0.98, 12).rotateZ(Math.PI / 2), 0x3a3e45, sx, 0.42, z);
+    }
+    C(new THREE.BoxGeometry(1.7, 0.6, 4.4), red, 0, 1.05, 0);
+    C(new RoundedBoxGeometry(3.4, 0.5, 2.0, 2, 0.1), red, 0, 1.5, -1.3);
+    C(new RoundedBoxGeometry(2.2, 0.9, 1.4, 2, 0.12), red, 0, 2.15, -1.25);
+    // the cab: frame, then the glass set into it
+    C(new RoundedBoxGeometry(2.1, 1.55, 2.0, 3, 0.12), red, 0, 2.35, 0.75);
+    C(new THREE.BoxGeometry(1.9, 0.95, 0.06), glass, 0, 2.5, 1.76);
+    for (const sx of [-1, 1]) C(new THREE.BoxGeometry(0.06, 0.85, 1.6), glass, sx * 1.06, 2.5, 0.75);
+    C(new THREE.BoxGeometry(1.7, 0.8, 0.06), glass, 0, 2.5, -0.26);
+    // roof: snow, the beacon, a bar of work lights
+    C(new RoundedBoxGeometry(2.0, 0.18, 1.9, 2, 0.08), snow, 0, 3.18, 0.75);
+    C(new THREE.CylinderGeometry(0.12, 0.14, 0.22, 10), 0xff8a1a, -0.6, 3.36, 0.4);
+    C(new THREE.BoxGeometry(1.4, 0.12, 0.14), dark, 0.2, 3.3, 1.55);
+    for (const lx of [-0.35, 0.15, 0.65]) C(new THREE.BoxGeometry(0.22, 0.14, 0.04), 0xfff3d0, lx, 3.3, 1.63);
+    C(new RoundedBoxGeometry(2.1, 0.14, 1.3, 2, 0.06), snow, 0, 2.66, -1.25);
+    // the blade on its push arms, its cutting edge, the corner wings
+    for (const sx of [-0.9, 0.9]) C(new THREE.BoxGeometry(0.16, 0.18, 1.6), steel, sx, 0.75, 2.85);
+    // (a curved mouldboard: three strips bending back toward the top)
+    C(new THREE.BoxGeometry(4.6, 0.5, 0.1).rotateX(-0.45), 0xe0e2e5, 0, 0.32, 3.86);
+    C(new THREE.BoxGeometry(4.6, 0.5, 0.1), 0xe0e2e5, 0, 0.78, 3.72);
+    C(new THREE.BoxGeometry(4.6, 0.45, 0.1).rotateX(0.5), 0xe0e2e5, 0, 1.2, 3.62);
+    C(new THREE.BoxGeometry(4.6, 0.08, 0.22), dark, 0, 0.06, 3.98);
+    C(new THREE.BoxGeometry(4.0, 0.14, 0.4), steel, 0, 0.8, 3.45);
+    for (const sx of [-1, 1]) C(new THREE.BoxGeometry(0.08, 1.3, 0.7).rotateY(sx * 0.35), 0xe0e2e5, sx * 2.38, 0.68, 3.65);
+    // the tiller and its comb, a little snow on the housing
+    for (const sx of [-0.7, 0.7]) C(new THREE.BoxGeometry(0.14, 0.16, 1.4), steel, sx, 0.85, -2.9);
+    C(new THREE.CylinderGeometry(0.5, 0.5, 4.4, 16).rotateZ(Math.PI / 2), 0x3a3e45, 0, 0.55, -3.7);
+    C(new THREE.BoxGeometry(4.4, 0.12, 0.6), red, 0, 1.0, -3.7);
+    C(new THREE.BoxGeometry(4.4, 0.05, 1.0).rotateX(0.12), 0x2a2c30, 0, 0.1, -4.4);
+    C(new RoundedBoxGeometry(4.2, 0.1, 0.5, 2, 0.04), snow, 0, 1.1, -3.7);
+    const geo = merge(P);
+    const spots = [];
+    // how it would sit there: nose down / side up from the ground under its tracks
+    const sit = (x, z, yaw) => {
+      const fx = Math.sin(yaw) * 2.4, fz = Math.cos(yaw) * 2.4, sx = Math.cos(yaw) * 1.4, sz = -Math.sin(yaw) * 1.4;
+      return [Math.atan2(heightAt(x - fx, z - fz) - heightAt(x + fx, z + fz), 4.8), Math.atan2(heightAt(x - sx, z - sz) - heightAt(x + sx, z + sz), 2.8),
+        Math.max(heightAt(x, z), (heightAt(x + fx, z + fz) + heightAt(x - fx, z - fz)) / 2)];
+    };
+    const flat = (x, z, yaw) => { const [p, r] = sit(x, z, yaw); return Math.abs(p) < 0.14 && Math.abs(r) < 0.1; };
+    const yawL = Math.atan2(LIFT.x1 - LIFT.x0, LIFT.z1 - LIFT.z0);
+    const dx = Math.cos(yawL), dz = -Math.sin(yawL);
+    // beside each lift terminal, nose toward the line; one parked up near the start house
+    // (side by side, parked along the line on whichever side is off the piste)
+    for (const [bx, bz] of [[LIFT.x0, LIFT.z0], [LIFT.x1, LIFT.z1]]) {
+      const got = [];
+      for (let k = 15; k < 60 && got.length < 2; k += 1) for (let a = 0; a < 24 && got.length < 2; a++) {
+        const an = (a / 24) * Math.PI * 2, x = bx + Math.cos(an) * k, z = bz + Math.sin(an) * k;
+        const yaw = yawL + Math.PI + (a % 2 ? 0.15 : -0.1);
+        // (off the piste, clear of the station and the line, not on top of the other one)
+        const along = (x - bx) * Math.sin(yawL) + (z - bz) * Math.cos(yawL), across = (x - bx) * dx + (z - bz) * dz;
+        if (Math.abs(across) < 9 && along > -20 && along < 30) continue;
+        if (Math.abs(x - centerX(z)) < halfWidth(z) + 14 || !flat(x, z, yaw)) continue;
+        if (got.some((g) => Math.hypot(g[0] - x, g[1] - z) < 6)) continue;
+        got.push([x, z, yaw]);
+      }
+      spots.push(...got);
+    }
+    { const z = START_Z + 4, x = centerX(z) + halfWidth(z) + 12; spots.push([x, z, Math.PI * 0.8]); }
+    const ok = spots.filter(([x, z, yaw]) => flat(x, z, yaw));
+    if (!ok.length) return;
+    const im = new THREE.InstancedMesh(geo, this.vc, ok.length);
+    const e = new THREE.Euler();
+    ok.forEach(([x, z, yaw], i) => {
+      const [pitch, roll, gy] = sit(x, z, yaw);
+      tmpM.compose(tmpP.set(x, gy - 0.12, z), tmpQ.setFromEuler(e.set(pitch, yaw, -roll, 'YXZ')), tmpS.set(1, 1, 1));
+      im.setMatrixAt(i, tmpM);
+      // as solid as it looks: the cab in the middle and both ends
+      for (const k of [-1.1, 0, 1.1]) this.forest.addCollider(x + Math.sin(yaw) * k * 2.2, z + Math.cos(yaw) * k * 2.2, 2.2, 'station');
+    });
+    im.castShadow = true; im.receiveShadow = true;
+    im.computeBoundingSphere();
+    this.scene.add(im);
   }
 
   // ---------------- snowmaking ----------------
@@ -399,6 +752,11 @@ export class Props {
     for (const sx of [-0.8, 0, 0.8]) cp.push(tubeG([V(sx, -1.25, 0.42), V(sx, -1.1, 0.6), V(sx, -1.0, 0.72)], 0.02, steelC));
     // a number plate on the hanger
     const num = colorize(new THREE.BoxGeometry(0.05, 0.22, 0.3), 0xf2f2f2); num.translate(0, -0.9, -0.24); cp.push(num);
+    // snow caught along the tops of the backrests, on the grip cover and the footrest
+    const snowC = 0xf2f5fb;
+    for (let i = 0; i < 4; i++) { const sn = colorize(new RoundedBoxGeometry(0.58, 0.07, 0.15, 2, 0.03), snowC); sn.translate(-1.0 + i * 0.667, -1.67, -0.31); cp.push(sn); }
+    { const sn = colorize(new RoundedBoxGeometry(0.36, 0.06, 0.44, 2, 0.025), snowC); sn.translate(0, 0.18, 0); cp.push(sn); }
+    { const sn = colorize(new RoundedBoxGeometry(2.3, 0.04, 0.18, 2, 0.015), snowC); sn.translate(0, -0.96, 0.72); cp.push(sn); }
     const chairGeo = merge(cp);
     this.chairGeo = chairGeo;
     const riders = [];
@@ -565,16 +923,17 @@ export class Props {
   }
 
   // ---------------- start house ----------------
+  // a timber hut across the top of the run: the same build as the village chalets, low and
+  // wide, a row of lit windows along the front, the start wand between its posts
   buildStart() {
     const z = START_Z - 7, x = centerX(z);
     const gy = heightAt(x, z);
-    const wood = 0x6b4a32;
-    const hut = colorize(new THREE.BoxGeometry(12, 3.4, 5), wood); hut.translate(0, 1.7, -2);
-    const roof = snowCap(new THREE.BoxGeometry(13, 0.4, 6.4).rotateX(-0.12), 0x2c2622, 0.4); roof.translate(0, 3.7, -2.2);
+    chalet(this.hutKit, this.hutWins, x, gy - 0.3, z - 2, 0, { w: 12, d: 5, h: 3.4, rh: 1.6, plinth: 0.3, wood: 0xc7ab90, roof: 0xffffff, shutter: 0x8a2b22, start: true, rnd: mulberry32(77) });
+    const wood = 0x3a2416;
     const postL = colorize(new THREE.BoxGeometry(0.4, 3.4, 0.4), wood); postL.translate(-5.6, 1.7, 0.6);
     const postR = postL.clone(); postR.translate(11.2, 0, 0);
     const wand = colorize(new THREE.BoxGeometry(10.5, 0.08, 0.08), 0xd42a2a); wand.translate(0, 0.6, 0.8);
-    const g = merge([hut, roof, postL, postR, wand]);
+    const g = merge([postL, postR, wand]);
     g.translate(x, gy, z);
     const m = new THREE.Mesh(g, this.vc); m.castShadow = m.receiveShadow = true;
     this.scene.add(m);
@@ -796,9 +1155,11 @@ export class Props {
 
   // ---------------- village ----------------
   buildVillage() {
-    const parts = [], wins = [];
+    const K = this.hutKit, wins = this.hutWins;
     const placed = [];
-    const woods = [0x5b3a24, 0x6e472c, 0x4a2f1f, 0x7a5236];
+    const woods = [0xffffff, 0xe2cfba, 0xc7ab90, 0xa08672];
+    const roofs = [0xffffff, 0xd2a898, 0xb4c2b4, 0xe8e8e8];
+    const shutters = [0x2f5d3a, 0x8a2b22, 0x3a2416, 0x2d4a6b, 0xb8862e];
     let tries = 0;
     while (placed.length < 46 && tries++ < 3000) {
       const z = FINISH_Z + 60 + this.rnd() * 520;
@@ -812,41 +1173,24 @@ export class Props {
       placed.push([x, z, Math.max(w, d)]);
       const gy = Math.min(heightAt(x - w / 2, z - d / 2), heightAt(x + w / 2, z + d / 2), heightAt(x, z));
       const yaw = Math.round(this.rnd() * 3) * Math.PI / 2 + (this.rnd() - 0.5) * 0.3;
-      const base = colorize(new THREE.BoxGeometry(w, 1.4, d), 0x8b8580); base.translate(0, 0.7, 0);
-      const body = colorize(new THREE.BoxGeometry(w, h, d), woods[Math.floor(this.rnd() * woods.length)]); body.translate(0, 1.4 + h / 2, 0);
-      // gable roof with overhang, snow on top
-      const rh = w * 0.42;
-      const shape = new THREE.Shape();
-      shape.moveTo(-w / 2 - 0.9, 0); shape.lineTo(0, rh); shape.lineTo(w / 2 + 0.9, 0); shape.lineTo(w / 2 + 0.9, -0.35); shape.lineTo(0, rh - 0.35); shape.lineTo(-w / 2 - 0.9, -0.35);
-      const roof = new THREE.ExtrudeGeometry(shape, { depth: d + 1.8, bevelEnabled: false });
-      roof.translate(0, 1.4 + h, -d / 2 - 0.9);
-      roof.computeVertexNormals();
-      snowCap(roof, 0x2e2420, 0.25);
-      const chim = colorize(new THREE.BoxGeometry(0.9, 2.4, 0.9), 0x6d6660); chim.translate(w * 0.22, 1.4 + h + rh * 0.6, d * 0.2);
-      const balcony = colorize(new THREE.BoxGeometry(w * 0.8, 0.15, 1.4), 0x3d2818); balcony.translate(0, 1.4 + h * 0.55, d / 2 + 0.7);
-      const rail = colorize(new THREE.BoxGeometry(w * 0.8, 0.9, 0.08), 0x3d2818); rail.translate(0, 1.4 + h * 0.55 + 0.45, d / 2 + 1.35);
-      const g = merge([base, body, roof, chim, balcony, rail]);
-      g.rotateY(yaw); g.translate(x, gy, z);
-      parts.push(g);
-      // windows
-      for (const face of [1, -1]) for (let k = 0; k < Math.floor(w / 3); k++) for (const fl of [0, 1]) {
-        if (fl === 1 && h < 6) continue;
-        if (this.rnd() < 0.3) continue;
-        const wg = new THREE.PlaneGeometry(1.1, 1.3);
-        if (face < 0) wg.rotateY(Math.PI);
-        wg.translate(-w / 2 + 1.6 + k * 3, 1.4 + 1.6 + fl * 2.6, face * (d / 2 + 0.03));
-        wg.rotateY(yaw); wg.translate(x, gy, z);
-        wins.push(wg);
-      }
+      const pick = (a) => a[Math.floor(this.rnd() * a.length)];
+      chalet(K, wins, x, gy, z, yaw, { w, d, h, rh: w * 0.42, wood: pick(woods), roof: pick(roofs), shutter: pick(shutters), balcony: this.rnd() < 0.7, rnd: this.rnd });
       this.forest.addCollider(x, z, Math.max(w, d) * 0.55, 'chalet');
     }
-    const m = new THREE.Mesh(merge(parts), this.vc);
-    m.castShadow = true; m.receiveShadow = true;
-    this.scene.add(m);
-    if (wins.length) this.scene.add(new THREE.Mesh(mergeGeometries(wins), this.windowMat));
   }
 
-  setDusk(k) { this.windowMat.emissiveIntensity = 0.25 + k * 2.4; }
+  // every chalet and hut (and the start house) gathered in one kit: one mesh per material
+  finishHuts() {
+    const K = this.hutKit;
+    if (!K) return;
+    this.windowMat.map = this.windowMat.emissiveMap = windowTex();
+    this.windowMat.color.set(0x3e3833); this.windowMat.emissive.set(0xffc27a); this.windowMat.roughness = 0.15;
+    K.build(hutMaterials(this.windowMat), this.scene);
+    if (this.hutWins.length) this.scene.add(new THREE.Mesh(mergeGeometries(this.hutWins), this.windowMat));
+    this.hutKit = null;
+  }
+
+  setDusk(k) { this.windowMat.emissiveIntensity = 0.1 + k * 2.3; }
 
   // ---------------- piste markers ----------------
   buildMarkers() {
@@ -984,25 +1328,10 @@ export class Props {
 
   // ---------------- rocks ----------------
   buildRocks() {
-    const noise = makeSimplex(31);
-    // the same craggy lump at two densities: close up and off in the distance
-    const lump = (detail) => {
-      const ico = new THREE.IcosahedronGeometry(1, detail);
-      ico.deleteAttribute('normal'); ico.deleteAttribute('uv');
-      const base = mergeVertices(ico); // shared vertices: smooth normals, not facets
-      const p = base.attributes.position;
-      for (let i = 0; i < p.count; i++) {
-        tmpP.fromBufferAttribute(p, i);
-        // craggy: broad lumps, then facets
-        let n = 1 + noise(tmpP.x * 1.3, tmpP.z * 1.3 + tmpP.y) * 0.3 + noise(tmpP.x * 3, tmpP.y * 3 + tmpP.z) * 0.12;
-        n += Math.abs(noise(tmpP.x * 6 + 5, tmpP.z * 6 - tmpP.y * 4)) * 0.06;
-        tmpP.multiplyScalar(n); tmpP.y *= 0.68;
-        p.setXYZ(i, tmpP.x, tmpP.y, tmpP.z);
-      }
-      base.computeVertexNormals();
-      return base;
-    };
-    this.rockGeo = [lump(4), lump(1)];
+    // three kinds of stone, each at two densities (close up and off in the distance): a jointed
+    // granite block, bedded limestone, and the long layered slabs the cliff bands are made of
+    const near = LO ? 3 : 4;
+    this.rockGeo = [0, 1, 2].map((type) => [rockShape(near, type, 31 + type * 17), rockShape(1, type, 31 + type * 17)]);
     const list = [];
     for (let i = 0; i < 2600 && list.length < 900; i++) {
       const z = -200 + this.rnd() * (FINISH_Z + 180);
@@ -1015,16 +1344,54 @@ export class Props {
       list.push([x, z, size]);
       if (off < halfWidth(z) + 150 && size > 0.7) this.forest.addCollider(x, z, size * 0.8, 'rock');
     }
-    // in blocks down the hill, so the ones out of view aren't drawn at all
+    // cliff bands: long bedded outcrops across the steep ground off the piste, laid along the
+    // contour (each a row of colliders down its length where you could ride into it)
+    const cliffs = [];
+    for (let i = 0; i < 4000 && cliffs.length < (LO ? 40 : 70); i++) {
+      const z = -150 + this.rnd() * (FINISH_Z + 120);
+      const s = this.rnd() < 0.5 ? -1 : 1;
+      const off = halfWidth(z) + 30 + this.rnd() * 300;
+      const x = centerX(z) + s * off;
+      if (slopeAt(x, z) < 0.62) continue;
+      const size = 3.5 + Math.pow(this.rnd(), 1.5) * 6, len = 1.8 + this.rnd() * 1.4;
+      if (cliffs.some((c) => Math.hypot(c[0] - x, c[1] - z) < (c[2] * c[3] + size * len) * 0.9)) continue;
+      // along the contour: across the fall line
+      const gx = heightAt(x + 1, z) - heightAt(x - 1, z), gz = heightAt(x, z + 1) - heightAt(x, z - 1);
+      const yaw = Math.atan2(gx, gz);
+      // (only where the ground runs level along it: on a ridge or a gully side it would hang out
+      // over the drop at its ends)
+      const ex = Math.cos(yaw) * size * len * 0.85, ez = -Math.sin(yaw) * size * len * 0.85, h0 = heightAt(x, z);
+      if (Math.abs(heightAt(x + ex, z + ez) - h0) > size * 0.4 || Math.abs(heightAt(x - ex, z - ez) - h0) > size * 0.4) continue;
+      cliffs.push([x, z, size, len, yaw, slopeAt(x, z)]);
+      if (off < halfWidth(z) + 150) {
+        const cx = Math.cos(yaw), cz = -Math.sin(yaw);
+        for (let k = -1; k <= 1; k++) this.forest.addCollider(x + cx * k * size * len * 0.62, z + cz * k * size * len * 0.62, size * 0.85, 'rock');
+      }
+    }
+    // in blocks down the hill, so the ones out of view aren't drawn at all; each block one kind
+    // of stone (so the hill side changes from granite to limestone without more draws)
+    this.cliffs = cliffs;
     const mat = rockMaterial(), blocks = new Map();
-    for (const r of list) { const k = Math.floor(r[1] / 260) * 2 + (r[0] > centerX(r[1]) ? 1 : 0); (blocks.get(k) ?? blocks.set(k, []).get(k)).push(r); }
+    const key = (x, z, c) => Math.floor(z / 260) * 4 + (x > centerX(z) ? 1 : 0) + (c ? 2 : 0);
+    for (const r of list) { const k = key(r[0], r[1], false); (blocks.get(k) ?? blocks.set(k, []).get(k)).push(r); }
+    for (const r of cliffs) { const k = key(r[0], r[1], true); (blocks.get(k) ?? blocks.set(k, []).get(k)).push(r); }
     this.rockBlocks = [];
-    for (const rs of blocks.values()) {
-      const im = new THREE.InstancedMesh(this.rockGeo[0], mat, rs.length);
+    const e = new THREE.Euler();
+    for (const [k, rs] of blocks) {
+      const cliff = (k & 2) !== 0, type = cliff ? 2 : (Math.floor(k / 4) % 2 ? 1 : 0);
+      const im = new THREE.InstancedMesh(this.rockGeo[type][0], mat, rs.length);
+      im.userData.geos = this.rockGeo[type];
       rs.forEach((r, i) => {
-        tmpM.compose(tmpP.set(r[0], heightAt(r[0], r[1]) - r[2] * 0.25, r[1]),
-          tmpQ.setFromEuler(new THREE.Euler((this.rnd() - 0.5) * 0.5, this.rnd() * 6, (this.rnd() - 0.5) * 0.5)),
-          tmpS.set(r[2] * (0.8 + this.rnd() * 0.5), r[2], r[2] * (0.8 + this.rnd() * 0.5)));
+        if (cliff) {
+          // its top leaning half way with the hill, the downhill face a wall of beds
+          tmpM.compose(tmpP.set(r[0], heightAt(r[0], r[1]) - r[2] * 0.8, r[1]),
+            tmpQ.setFromEuler(e.set(-0.3 * Math.atan(r[5]) + (this.rnd() - 0.5) * 0.1, r[4], (this.rnd() - 0.5) * 0.1, 'YXZ')),
+            tmpS.set(r[2] * r[3], r[2] * (2.1 + this.rnd() * 0.5), r[2] * 0.75));
+        } else {
+          tmpM.compose(tmpP.set(r[0], heightAt(r[0], r[1]) - r[2] * 0.25, r[1]),
+            tmpQ.setFromEuler(e.set((this.rnd() - 0.5) * 0.4, this.rnd() * 6, (this.rnd() - 0.5) * 0.4)),
+            tmpS.set(r[2] * (0.8 + this.rnd() * 0.5), r[2] * (type === 0 ? 1 : 0.85), r[2] * (0.8 + this.rnd() * 0.5)));
+        }
         im.setMatrixAt(i, tmpM);
       });
       im.computeBoundingSphere();
@@ -1040,9 +1407,70 @@ export class Props {
     if (!this.rockBlocks) return;
     for (const im of this.rockBlocks) {
       const d = im.boundingSphere.center.distanceTo(cam) - im.boundingSphere.radius;
-      im.geometry = this.rockGeo[d > 240 ? 1 : 0];
+      im.geometry = im.userData.geos[d > 240 ? 1 : 0];
       im.castShadow = d < 240;
     }
+  }
+
+  // ---------------- closure fences ----------------
+  // orange barrier fence on bamboo poles strung along the top of the cliff bands near the runs
+  // (inside the cliffs' own colliders, so it stops you where they do)
+  buildFences() {
+    const tex = canvasTex(128, 64, (c, w, h) => {
+      c.clearRect(0, 0, w, h);
+      c.fillStyle = '#ff6a14';
+      c.fillRect(0, 0, w, 6); c.fillRect(0, h - 5, w, 5);
+      // the stretched oval holes of barrier mesh: solid bands with lenses cut out
+      c.fillRect(0, 6, w, h - 11);
+      c.globalCompositeOperation = 'destination-out';
+      for (let row = 0; row < 3; row++) for (let k = -1; k < 5; k++) {
+        const cx = k * 32 + (row % 2) * 16 + 16, cy = 14 + row * 17;
+        c.beginPath(); c.ellipse(cx, cy, 13, 6, 0, 0, Math.PI * 2); c.fill();
+      }
+      c.globalCompositeOperation = 'source-over';
+    });
+    tex.wrapS = THREE.RepeatWrapping;
+    const pos = [], uv = [], idx = [], poles = [];
+    for (const cl of this.cliffs ?? []) {
+      const [x, z, size, len, yaw] = cl;
+      if (Math.abs(x - centerX(z)) - halfWidth(z) > 140) continue;
+      const ax = Math.cos(yaw), az = -Math.sin(yaw), ux = Math.sin(yaw), uz = Math.cos(yaw);
+      const half = size * len * 0.55, n = Math.max(2, Math.round((half * 2) / 2.6));
+      let u = 0, prev = null;
+      for (let i = 0; i <= n; i++) {
+        const t = -half + (i / n) * half * 2;
+        const px = x + ax * t + ux * size * 0.45, pz = z + az * t + uz * size * 0.45;
+        const gy = heightAt(px, pz);
+        if (prev) u += Math.hypot(px - prev[0], pz - prev[1]) / 2.0;
+        const v = pos.length / 3;
+        pos.push(px, gy + 0.05, pz, px, gy + 1.2, pz);
+        uv.push(u, 0, u, 1);
+        if (i > 0) idx.push(v - 2, v, v - 1, v - 1, v, v + 1);
+        poles.push([px, gy, pz]);
+        prev = [px, pz];
+      }
+    }
+    if (!poles.length) return;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx); g.computeVertexNormals();
+    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: tex, transparent: true, alphaTest: 0.4, side: THREE.DoubleSide, roughness: 0.7 }));
+    m.castShadow = true; m.receiveShadow = true;
+    this.scene.add(m);
+    // bamboo: tan canes with darker nodes, a little lean each
+    const cane = [];
+    cane.push(colorize(new THREE.CylinderGeometry(0.022, 0.028, 1.6, 6).translate(0, 0.65, 0), 0xc9a964));
+    for (const y of [0.2, 0.6, 1.0, 1.35]) cane.push(colorize(new THREE.CylinderGeometry(0.03, 0.03, 0.035, 6).translate(0, y, 0), 0x7a6232));
+    const im = new THREE.InstancedMesh(merge(cane), this.vc, poles.length);
+    const e = new THREE.Euler();
+    poles.forEach((p, i) => {
+      tmpM.compose(tmpP.set(p[0], p[1] - 0.15, p[2]), tmpQ.setFromEuler(e.set((this.rnd() - 0.5) * 0.08, 0, (this.rnd() - 0.5) * 0.08)), tmpS.set(1, 1, 1));
+      im.setMatrixAt(i, tmpM);
+    });
+    im.castShadow = true;
+    im.computeBoundingSphere();
+    this.scene.add(im);
   }
 
   // ---------------- terrain park dressing ----------------

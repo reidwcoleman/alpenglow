@@ -1,7 +1,8 @@
 // The Shredline Express's steelwork: towers and the two terminals.
 //   Towers: a tapered tube on a concrete footing with snow on it, flanged joints, the head and
 //   crossarm with a grated catwalk and yellow rails, a sheave train each side (rubber-lined
-//   wheels between side plates on a rocking beam), a caged ladder and the tower's number.
+//   wheels between side plates on a rocking beam), a caged ladder and the tower's number, the
+//   padding round its foot and snow caught on the head, catwalk and beams.
 //   Terminals: a long rounded canopy over the bullwheel on raked steel legs, the line's name
 //   along both sides, the loading conveyor with its gates and the yellow load line, a rope maze,
 //   the operator's glass cabin, lamps, and snow banked against the concrete.
@@ -107,6 +108,15 @@ function towerParts(K, H, q, at) {
   for (let y = 3; y < H; y += 0.9) put('steel', new THREE.TorusGeometry(0.36, 0.02, 4, 12, Math.PI).rotateX(Math.PI / 2).rotateY(Math.PI).translate(0, y, -0.5), 0x3a3f46);
   // the lightning rod
   put('steel', CY(0.015, 0.03, 2.4, 5, 0, H + 1.9, -0.25), 0x9a9da3);
+  // the padding wrapped round the foot of the tube (two straps), snow caught on the head, the
+  // catwalk grating and the sheave beams
+  put('rubber', CY(0.64, 0.64, 2.3, 20, 0, 0.98 + 1.15, 0), 0x2b5fae);
+  put('rubber', CY(0.66, 0.66, 0.36, 20, 0, 2.55, 0), 0xe9ecef);
+  for (const y of [1.45, 2.95]) put('rubber', new THREE.TorusGeometry(0.645, 0.025, 4, 20).rotateX(Math.PI / 2).translate(0, y, 0), 0x1a1c20);
+  put('snow', RB(0.98, 0.16, 0.98, 0.07, 0, H + 0.86, 0));
+  put('snow', RB(5.4, 0.07, 0.62, 0.03, 0, H + 0.44, 0.62));
+  put('snow', RB(0.36, 0.08, 5.6, 0.04, 0, H + 0.86, 0).rotateY(Math.PI / 2));
+  for (const sx of [-2.4, 2.4]) put('snow', RB(0.24, 0.07, 2.7, 0.03, sx, H + 0.56, 0));
 }
 
 // a terminal: back = which end the bullwheel is (+1 / -1 along the line); signs get the line's
