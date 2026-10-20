@@ -2,6 +2,7 @@
 // terrain sits just under it, see meshHeightAt), the rails and boxes, dye lines on the
 // lips and knuckles, and the signs.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { heightAt, centerX, halfWidth, PARK_FEET, RAILS, railAt, JUMPS, PIPE, ROLLERS, PARK, MAP, surfaceAt } from './course.js';
 
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
@@ -119,6 +120,16 @@ export class Park {
 
   buildRails() {
     const r = { s: 0, lat: 0, y: 0, slope: 0 };
+    // the steelwork of every feature in one mesh, the painted rails and the boxes in one each
+    // (vertex colours), the snow kicked up round their feet in one
+    const steelG = [], railG = [], boxG = [], snowG = [];
+    const tint = (g, c) => {
+      const col = new THREE.Color(c), n = g.attributes.position.count, a = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) col.toArray(a, i * 3);
+      g.setAttribute('color', new THREE.BufferAttribute(a, 3));
+      for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'color'].includes(k)) g.deleteAttribute(k);
+      return g.index ? g.toNonIndexed() : g;
+    };
     for (const R of RAILS) {
       const n = R.ys.length;
       const pt = (i) => {
@@ -147,43 +158,34 @@ export class Park {
         }
         continue;
       }
+      const sx = R.dir.z, sz = -R.dir.x;
       if (R.kind === 'box') {
-        // a plastic-topped box: dark slick top, coloured steel sides
-        const pos = [], col = [], idx = [];
-        const top = new THREE.Color(0x1c1f24), side = new THREE.Color(R.color);
-        const sx = R.dir.z, sz = -R.dir.x;
-        for (let i = 0; i < n; i++) {
-          const p = pt(i);
-          const b = pos.length / 3;
-          const corners = [[-1, 0], [1, 0], [1, -0.24], [-1, -0.24]];
-          for (const [s, dy] of corners) {
-            pos.push(p.x + sx * s * R.hw, p.y + dy, p.z + sz * s * R.hw);
-            const c = dy === 0 ? top : side;
-            col.push(c.r, c.g, c.b);
+        // a box: slick dark top, steel coping round its edges, coloured steel sides. Each face is
+        // its own strip of vertices so the edges stay sharp
+        const strip = (a0, a1, c) => {
+          const pos = [], idx = [];
+          for (let i = 0; i < n; i++) {
+            const p = pt(i);
+            for (const [s, dy] of [a0, a1]) pos.push(p.x + sx * s * R.hw, p.y + dy, p.z + sz * s * R.hw);
+            if (i > 0) { const b = i * 2; idx.push(b - 2, b, b - 1, b - 1, b, b + 1); }
           }
-          if (i > 0) {
-            const a = b - 4;
-            // top, right side, left side
-            idx.push(a, b, a + 1, a + 1, b, b + 1);
-            idx.push(a + 1, b + 1, a + 2, a + 2, b + 1, b + 2);
-            idx.push(a + 3, b + 3, a, a, b + 3, b);
-          }
+          const g = new THREE.BufferGeometry();
+          g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+          g.setIndex(idx); g.computeVertexNormals();
+          boxG.push(tint(g, c));
+        };
+        const e = 0.05 / R.hw, cop = 0xc3c8ce, top = 0x1c1f24;
+        strip([-1, 0.004], [-1 + e, 0.004], cop);
+        strip([-1 + e, 0], [1 - e, 0], top);
+        strip([1 - e, 0.004], [1, 0.004], cop);
+        for (const s of [-1, 1]) {
+          strip([s, 0.004], [s, -0.05], cop);
+          strip([s, -0.05], [s, -0.24], R.color);
         }
-        // duplicate the top edge with its own colour for crisp shading between top and sides
-        const g = new THREE.BufferGeometry();
-        g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-        g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-        g.setIndex(idx);
-        g.computeVertexNormals();
-        const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.35, roughness: 0.42, side: THREE.DoubleSide }));
-        m.castShadow = true; m.receiveShadow = true;
-        this.group.add(m);
         // end plates
         for (const i of [0, n - 1]) {
           const p = pt(i);
-          const e = new THREE.Mesh(new THREE.BoxGeometry(R.hw * 2, 0.24, 0.04), this.steel);
-          e.position.set(p.x, p.y - 0.12, p.z); e.rotation.y = R.yaw;
-          this.group.add(e);
+          steelG.push(tint(new THREE.BoxGeometry(R.hw * 2 + 0.02, 0.25, 0.04).rotateY(R.yaw).translate(p.x, p.y - 0.115, p.z), 0x3b4048));
         }
       } else {
         const curve = new THREE.CurvePath();
@@ -191,29 +193,47 @@ export class Park {
         let prev = pt(0);
         for (let i = step; i < n; i += step) { const p = pt(Math.min(i, n - 1)); curve.add(new THREE.LineCurve3(prev, p)); prev = p; }
         if (prev.distanceTo(pt(n - 1)) > 0.01) curve.add(new THREE.LineCurve3(prev, pt(n - 1)));
-        const tube = new THREE.TubeGeometry(curve, Math.max(8, n), 0.05, 10, false);
+        // the round rail, capped at both ends, on a square spine below it
+        const tube = new THREE.TubeGeometry(curve, Math.max(8, n), 0.05, 12, false);
         tube.translate(0, -0.05, 0);
-        const m = new THREE.Mesh(tube, new THREE.MeshStandardMaterial({ color: R.color, metalness: 0.55, roughness: 0.3 }));
-        m.castShadow = true;
-        this.group.add(m);
+        railG.push(tint(tube, R.color));
+        for (const p of [pt(0), pt(n - 1)]) railG.push(tint(new THREE.SphereGeometry(0.05, 12, 8).translate(p.x, p.y - 0.05, p.z), R.color));
+        const spine = new THREE.TubeGeometry(curve, Math.max(8, n), 0.045, 4, false);
+        spine.translate(0, -0.22, 0);
+        steelG.push(tint(spine, 0x3b4048));
       }
-      // supports down to the snow (and a little into it)
+      // supports down to the snow (and a little into it): posts on base plates for a rail, wide
+      // legs for a box, with a gusset up to the rail and snow banked round each foot
       const legs = Math.max(2, Math.round(R.L / 2.6) + 1);
       for (let k = 0; k < legs; k++) {
         const s = 0.25 + (k / (legs - 1)) * (R.L - 0.5);
         const x = R.a.x + R.dir.x * s, z = R.a.z + R.dir.z * s;
         railAt(R, x, z, r);
-        const gy = heightAt(x, z) - 0.3;
-        const top = r.y - (R.kind === 'box' ? 0.24 : 0.09);
+        const snowY = heightAt(x, z), gy = snowY - 0.3;
+        const box = R.kind === 'box';
+        const top = r.y - (box ? 0.24 : 0.22);
         const h = top - gy;
         if (h < 0.05) continue;
-        const legW = R.kind === 'box' ? R.hw * 1.6 : 0.07;
-        const leg = new THREE.Mesh(new THREE.BoxGeometry(legW, h, 0.07), this.steel);
-        leg.position.set(x, gy + h / 2, z); leg.rotation.y = R.yaw;
-        leg.castShadow = true;
-        this.group.add(leg);
+        if (box) steelG.push(tint(new THREE.BoxGeometry(R.hw * 1.6, h, 0.07).rotateY(R.yaw).translate(x, gy + h / 2, z), 0x3b4048));
+        else {
+          steelG.push(tint(new THREE.CylinderGeometry(0.038, 0.038, h, 8).translate(x, gy + h / 2, z), 0x3b4048));
+          steelG.push(tint(new THREE.BoxGeometry(0.02, 0.17, 0.14).rotateY(R.yaw).translate(x, r.y - 0.135, z), 0x3b4048));
+          steelG.push(tint(new THREE.BoxGeometry(0.34, 0.025, 0.34).rotateY(R.yaw).translate(x, snowY - 0.005, z), 0x50555d));
+        }
+        const m = box ? R.hw * 0.95 : 0.2;
+        snowG.push(tint(new THREE.SphereGeometry(1, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2).scale(m, 0.09, box ? 0.22 : m).rotateY(R.yaw).translate(x, snowY - 0.03, z), 0xffffff));
       }
     }
+    const add = (list, mat, shadow = true) => {
+      if (!list.length) return;
+      const m = new THREE.Mesh(mergeGeometries(list), mat);
+      m.castShadow = shadow; m.receiveShadow = true;
+      this.group.add(m);
+    };
+    add(steelG, new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.75, roughness: 0.38 }));
+    add(railG, new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.55, roughness: 0.26 }));
+    add(boxG, new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.35, roughness: 0.4, side: THREE.DoubleSide }));
+    add(snowG, new THREE.MeshStandardMaterial({ color: 0xdde3ec, vertexColors: true, roughness: 0.92 }), false);
   }
 
   buildLines() {

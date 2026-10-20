@@ -1,6 +1,6 @@
 // Riders a long way off: past a couple of hundred metres a rider is a few pixels tall, so
 // instead of each one's dozen parts they're all one instanced figure (jacket colour per
-// rider, pants a shade of it, skis or a board), one draw for the lot.
+// rider, skis and poles or a board, goggles and gloves), one draw for the lot.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
@@ -23,8 +23,15 @@ function figure(board) {
   add(new THREE.CapsuleGeometry(0.2, 0.42, 2, 6), 0xffffff, 0, 1.12, 0.12, 0.35);
   add(new THREE.SphereGeometry(0.14, 6, 5), 0x2a2c33, 0, 1.55, 0.26);
   for (const s of [-0.3, 0.3]) add(new THREE.BoxGeometry(0.1, 0.42, 0.1), 0xffffff, s, 1.05, 0.2, 0.6);
+  // goggles under the helmet, gloves
+  add(new THREE.BoxGeometry(0.2, 0.06, 0.06), 0xf2a33a, 0, 1.5, 0.38);
+  for (const s of [-0.32, 0.32]) add(new THREE.BoxGeometry(0.1, 0.1, 0.1), 0x1d1f26, s, 0.86, 0.36);
   if (board) add(new THREE.BoxGeometry(0.3, 0.03, 1.5).rotateY(Math.PI / 2), 0x2a2c33, 0, 0.02, 0);
-  else for (const s of [-0.12, 0.12]) add(new THREE.BoxGeometry(0.09, 0.03, 1.7), 0x2a2c33, s, 0.02, 0.05);
+  else {
+    for (const s of [-0.12, 0.12]) add(new THREE.BoxGeometry(0.09, 0.03, 1.7), 0x2a2c33, s, 0.02, 0.05);
+    // poles trailing back from the hands
+    for (const s of [-0.34, 0.34]) add(new THREE.CylinderGeometry(0.012, 0.012, 1.15, 4).rotateX(1.05), 0x9aa0a8, s, 0.57, -0.14);
+  }
   return mergeGeometries(P);
 }
 
