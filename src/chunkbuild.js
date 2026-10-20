@@ -28,6 +28,27 @@ export function buildChunkArrays(cx, cz, segs, size, lod = 0, coarsest = false) 
     return u + w <= 1 ? a + u * (b - a) + w * (c - a) : d + (1 - u) * (c - d) + (1 - w) * (b - d);
   };
   const mor = new Float32Array(vCount * 2);
+  // how exposed the snow is to the wind: crests and knolls stand above the ground round them
+  // (scoured, wind-packed, sastrugi), hollows sit below it (where the blown snow settles soft).
+  // Worked out on a fixed 32 m lattice of world points, so every level of detail and every
+  // neighbouring chunk agrees, then spread over the vertices.
+  // (each point against its four lattice neighbours, so the heights are shared: 45 lookups a chunk)
+  const WL = 32, wn = Math.round(size / WL) + 1, W = new Float32Array(wn * wn), gw = wn + 2, G = new Float32Array(gw * gw);
+  for (let j = 0; j < gw; j++) for (let i = 0; i < gw; i++) {
+    if ((i === 0 || i === gw - 1) && (j === 0 || j === gw - 1)) continue;
+    G[j * gw + i] = heightAt(cx + (i - 1) * WL, cz + (j - 1) * WL);
+  }
+  for (let j = 0; j < wn; j++) for (let i = 0; i < wn; i++) {
+    const k = (j + 1) * gw + i + 1;
+    W[j * wn + i] = Math.tanh((G[k] - (G[k - 1] + G[k + 1] + G[k - gw] + G[k + gw]) * 0.25) / 2.5);
+  }
+  const wnd = new Float32Array(vCount);
+  const windAt = (x, z) => {
+    const fx = Math.min(Math.max((x - cx) / WL, 0), wn - 1.0001), fz = Math.min(Math.max((z - cz) / WL, 0), wn - 1.0001);
+    const i = Math.floor(fx), j = Math.floor(fz), u = fx - i, w = fz - j;
+    const a = W[j * wn + i], b = W[j * wn + i + 1], c = W[(j + 1) * wn + i], d = W[(j + 1) * wn + i + 1];
+    return (a + (b - a) * u) * (1 - w) + (c + (d - c) * u) * w;
+  };
   let v = 0;
   for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
     const x = cx + i * step, z = cz + j * step;
@@ -40,6 +61,7 @@ export function buildChunkArrays(cx, cz, segs, size, lod = 0, coarsest = false) 
     surfaceAt(x, z, surf);
     pst[v] = 1 - surf.powder;
     ice[v] = surf.ice;
+    wnd[v] = windAt(x, z);
     mor[v * 2] = coarsest ? H[k] : coarseAt(i, j); mor[v * 2 + 1] = coarsest ? 0 : lod + 1;
     v++;
   }
@@ -63,7 +85,7 @@ export function buildChunkArrays(cx, cz, segs, size, lod = 0, coarsest = false) 
     for (const k of side) {
       pos[v * 3] = pos[k * 3]; pos[v * 3 + 1] = pos[k * 3 + 1] - drop; pos[v * 3 + 2] = pos[k * 3 + 2];
       nrm[v * 3] = nrm[k * 3]; nrm[v * 3 + 1] = nrm[k * 3 + 1]; nrm[v * 3 + 2] = nrm[k * 3 + 2];
-      pst[v] = pst[k]; ice[v] = ice[k];
+      pst[v] = pst[k]; ice[v] = ice[k]; wnd[v] = wnd[k];
       mor[v * 2] = mor[k * 2] - drop; mor[v * 2 + 1] = mor[k * 2 + 1];
       v++;
     }
@@ -73,5 +95,5 @@ export function buildChunkArrays(cx, cz, segs, size, lod = 0, coarsest = false) 
       else { idx[q++] = a; idx[q++] = c; idx[q++] = b; idx[q++] = b; idx[q++] = c; idx[q++] = d; }
     }
   });
-  return { pos, nrm, pst, ice, idx, mor };
+  return { pos, nrm, pst, ice, idx, mor, wnd };
 }
