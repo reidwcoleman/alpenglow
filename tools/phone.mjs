@@ -7,12 +7,12 @@ const b = await chromium.launch({ executablePath: CHROME, headless: true, args: 
 const ctx = await b.newContext({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
 const p = await ctx.newPage();
 p.on('pageerror', (e) => console.log('[pageerror]', e.message));
-await p.goto('http://127.0.0.1:5260/', { waitUntil: 'domcontentloaded' });
+await p.goto(`http://127.0.0.1:${process.env.PORT ?? 5260}/`, { waitUntil: 'domcontentloaded' });
 await p.waitForFunction(() => window.__ready === true, null, { timeout: 180000 });
 await p.waitForTimeout(1500);
 await p.screenshot({ path: `${out}_ride.jpg`, quality: 75 });
 for (const t of ['shop', 'pass', 'locker']) { await p.evaluate((t) => document.querySelector(`#tabs button[data-tab="${t}"]`).click(), t); await p.waitForTimeout(900); await p.screenshot({ path: `${out}_${t}.jpg`, quality: 75 }); }
-await p.goto('http://127.0.0.1:5260/?menu=0&mode=run&park=yard&tod=bluebird', { waitUntil: 'domcontentloaded' });
+await p.goto(`http://127.0.0.1:${process.env.PORT ?? 5260}/?menu=0&mode=run&park=yard&tod=bluebird`, { waitUntil: 'domcontentloaded' });
 await p.waitForFunction(() => window.__ready === true, null, { timeout: 180000 });
 await p.waitForTimeout(2500);
 // hold right, then tap down down in the air

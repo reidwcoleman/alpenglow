@@ -6,7 +6,7 @@ const browser = await chromium.launch({ executablePath: CHROME, headless: true, 
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') console.log('[console]', m.text()); });
-await page.goto(`http://127.0.0.1:5260/?menu=0&mode=free&auto=1&fixdpr=1&tod=bluebird&z=${z}&v=14${process.env.Q ?? ""}`, { waitUntil: 'domcontentloaded' });
+await page.goto(`http://127.0.0.1:${process.env.PORT ?? 5260}/?menu=0&mode=free&auto=1&fixdpr=1&tod=bluebird&z=${z}&v=14${process.env.Q ?? ""}`, { waitUntil: 'domcontentloaded' });
 await page.waitForFunction(() => window.__ready === true, null, { timeout: 180000 });
 await page.waitForTimeout(Number(process.env.WAIT ?? 2500));
 if (process.env.EVAL) await page.evaluate(process.env.EVAL);

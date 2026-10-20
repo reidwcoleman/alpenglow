@@ -8,7 +8,7 @@ fs.mkdirSync(out, { recursive: true });
 const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: [ANGLE, '--enable-gpu', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
-await page.goto(`http://127.0.0.1:5260/?menu=0&mode=${process.env.MODE ?? 'park'}&fixdpr=1&tod=${process.env.TOD ?? 'bluebird'}&gear=${process.env.GEAR ?? 'ski'}`, { waitUntil: 'domcontentloaded' });
+await page.goto(`http://127.0.0.1:${process.env.PORT ?? 5260}/?menu=0&mode=${process.env.MODE ?? 'park'}&fixdpr=1&tod=${process.env.TOD ?? 'bluebird'}&gear=${process.env.GEAR ?? 'ski'}`, { waitUntil: 'domcontentloaded' });
 await page.waitForFunction(() => window.__ready === true, null, { timeout: 180000 });
 await page.evaluate(([v, jz]) => { window.__v = v; window.__jz = jz; }, [Number(process.env.V ?? 20), Number(process.env.JZ ?? 0)]);
 const info = await page.evaluate((jump) => {

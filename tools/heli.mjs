@@ -5,7 +5,7 @@ const [out = 'shots/heli'] = process.argv.slice(2);
 const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: [ANGLE, '--enable-gpu', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message, e.stack?.split('\n')[1]));
-await page.goto(`http://127.0.0.1:5260/?park=yard&menu=0&mode=run&tod=bluebird&fixdpr=1`, { waitUntil: 'domcontentloaded' });
+await page.goto(`http://127.0.0.1:${process.env.PORT ?? 5260}/?park=yard&menu=0&mode=run&tod=bluebird&fixdpr=1`, { waitUntil: 'domcontentloaded' });
 await page.waitForFunction(() => window.__ready === true, null, { timeout: 180000 });
 await page.waitForTimeout(2000);
 await page.evaluate(() => {

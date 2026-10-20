@@ -8,7 +8,7 @@ const open = async () => {
   const ctx = await browser.newContext({ viewport: { width: 960, height: 540 } });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => console.log('[pageerror]', e.message));
-  await page.goto(`http://127.0.0.1:5260/?tod=bluebird&room=${room}&auto=1&q=low`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`http://127.0.0.1:${process.env.PORT ?? 5260}/?tod=bluebird&room=${room}&auto=1&q=low`, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 180000 });
   return page;
 };

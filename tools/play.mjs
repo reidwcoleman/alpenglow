@@ -7,7 +7,7 @@ const browser = await chromium.launch({ executablePath: CHROME, headless: true, 
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 page.on('console', (m) => { if (m.type() === 'error') console.log('[error]', m.text().slice(0, 300)); });
-await page.goto(`http://127.0.0.1:5260/?menu=0&mode=race&fixdpr=1`, { waitUntil: 'domcontentloaded' });
+await page.goto(`http://127.0.0.1:${process.env.PORT ?? 5260}/?menu=0&mode=race&fixdpr=1`, { waitUntil: 'domcontentloaded' });
 await page.waitForFunction(() => window.__ready === true, null, { timeout: 180000 });
 const st = () => page.evaluate(() => { const p = window.__game.player; return { state: window.__game.state, z: +p.pos.z.toFixed(1), x: +p.pos.x.toFixed(1), v: +(p.speed * 3.6).toFixed(0), head: +p.heading.toFixed(2), ground: p.onGround, crash: p.crash > 0, lean: +p.lean.toFixed(2) }; });
 console.log('countdown', await st());

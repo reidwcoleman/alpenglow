@@ -8,7 +8,7 @@ const b = await chromium.launch({ executablePath: CHROME, headless: true, args: 
 const p = await b.newPage({ viewport: { width: Number(W), height: Number(H) } });
 p.on('pageerror', (e) => console.log('[pageerror]', e.message));
 p.on('console', (m) => { if (m.type() === 'error') console.log('[error]', m.text().slice(0, 300)); });
-await p.goto(`http://127.0.0.1:5260/?${process.env.Q ?? ''}`, { waitUntil: 'domcontentloaded' });
+await p.goto(`http://127.0.0.1:${process.env.PORT ?? 5260}/?${process.env.Q ?? ''}`, { waitUntil: 'domcontentloaded' });
 await p.waitForFunction(() => window.__ready === true, null, { timeout: 180000 });
 await p.evaluate(() => { document.getElementById('loading').classList.add('hidden'); if (window.__seed) window.__seed(); });
 if (process.env.EVAL) await p.evaluate(process.env.EVAL);

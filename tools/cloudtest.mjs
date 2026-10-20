@@ -8,7 +8,7 @@ const b = await chromium.launch({ executablePath: CHROME, headless: true, args: 
 const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
 p.on('pageerror', (e) => console.log('[pageerror]', e.message));
 p.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') console.log(`[${m.type()}]`, m.text().slice(0, 300)); });
-await p.goto(`http://127.0.0.1:5260/?park=${park}&menu=0&mode=run&auto=1&gear=${process.env.GEAR ?? 'ski'}`, { waitUntil: 'domcontentloaded' });
+await p.goto(`http://127.0.0.1:${process.env.PORT ?? 5260}/?park=${park}&menu=0&mode=run&auto=1&gear=${process.env.GEAR ?? 'ski'}`, { waitUntil: 'domcontentloaded' });
 await p.waitForFunction(() => window.__ready === true, null, { timeout: 180000 });
 console.log('cloud', await p.evaluate(async () => { await window.__game.cloud.ready; return { st: window.__game.cloud.status, uid: window.__game.cloud.uid, guest: window.__game.cloud.guest }; }));
 await p.waitForFunction(() => !document.getElementById('results').classList.contains('hidden'), null, { timeout: 400000, polling: 1000 });

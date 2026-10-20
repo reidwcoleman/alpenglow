@@ -5,7 +5,7 @@ const z = Number(process.argv[2] ?? 2000);
 const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: [ANGLE, '--enable-gpu', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
-await page.goto(`http://127.0.0.1:5260/?menu=0&mode=free&auto=1&fixdpr=1&z=${z}${process.env.Q ?? ""}`, { waitUntil: 'domcontentloaded' });
+await page.goto(`http://127.0.0.1:${process.env.PORT ?? 5260}/?menu=0&mode=free&auto=1&fixdpr=1&z=${z}${process.env.Q ?? ""}`, { waitUntil: 'domcontentloaded' });
 await page.waitForFunction(() => window.__ready === true, null, { timeout: 180000 });
 const measure = async (label, js) => {
   await page.evaluate(`(() => { const g = window.__game; g.player.place(window.__cx(${z}), ${z}, null, 18); g.player.ai.lastZ=${z}; ${js} })()`);

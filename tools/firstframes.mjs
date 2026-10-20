@@ -5,7 +5,7 @@ const browser = await chromium.launch({ executablePath: CHROME, headless: true, 
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 await page.addInitScript(() => { window.__ft = []; let l = 0; const go = (t) => { if (window.__ready) { if (l) window.__ft.push([Math.round(t), Math.round(t - l)]); l = t; } requestAnimationFrame(go); }; requestAnimationFrame(go); });
-await page.goto(`${process.env.URL ?? 'http://127.0.0.1:5260/'}?${process.argv[2] ?? 'menu=0&mode=run&auto=1&tod=golden'}`, { waitUntil: 'domcontentloaded' });
+await page.goto(`${process.env.URL ?? 'http://127.0.0.1:${process.env.PORT ?? 5260}/'}?${process.argv[2] ?? 'menu=0&mode=run&auto=1&tod=golden'}`, { waitUntil: 'domcontentloaded' });
 await page.waitForFunction(() => window.__ready === true, null, { timeout: 300000 });
 await page.waitForTimeout(3000);
 const ft = await page.evaluate(() => window.__ft);

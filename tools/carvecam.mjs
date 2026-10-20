@@ -7,7 +7,7 @@ const [out, z = '900', turnMs = '900', key = 'ArrowLeft'] = process.argv.slice(2
 const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: [ANGLE, '--enable-gpu', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
-await page.goto(`http://127.0.0.1:5260/?menu=0&mode=free&fixdpr=1&tod=${process.env.TOD ?? 'bluebird'}&z=${z}${process.env.Q ?? ''}`, { waitUntil: 'domcontentloaded' });
+await page.goto(`http://127.0.0.1:${process.env.PORT ?? 5260}/?menu=0&mode=free&fixdpr=1&tod=${process.env.TOD ?? 'bluebird'}&z=${z}${process.env.Q ?? ''}`, { waitUntil: 'domcontentloaded' });
 await page.waitForFunction(() => window.__ready === true, null, { timeout: 180000 });
 await page.waitForTimeout(1500);
 await page.keyboard.down('ArrowUp');

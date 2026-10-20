@@ -3,7 +3,7 @@ import { chromium } from 'playwright-core';
 import { CHROME, ANGLE } from './chrome.mjs';
 const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: [ANGLE, '--enable-gpu', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
-await page.goto(`http://127.0.0.1:5260/?menu=0&mode=free&auto=1&fixdpr=1&z=2000`, { waitUntil: 'domcontentloaded' });
+await page.goto(`http://127.0.0.1:${process.env.PORT ?? 5260}/?menu=0&mode=free&auto=1&fixdpr=1&z=2000`, { waitUntil: 'domcontentloaded' });
 await page.waitForFunction(() => window.__ready === true, null, { timeout: 180000 });
 await page.waitForTimeout(2500);
 console.log(await page.evaluate(() => {

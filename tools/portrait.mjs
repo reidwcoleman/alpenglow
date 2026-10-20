@@ -7,7 +7,7 @@ const kits = JSON.parse(process.env.OUTFITS ?? '[{}]');
 const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: [ANGLE, '--enable-gpu', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 360 * Math.min(kits.length, 5), height: 440 * Math.ceil(kits.length / 5) }, deviceScaleFactor: 1 });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
-await page.goto(`http://127.0.0.1:5260/?tod=bluebird${process.env.Q ?? ''}`, { waitUntil: 'domcontentloaded' });
+await page.goto(`http://127.0.0.1:${process.env.PORT ?? 5260}/?tod=bluebird${process.env.Q ?? ''}`, { waitUntil: 'domcontentloaded' });
 await page.waitForFunction(() => window.__ready === true, null, { timeout: 180000 });
 await page.evaluate(async ([kits, zoom, look, eye, yaw, gear]) => {
   const g = window.__game;

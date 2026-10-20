@@ -8,7 +8,7 @@ const [out = 'shots/rc.jpg', what = 'lift', cam = '', rel = '1'] = process.argv.
 const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: [ANGLE, '--enable-gpu', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: Number(process.env.W ?? 1280), height: Number(process.env.H ?? 720) } });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message, e.stack?.split('\n')[1]));
-await page.goto(`http://127.0.0.1:5260/?park=${process.env.PARK ?? 'yard'}&menu=0&mode=run&tod=${process.env.TOD ?? 'bluebird'}&fixdpr=1`, { waitUntil: 'domcontentloaded' });
+await page.goto(`http://127.0.0.1:${process.env.PORT ?? 5260}/?park=${process.env.PARK ?? 'yard'}&menu=0&mode=run&tod=${process.env.TOD ?? 'bluebird'}&fixdpr=1`, { waitUntil: 'domcontentloaded' });
 await page.waitForFunction(() => window.__ready === true, null, { timeout: 180000 });
 await page.waitForTimeout(1500);
 await page.evaluate(() => { const g = window.__game, C = window.__course, p = g.player; const z = 1300; p.place(C.centerX(z), z, null, 20); p.startCrash('tree', 20); });

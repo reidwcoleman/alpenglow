@@ -10,7 +10,7 @@ const open = async (q) => {
   const page = await ctx.newPage();
   page.on('pageerror', (e) => console.log('[pageerror]', e.message));
   page.on('console', (m) => { if (m.type() === 'error') console.log('[console]', m.text().slice(0, 300)); });
-  await page.goto(`http://127.0.0.1:5260/?${q}`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`http://127.0.0.1:${process.env.PORT ?? 5260}/?${q}`, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 180000 });
   await page.waitForTimeout(2500);
   return page;

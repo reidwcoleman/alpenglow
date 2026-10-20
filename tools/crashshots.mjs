@@ -6,7 +6,7 @@ fs.mkdirSync('shots/crash', { recursive: true });
 const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: [ANGLE, '--enable-gpu', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 960, height: 540 }, deviceScaleFactor: 1 });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
-await page.goto(`http://127.0.0.1:5260/?menu=0&mode=free&fixdpr=1&tod=bluebird&z=500&v=22`, { waitUntil: 'domcontentloaded' });
+await page.goto(`http://127.0.0.1:${process.env.PORT ?? 5260}/?menu=0&mode=free&fixdpr=1&tod=bluebird&z=500&v=22`, { waitUntil: 'domcontentloaded' });
 await page.waitForFunction(() => window.__ready === true, null, { timeout: 180000 });
 await page.waitForTimeout(1200);
 await page.evaluate(() => { const p = window.__game.player; p.startCrash('landing'); });

@@ -6,7 +6,7 @@ const b = await chromium.launch({ executablePath: CHROME, headless: true, args: 
 const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
 p.on('pageerror', (e) => console.log('[pageerror]', e.message));
 p.on('console', (m) => { if (m.type() === 'error') console.log('[error]', m.text().slice(0, 300)); });
-await p.goto(`http://127.0.0.1:5260/?park=${park}&menu=0&mode=run&auto=1&gear=${process.env.GEAR ?? 'board'}`, { waitUntil: 'domcontentloaded' });
+await p.goto(`http://127.0.0.1:${process.env.PORT ?? 5260}/?park=${park}&menu=0&mode=run&auto=1&gear=${process.env.GEAR ?? 'board'}`, { waitUntil: 'domcontentloaded' });
 await p.waitForFunction(() => window.__ready === true, null, { timeout: 180000 });
 await p.waitForFunction(() => !document.getElementById('results').classList.contains('hidden'), null, { timeout: 400000, polling: 1000 });
 await p.waitForTimeout(800);

@@ -5,7 +5,7 @@ const [id = 'sprint', tier = '0', park = 'yard'] = process.argv.slice(2);
 const b = await chromium.launch({ executablePath: CHROME, headless: true, args: [ANGLE, '--enable-gpu', '--ignore-gpu-blocklist'] });
 const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
 p.on('pageerror', (e) => console.log('[pageerror]', e.message));
-await p.goto(`http://127.0.0.1:5260/?park=${park}&event=${id}&tier=${tier}&auto=1&q=low`, { waitUntil: 'domcontentloaded' });
+await p.goto(`http://127.0.0.1:${process.env.PORT ?? 5260}/?park=${park}&event=${id}&tier=${tier}&auto=1&q=low`, { waitUntil: 'domcontentloaded' });
 await p.waitForFunction(() => window.__ready === true, null, { timeout: 180000 });
 await p.waitForTimeout(3000);
 console.log('started', await p.evaluate(() => ({ mode: window.__game.mode, ev: window.__game.event?.ev.id, racers: window.__game.racers?.length, z: Math.round(window.__game.player.pos.z), tag: document.getElementById('evtag').textContent })));

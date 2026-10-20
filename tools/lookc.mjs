@@ -6,7 +6,7 @@ const browser = await chromium.launch({ executablePath: CHROME, headless: true, 
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 page.on('console', (m) => { if (m.type() === 'error') console.log('[console]', m.text().slice(0, 600)); });
-await page.goto(`http://127.0.0.1:5260/?menu=0&mode=run&auto=1&fixdpr=1&tod=${tod}&${q}`, { waitUntil: 'domcontentloaded' });
+await page.goto(`http://127.0.0.1:${process.env.PORT ?? 5260}/?menu=0&mode=run&auto=1&fixdpr=1&tod=${tod}&${q}`, { waitUntil: 'domcontentloaded' });
 await page.waitForFunction(() => window.__ready === true, null, { timeout: 180000 });
 await page.evaluate(([z, dx, h, lz, ldx, fov]) => {
   const g = window.__game, cx = window.__cx, H = window.__h;

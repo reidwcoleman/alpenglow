@@ -6,7 +6,7 @@ const browser = await chromium.launch({ executablePath: CHROME, headless: true, 
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message, e.stack?.split('\n')[1]));
 page.on('console', (m) => { if (m.type() === 'error') console.log('[console]', m.text().slice(0, 300)); });
-await page.goto(`http://127.0.0.1:5260/?park=yard&menu=0&mode=run&tod=bluebird&fixdpr=1`, { waitUntil: 'domcontentloaded' });
+await page.goto(`http://127.0.0.1:${process.env.PORT ?? 5260}/?park=yard&menu=0&mode=run&tod=bluebird&fixdpr=1`, { waitUntil: 'domcontentloaded' });
 await page.waitForFunction(() => window.__ready === true, null, { timeout: 180000 });
 await page.waitForTimeout(3000);
 await page.evaluate((sp) => { const g = window.__game, C = window.__course, p = g.player; const z = 1300; p.place(C.centerX(z), z, null, sp); p.crashSpeed = sp; p.startCrash('tree', sp); }, Number(speed));

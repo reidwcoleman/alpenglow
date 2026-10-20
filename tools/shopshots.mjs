@@ -5,7 +5,7 @@ const out = process.argv[2];
 const b = await chromium.launch({ executablePath: CHROME, headless: true, args: [ANGLE, '--enable-gpu', '--ignore-gpu-blocklist'] });
 const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
 p.on('pageerror', (e) => console.log('[pageerror]', e.message));
-await p.goto('http://127.0.0.1:5260/', { waitUntil: 'domcontentloaded' });
+await p.goto(`http://127.0.0.1:${process.env.PORT ?? 5260}/`, { waitUntil: 'domcontentloaded' });
 await p.waitForFunction(() => window.__ready === true, null, { timeout: 180000 });
 await p.click('#tabs button[data-tab="shop"]'); await p.waitForTimeout(800);
 await p.evaluate(() => document.querySelector('#tab-shop').scrollTop = 600);
