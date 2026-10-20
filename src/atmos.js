@@ -17,6 +17,11 @@ export const AG = {
   uAgDirect: { value: 1 },
   // dusk: the sun has gone off everything below x and lights all above y (the peaks keep it longest)
   uSunset: { value: new THREE.Vector2(-1e5, -9e4) },
+  // aerial perspective: how much more each channel scatters in (blue most: far ridges go blue)
+  uFogRGB: { value: new THREE.Vector3(1, 1, 1) },
+  // valley mist (an inversion layer): x density at its base, y base height, z 1 / thickness
+  uValley: { value: new THREE.Vector3(0, 0, 1 / 120) },
+  uValleyCol: { value: new THREE.Color(1, 1, 1) },
 };
 
 const FOG_PARS_V = `varying vec3 vAgW; uniform mat4 uCamWorld;
@@ -28,7 +33,7 @@ const FOG_V = `vAgW = (uCamWorld * mvPosition).xyz;
   vFogDepth = - mvPosition.z;
 #endif`;
 const FOG_PARS_F = `varying vec3 vAgW;
-uniform vec3 uSunDirA; uniform vec3 uSunFog; uniform float uFogFall; uniform float uFogBase; uniform float uAgDirect; uniform vec2 uSunset;
+uniform vec3 uSunDirA; uniform vec3 uSunFog; uniform vec3 uFogRGB; uniform vec3 uValley; uniform vec3 uValleyCol; uniform float uFogFall; uniform float uFogBase; uniform float uAgDirect; uniform vec2 uSunset;
 uniform sampler2D uShadeTex; uniform vec4 uShadeBox;
 float agSun = 1.0;
 #ifdef USE_FOG
@@ -54,12 +59,23 @@ const FOG_F = `#ifdef USE_FOG
   vec3 agRd = vAgW - cameraPosition;
   float agD = length(agRd);
   agRd /= max(agD, 1e-3);
+  // haze that thins with height, integrated along the ray
   float agK = agRd.y * uFogFall;
   float agB = agDen * exp(-(cameraPosition.y - uFogBase) * uFogFall);
   float agF = abs(agK) < 1e-6 ? agB * agD : agB * (1.0 - exp(-agD * agK)) / agK;
-  float fogFactor = 1.0 - exp(-max(agF, 0.0));
-  float agS = pow(max(dot(agRd, uSunDirA), 0.0), 10.0);
-  gl_FragColor.rgb = mix(gl_FragColor.rgb, mix(fogColor, uSunFog, agS * 0.6), fogFactor);
+  agF = max(agF, 0.0);
+  // the valley mist: a thin dense layer lying in the low ground
+  float agVK = agRd.y * uValley.z;
+  float agVB = uValley.x * exp(min(-(cameraPosition.y - uValley.y) * uValley.z, 1.0));
+  float agV = uValley.x <= 0.0 ? 0.0 : max(abs(agVK) < 1e-6 ? agVB * agD : agVB * (1.0 - exp(-agD * agVK)) / agVK, 0.0);
+  // in-scatter: the sky's blue over distance (bluer than it dims), warmer toward the sun
+  float agMu = max(dot(agRd, uSunDirA), 0.0);
+  float agS = pow(agMu, 10.0) * 0.6 + agMu * agMu * 0.12;
+  vec3 agIn = (1.0 - exp(-agF * uFogRGB)) * mix(fogColor, uSunFog, agS);
+  float agT = exp(-agF - agV);
+  float fogFactor = 1.0 - agT;
+  vec3 agMist = (1.0 - exp(-agV)) * mix(uValleyCol, uSunFog * 1.2, agS * 0.8);
+  gl_FragColor.rgb = gl_FragColor.rgb * agT + agIn * exp(-agV) + agMist;
 #endif`;
 const LIGHT_F = `#include <lights_fragment_end>
   {

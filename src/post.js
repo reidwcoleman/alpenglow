@@ -6,6 +6,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
+import { LO } from './gfx.js';
 
 const LensShader = {
   uniforms: {
@@ -85,12 +86,12 @@ const ShaftShader = {
       vec4 c0 = texture2D(tDiffuse, vUv);
       vec3 col = c0.rgb;
       if (uK > 0.001) {
-        vec2 dir = (vUv - uSun) / 40.0;
+        vec2 dir = (vUv - uSun) / float(TAPS);
         vec2 uv = vUv;
         float acc = 0.0, w = 1.0;
-        for (int i = 0; i < 40; i++) { acc += sky(uv) * w; w *= 0.965; uv -= dir; }
+        for (int i = 0; i < TAPS; i++) { acc += sky(uv) * w; w *= DECAY; uv -= dir; }
         // solid things in front only catch a little of the haze
-        col += uTint * acc * uK / 40.0 * mix(0.28, 1.0, 1.0 - step(0.02, c0.a));
+        col += uTint * acc * uK / float(TAPS) * mix(0.28, 1.0, 1.0 - step(0.02, c0.a));
       }
       gl_FragColor = vec4(col, 1.0);
     }`,
@@ -106,6 +107,8 @@ export class Post {
     this.sceneRT = rt;
     this.composer.addPass(new RenderPass(scene, camera));
     this.shafts = new ShaderPass(ShaftShader);
+    // (half the taps on the phone setting: the same streaks, a little grainier)
+    this.shafts.material.defines = LO ? { TAPS: 20, DECAY: '0.9312' } : { TAPS: 40, DECAY: '0.965' };
     this.composer.addPass(this.shafts);
     this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.13, 0.4, 2.8);
     this.bloom.enabled = opts.bloom;
