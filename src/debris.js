@@ -10,6 +10,8 @@ export class Debris {
   constructor(scene) {
     this.scene = scene;
     this.items = [];
+    // (the snow spray, when the game hands it over)
+    this.fx = null;
   }
 
   spawn(skier) {
@@ -61,6 +63,10 @@ export class Debris {
       const gy = heightAt(m.position.x, m.position.z) + 0.03;
       if (m.position.y < gy) {
         m.position.y = gy;
+        // each slap into the snow kicks up a puff and a few clumps; sliding, it sprays a little
+        const hit = -v.y, slide = Math.hypot(v.x, v.z);
+        if (this.fx && hit > 1.6) this.fx.impact(m.position.x, gy, m.position.z, v.x, v.z, Math.min(0.45, hit / 14), 0, 1.6);
+        else if (this.fx && slide > 2.5 && Math.random() < dt * slide * 3) this.fx.emit(m.position.x, gy + 0.02, m.position.z, v.x * 0.4, 0.8, v.z * 0.4, 0.8, 0.3, 0.6, 2, 0.15, 1.5);
         if (v.y < 0) v.y = -v.y * 0.3;
         const f = Math.exp(-dt * 2.6);
         v.x *= f; v.z *= f;
