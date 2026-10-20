@@ -46,6 +46,19 @@ const TRICKS = {
   sideflip: { roll: true, rate: 5.0 }, flatspin: { roll: true, rate: 4.2 },
 };
 
+// A trick's rotation over its time (u 0..1 -> 0..1): a cubic that starts turning at w times the
+// average rate and comes to rest at the end (monotone for w <= 3), blended by b with a steady turn
+function herm(u, e) {
+  const h = e.w * (u * u * u - 2 * u * u + u) + 3 * u * u - 2 * u * u * u;
+  return (1 - e.b) * u + e.b * h;
+}
+// its quickest rate, as a multiple of the average
+function hermPeak(w) {
+  let m = 0;
+  for (let i = 0; i <= 20; i++) { const u = i / 20; m = Math.max(m, (1 - u) * (w + u * (6 - 3 * w))); }
+  return m;
+}
+
 export class Skier {
   // how far off another rider is still drawn (the phone settings draw less)
   static drawDist = 1400;
@@ -709,10 +722,13 @@ export class Skier {
       rise: this.maxY - this.takeoffY, pipe: this.pipeAir, switchIn: this.takeoffSwitch, switchOut, fromRail: !!this.fromRail,
       board: this.board, shifty: this.shiftyT >= 0.22, daffy: this.daffyT >= 0.22,
     };
-    if (sketchy) this.flailT = 0.7;
+    if (sketchy) { this.flailT = 0.7; this.wobT = 0; this.wobS = Math.sign(wrapAngle(this.heading + this.skidYaw - hor) || Math.random() - 0.5); }
     this.pipeAir = false; this.perfectPop = false; this.spinVel = 0; this.assist = null;
-    // the legs soak it up: a spring that dips and comes back
+    // the legs soak it up: a spring that dips and comes back (and the body folds a little over them)
     this.springV -= Math.min(vn, 14) * 0.16;
+    if (!crash && big) { this.landT = 0; this.landA = clamp(0.3 + vn / 11, 0.3, 1) * (sketchy ? 1.15 : 1); }
+    // (a flip a touch short or long comes the rest of the way round on the snow, not in one frame)
+    if (!crash && this.pitch) this.landTilt = clamp(wrapAngle(this.trickType ? this.pitch : -this.pitch), -0.7, 0.7);
     if (!crash) { this.pitch = 0; this.spin = 0; this.flipAcc = 0; this.trickType = null; }
     if (this.trackSlot) {
       this.trackSlot.break();
@@ -791,7 +807,9 @@ export class Skier {
           if (dA < 3.6 && dA <= dN + 0.8) { pitch = ahead; reach = 3.6; } else pitch = near;
         }
       }
-      const ok = Math.abs((spin - f) * Math.PI) < 1.5 && (pitch == null || Math.abs(pitch - this.pitch) < reach);
+      // (off the end of a rail slide the skis swing back round from right across: a quarter turn
+      // with nothing done about it still rides away)
+      const ok = Math.abs((spin - f) * Math.PI) < (this.fromRail ? 1.75 : 1.5) && (pitch == null || Math.abs(pitch - this.pitch) < reach);
       this.magnet = ok ? { spin, pitch } : false;
     }
     const m = this.magnet;
@@ -847,19 +865,9 @@ export class Skier {
     c.steer = 0; c.flip = 0; c.roll = 0;
     const a = this.assist;
     const tl = A.plan.end - this.airTime;
-    if (a && this.strict && !A.turn) {
+    if (a && !A.turn && (this.strict || (tl > 0.45 && this.tLand > 0.45))) {
       // the body turns at its own pace: done before touchdown, or a crash
-      // (it turns faster when it has to, up to a limit, to come round before touchdown)
-      const left = Math.max(0.1, tl - 0.18);
-      const sr = Math.min(13, Math.max(7.4 * (A.grab ? 1.12 : 1) * (this.popped ? 1.06 : 1), Math.abs(a.spin * Math.PI + hor - this.heading) / left));
-      const dS = clamp(a.spin * Math.PI + hor - this.heading, -sr * dt, sr * dt);
-      this.heading += dS; this.spin += dS; this.spinVel = dS / dt;
-      if (a.pitch != null) {
-        const fr = TRICKS[this.trickType]?.rate ?? 5.6;
-        const pr = Math.min(fr * 1.8, Math.max(fr * (this.perfectPop ? 1.08 : 1) * (A.grab ? 1.12 : 1), Math.abs(a.pitch - this.pitch) / left));
-        const dP = clamp(a.pitch - this.pitch, -pr * dt, pr * dt);
-        this.pitch += dP; this.flipAcc += dP;
-      }
+      this.easeTrick(A, a, hor, dt, tl);
     } else if (a && (A.turn || (tl > 0.45 && this.tLand > 0.45))) {
       const left = Math.max(A.turn ? 0.05 : 0.12, tl - (A.turn ? 0.12 : 0.4));
       const dS = clamp((a.spin * Math.PI + hor - this.heading) / left * dt, -14 * dt, 14 * dt);
@@ -871,6 +879,106 @@ export class Skier {
     if (A.grab) { c.grab = mid; c.grabKind = A.grab; }
     if (A.shifty && !A.plan.spin && !A.plan.flips) c.up = mid;
     if (A.daffy && !A.plan.spin && !A.plan.flips) c.down = mid;
+  }
+
+  // A planned trick's rotation, eased the way a body really turns: it leaves the lip already
+  // turning, is quickest through the middle and slows to a stop with time left to spot the
+  // landing. It's done no later than a steady turn would be (the window ends before touchdown),
+  // and never quicker than the body can turn; past that the shape flattens toward a steady rate.
+  easeTrick(A, a, hor, dt, tl) {
+    const rel = this.heading - hor;
+    let E = A.ease;
+    if (!E) {
+      const strict = this.strict;
+      const win = Math.max(0.12, tl - (strict ? 0.2 : 0.4));
+      const dS = a.spin * Math.PI - rel, dP = a.pitch != null ? a.pitch - this.pitch : 0;
+      const gk = A.grab ? 1.12 : 1;
+      const rS = 7.4 * gk * (this.popped ? 1.06 : 1);
+      const fr = TRICKS[this.trickType]?.rate ?? 5.6, rP = fr * gk * (this.perfectPop ? 1.08 : 1);
+      const capS = strict ? 13 : 14, capP = strict ? fr * 1.8 : 13;
+      // its natural length peaks near the body's own rate; a big air stretches it over most of the flight
+      const D = Math.min(win, Math.max(Math.abs(dS) * 1.3 / rS, Math.abs(dP) * 1.3 / rP, win * 0.55));
+      // (already turning: wound up off the lip, or a combo upgraded mid-spin, carries straight on)
+      const shape = (d, v, cap) => {
+        if (Math.abs(d) < 1e-3) return { w: 1, b: 0 };
+        const w = clamp((v * Math.sign(d) * D) / Math.abs(d), 0.45, 2);
+        const pk = hermPeak(w), avg = Math.abs(d) / D;
+        return { w, b: pk > 1 ? clamp((cap / avg - 1) / (pk - 1), 0, 1) : 1 };
+      };
+      E = A.ease = { t0: this.airTime, D, rel0: rel, p0: this.pitch, dS, dP, s: shape(dS, this.spinVel, capS), p: shape(dP, this.flipVel, capP), capS, capP };
+    }
+    const u = clamp((this.airTime + dt - E.t0) / E.D, 0, 1);
+    // (the landing pull may already be ahead of it: never drag it back)
+    let dS = E.rel0 + E.dS * herm(u, E.s) - rel;
+    if (dS * E.dS < 0) dS = 0;
+    dS = clamp(dS, -E.capS * dt, E.capS * dt);
+    this.heading += dS; this.spin += dS; this.spinVel = dS / dt;
+    if (a.pitch != null) {
+      let dP = E.p0 + E.dP * herm(u, E.p) - this.pitch;
+      if (dP * E.dP < 0) dP = 0;
+      dP = clamp(dP, -E.capP * dt, E.capP * dt);
+      this.pitch += dP; this.flipAcc += dP; this.flipVel = dP / dt;
+    }
+  }
+
+  // What the body is doing for the trick, for the pose (skiermodel.js reads it as model.trk):
+  // shoulders leading a spin with the hips following, the head spotting the landing, knees to
+  // the chest through a flip, the legs snapping straight at the pop, the knees soaking up a
+  // landing, the wobble of a sketchy one, and a rail slide's balance.
+  trickPose(dt) {
+    const T = (this.trk ??= { lead: 0, look: 0, lookW: 0, tuck: 0, pop: 0, land: 0, wob: 0, rail: 0, bal: 0, tweak: 0, gh: 0, sr: 0, sa: 0, fr: 0, lh: null, lp: 0 });
+    const c = this.controls, g = this.grind;
+    const air = !this.onGround && !g && this.crash <= 0;
+    if (dt > 0) {
+      // the rotation the body actually made (whatever flew it: a combo, the keys, the assist)
+      const sr = air && T.lh != null ? wrapAngle(this.heading - T.lh) / dt : 0;
+      const fr = air && T.lh != null ? clamp((this.pitch - T.lp) / dt, -20, 20) : 0;
+      const k = Math.min(1, dt * 12), sr0 = T.sr;
+      T.sr += (sr - T.sr) * k;
+      T.sa += (clamp((T.sr - sr0) / dt, -60, 60) - T.sa) * Math.min(1, dt * 8);
+      T.fr += (fr - T.fr) * k;
+    }
+    T.lh = this.heading; T.lp = this.pitch;
+    const ease = (key, to, rate) => { T[key] += (to - T[key]) * Math.min(1, dt * rate); };
+    // the shoulders throw the spin and the hips follow; slowing to spot, the shoulders stop first.
+    // Loading the pop with a turn held, they wind up the other way first
+    let lead = 0, look = 0, lookW = 0;
+    if (air) lead = clamp(T.sr * 0.05 + T.sa * 0.012, -0.55, 0.55);
+    else if (g) lead = clamp(wrapAngle(-g.side), -0.65, 0.65); // (sliding: the chest faces down the rail)
+    else if (this.world.arcade && this.jumpCharge > 0.05 && Math.abs(c.steer) > 0.3) lead = Math.sign(c.steer) * 0.5 * Math.min(1, this.jumpCharge * 2.5);
+    ease('lead', lead, air || g ? 10 : 7);
+    // the head leads into a spin, looking for the next half turn, then spots the landing
+    if (air && this.airTime > 0.08) {
+      const f = (this.heading - Math.atan2(this.vel.x, this.vel.z)) / Math.PI;
+      const tgt = T.sr > 1 ? Math.ceil(f - 0.02) : T.sr < -1 ? Math.floor(f + 0.02) : Math.round(f);
+      const rem = (tgt - f) * Math.PI;
+      look = clamp(rem, -1.25, 1.25);
+      lookW = 1 - smoothstep(1.3, 2.3, Math.abs(rem));
+    } else if (g) { look = clamp(wrapAngle(-g.side), -1.2, 1.2); lookW = 0.8; }
+    ease('look', look, 12); ease('lookW', lookW, 8);
+    // knees to the chest through a flip, opening out to spot the landing
+    ease('tuck', air && this.trickType ? clamp(Math.abs(T.fr) / 4.5, 0, 1) : 0, 9);
+    // the legs snap straight as he pops off the lip, then draw up
+    T.pop = air && this.popped && !this.fromRail ? 1 - smoothstep(0.02, 0.26, this.airTime) : 0;
+    // a grab held long gets tweaked out further
+    T.gh = air && c.grab ? T.gh + dt : 0;
+    ease('tweak', smoothstep(0.3, 1.0, T.gh), 5);
+    // touchdown: a quick dip the knees soak up, then back up; a sketchy one wobbles
+    if (this.landT != null) {
+      this.landT += dt;
+      T.land = (this.landA ?? 0.5) * (this.landT < 0.07 ? this.landT / 0.07 : Math.exp(-(this.landT - 0.07) * 5.5));
+      if (this.landT > 1.2 || !this.onGround) { this.landT = null; T.land = 0; }
+    } else T.land = 0;
+    if (this.wobT != null) {
+      this.wobT += dt;
+      T.wob = (this.wobS ?? 1) * Math.sin(this.wobT * 13) * Math.exp(-this.wobT * 3.2);
+      if (this.wobT > 1.3 || !this.onGround) { this.wobT = null; T.wob = 0; }
+    } else T.wob = 0;
+    ease('rail', g ? 1 : 0, 10);
+    T.bal = g ? g.bal + Math.sin(this.time * 3.3) * 0.25 : 0;
+    // what's left of a flip that came down a touch short or long, eased out instead of snapped
+    if (this.landTilt) { this.landTilt *= Math.exp(-dt * 14); if (Math.abs(this.landTilt) < 0.005 || !this.onGround) this.landTilt = 0; }
+    return T;
   }
 
   // a kicker whose lip is between a and b metres ahead of us (and we're on it)
@@ -1209,6 +1317,8 @@ export class Skier {
       lie = this.lie;
     } else if (this.pitch !== 0) {
       g.quaternion.multiply(_q2.setFromAxisAngle(this.flipAxis, this.trickType ? this.pitch : -this.pitch));
+    } else if (this.landTilt && this.onGround) {
+      g.quaternion.multiply(_q2.setFromAxisAngle(this.flipAxis, this.landTilt));
     } else if (this.butter && this.onGround) {
       // butter: rock onto the nose or tail, pivoting on that ski end
       const k = Math.min(1, this.butter.t * 6) * (this.board ? 0.2 : 0.32);
@@ -1262,6 +1372,7 @@ export class Skier {
     this.springV += (-150 * this.spring - 15 * this.springV) * vdt;
     this.spring += this.springV * vdt;
     this.flailT = Math.max(0, this.flailT - vdt);
+    m.trk = this.trickPose(vdt);
     const free = !this.onGround && !crashed && !this.trickType && !c.grab && Math.abs(c.steer) < 0.3;
     this.shiftyS += ((free && c.up ? 1 : 0) - this.shiftyS) * Math.min(1, vdt * 9);
     this.daffyS += ((free && c.down ? 1 : 0) - this.daffyS) * Math.min(1, vdt * 9);

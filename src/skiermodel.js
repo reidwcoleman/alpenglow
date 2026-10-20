@@ -114,16 +114,22 @@ function bibTexture(num, color) {
   return t;
 }
 
-// where the grabbing hand goes and what the legs do, per grab
-// skis: (x: + left, z: + tips); board (rider frame): x + nose, z + toe edge
+// Ski grabs: the hand takes hold of the ski itself. hand / ski: which; along: where on the ski
+// (m ahead of the boot, - behind); edge: +1 its outside edge, -1 the inside; lift: both knees up,
+// knee: the grabbed one further; back: the feet tucked under; cross: the tips crossed (+) or the
+// tails (-); tip: tips down (+) / up (-); curl: the body folded over it; tw: what a tweak adds
+// (poke: the free leg kicked straight). The ski is pulled up to the hand, not the hand down to it.
 const SKI_GRAB = {
-  mute: { hand: 'L', at: [-0.05, 0.02, 0.32], lift: 0.06, cross: 0.32, tip: 0.2 },
-  tail: { hand: 'R', at: [-0.16, 0.06, -0.3], lift: 0.06, cross: 0, tip: -0.42 },
-  japan: { hand: 'L', at: [0.12, 0.04, 0.14], lift: 0.16, back: 0.1, cross: 0.1, tip: 0.5 },
-  safety: { hand: 'R', at: [-0.2, 0.05, 0.02], lift: 0.14, cross: 0, tip: 0.15 },
-  critical: { hand: 'R', at: [0.06, 0.04, -0.2], lift: 0.12, cross: -0.22, tip: -0.25 },
-  nose: { hand: 'L', at: [0.14, 0.08, 0.62], lift: 0.18, cross: 0, tip: 0.55 },
+  mute: { hand: 'L', ski: 'R', along: 0.24, edge: 1, lift: 0.2, knee: 0.1, cross: 0.3, tip: 0.16, curl: 0.4, tw: { cross: 0.2, tip: 0.18, out: 0.08 } },
+  safety: { hand: 'R', ski: 'R', along: 0.05, edge: 1, lift: 0.22, knee: 0.08, cross: 0, tip: 0.08, curl: 0.35, tw: { poke: 1, tip: -0.12 } },
+  japan: { hand: 'L', ski: 'L', along: 0.14, edge: -1, lift: 0.24, knee: 0.16, back: 0.1, cross: 0.12, tip: 0.34, curl: 0.4, tw: { tip: 0.24, back: 0.1, cross: 0.1 } },
+  tail: { hand: 'R', ski: 'R', along: -0.32, edge: 1, lift: 0.2, knee: 0.06, back: 0.06, cross: 0, tip: -0.22, curl: 0.2, tw: { tip: -0.2, poke: 0.5 } },
+  critical: { hand: 'R', ski: 'L', along: -0.26, edge: -1, lift: 0.2, knee: 0.1, cross: -0.22, tip: -0.2, curl: 0.25, tw: { cross: -0.14, out: 0.06 } },
+  nose: { hand: 'L', ski: 'L', along: 0.62, edge: 1, lift: 0.2, knee: 0.16, cross: 0, tip: -0.5, curl: 0.45, tw: { tip: -0.18, poke: 0.6 } },
 };
+// what a body not doing a trick does (the menu preview, the rescue): nothing
+const NO_TRK = { lead: 0, look: 0, lookW: 0, tuck: 0, pop: 0, land: 0, wob: 0, rail: 0, bal: 0, tweak: 0, sr: 0, sa: 0, fr: 0 };
+const _gp = new THREE.Vector3(), _sh = new THREE.Vector3(), _gd = new THREE.Vector3(), _ge = new THREE.Euler();
 const BOARD_GRAB = {
   indy: { hand: 'R', at: [-0.04, 0.03, 0.15], lift: 0.3 },
   melon: { hand: 'L', at: [0.06, 0.03, -0.15], lift: 0.3, back: 0.06 },
@@ -334,7 +340,8 @@ export class SkierModel {
       f.ank[s].set(ank.x, ankY(ank), ank.z);
       // hands: same place relative to the shoulders the capsule figure uses
       f.hand[s].copy(hd);
-      f.hand[s].y += f.pelvis.y - j.pelvis.y;
+      // (but a hand holding a ski stays on the ski)
+      f.hand[s].y += (f.pelvis.y - j.pelvis.y) * (s === this.gHand ? 1 - this.gAmt : 1);
       f.kneePole[s].copy(this.kp[s]).normalize();
       f.elbowPole[s].copy(this.ep[s]);
       f.foot[s].copy(boot.quaternion);
@@ -352,6 +359,8 @@ export class SkierModel {
     this.gAmt += ((p.grab ? 1 : 0) - this.gAmt) * Math.min(1, dt * (p.grab ? 14 : 9));
     if (this.gAmt < 0.01) this.gKind = null;
     this.airS += (p.air - this.airS) * Math.min(1, dt * 10);
+    // the trick's body mechanics, from the skier (Skier.trickPose); still for anyone else
+    this.k = this.trk ?? NO_TRK;
     // the upper body has weight: it lags into a new turn and swings past, rocks back when the
     // skis speed up under it and forward when they're checked, and the arms follow it
     const sw = (this.swing ??= { r: p.lean, vr: 0, f: 0, vf: 0 });
@@ -387,16 +396,27 @@ export class SkierModel {
     const inside = p.lean > 0 ? j.ankR : j.ankL;
     inside.y += 2 * stance * Math.tan(Math.min(al, 0.95)) * 0.85;
     inside.z += 0.075 * sstep(0.1, 0.7, al);
-    if (air > 0) { j.ankL.y += air * 0.12; j.ankR.y += air * 0.12; }
-    const G = SKI_GRAB[this.gKind] ?? SKI_GRAB.mute;
-    const g = this.gAmt;
-    j.ankL.y += G.lift * g; j.ankR.y += G.lift * g;
-    if (G.back) { j.ankL.z -= G.back * g; j.ankR.z -= G.back * g; }
+    // in the air the knees draw up (right up to the chest through a flip); at the pop the legs
+    // snap straight first
+    const K = this.k, pop = K.pop * air, tk = K.tuck * air;
+    if (air > 0) {
+      const up = air * 0.12 * (1 - K.pop) + tk * 0.22;
+      j.ankL.y += up; j.ankR.y += up; j.ankL.z += tk * 0.08; j.ankR.z += tk * 0.08;
+    }
+    const G = SKI_GRAB[this.gKind] ?? SKI_GRAB.mute, Tw = G.tw;
+    const g = this.gAmt, tw = K.tweak * g;
+    const gs = G.ski === 'L' ? j.ankL : j.ankR, go = G.ski === 'L' ? j.ankR : j.ankL;
+    j.ankL.y += G.lift * g; j.ankR.y += G.lift * g; gs.y += G.knee * g;
+    const gBack = (G.back ?? 0) * g + (Tw.back ?? 0) * tw;
+    j.ankL.z -= gBack; j.ankR.z -= gBack;
+    // tweaked out: the skis pushed apart, or the free leg poked straight
+    if (Tw.out) { j.ankL.x += Tw.out * tw; j.ankR.x -= Tw.out * tw; }
+    if (Tw.poke) { go.y -= Tw.poke * tw * (G.lift + 0.12); go.z += Tw.poke * tw * 0.14; }
     // daffy: one ski kicked forward, the other back
     const daffy = p.daffy || 0;
     j.ankL.z += daffy * 0.42; j.ankR.z -= daffy * 0.42; j.ankL.y += daffy * 0.08;
-    const cross = G.cross * g + (p.cross || 0) * 0.3;
-    const tipPitch = G.tip * g;
+    const cross = G.cross * g + (Tw.cross ?? 0) * tw + (p.cross || 0) * 0.3;
+    const tipPitch = G.tip * g + (Tw.tip ?? 0) * tw;
     // skating stride: push one ski out and back while the other glides
     const skate = p.skate || 0;
     const pushL = skate * Math.max(0, Math.sin(p.skatePhase || 0)), pushR = skate * Math.max(0, -Math.sin(p.skatePhase || 0));
@@ -419,13 +439,16 @@ export class SkierModel {
     // (in the tipped frame: back toward upright, so the shoulders stay level-ish over the edges)
     const ang = p.lean * p.angulate - (this.lagR || 0) * 0.8;
     j.spine.set(Math.sin(ang) * Math.cos(pitch), Math.cos(ang) * Math.cos(pitch), Math.sin(pitch)).normalize();
+    this.trickBody(G, g, tk, pop, ang, pitch);
     // shifty: the hips turn the skis across while the shoulders stay
     const shifty = (p.shifty || 0) * 0.9;
-    const twist = (p.twist || 0) - shifty;
+    // (in the air the shoulders lead the spin and the hips follow; on a rail the chest faces down it)
+    const twist = (p.twist || 0) * (1 - air) * (1 - K.rail) + K.lead - shifty;
     this.frameUpper(twist);
     j.hipL.copy(j.pelvis).addScaledVector(this.hipSide, 0.095);
     j.hipR.copy(j.pelvis).addScaledVector(this.hipSide, -0.095);
     for (const [s, sg] of [[0, 1], [1, -1]]) this.kp[s].set(-p.lean * 0.9 + sg * (0.1 + p.plow * 0.4), 0.15, 1);
+    if (g > 0.01) this.grabReach(G, gs, go, g, air * -0.12 + tipPitch, cross, shifty);
     this.legs();
 
     // skis, boots
@@ -456,21 +479,46 @@ export class SkierModel {
     j.hdL.set(0.33 + lr * 0.25, handY - p.lean * 0.06 + Math.abs(lr) * 0.1, hipZ + 0.42 - lf * 0.12).lerp(tmpV.set(0.11, hipH + 0.18, hipZ + 0.62), tuck);
     j.hdR.set(-0.33 + lr * 0.25, handY + p.lean * 0.06 + Math.abs(lr) * 0.1, hipZ + 0.42 - lf * 0.12).lerp(tmpV.set(-0.11, hipH + 0.18, hipZ + 0.62), tuck);
     if (air > 0) {
-      // arms out for balance, pulled in tight while spinning
-      const tight = clamp(Math.abs(p.spinRate || 0) / 7, 0, 1);
+      // arms out for balance, pulled in tight while spinning, swung up as he pops
+      const tight = clamp(Math.max(Math.abs(p.spinRate || 0), Math.abs(K.sr)) / 7, 0, 1);
       const out = 0.42 - tight * 0.24;
-      j.hdL.lerp(tmpV.set(out, hipH + 0.18 + tight * 0.1, hipZ + 0.2 + tight * 0.15), air);
-      j.hdR.lerp(tmpV.set(-out, hipH + 0.18 + tight * 0.1, hipZ + 0.2 + tight * 0.15), air);
+      const ay = hipH + 0.18 + tight * 0.1 + pop * 0.22, az = hipZ + 0.2 + tight * 0.15 + pop * 0.12;
+      j.hdL.lerp(tmpV.set(out, ay, az), air);
+      j.hdR.lerp(tmpV.set(-out, ay, az), air);
+      // through a flip the hands hug the shins
+      if (tk > 0.01) {
+        j.hdL.lerp(tmpV.set(0.15, hipH - 0.04, hipZ + 0.4), tk * 0.8);
+        j.hdR.lerp(tmpV.set(-0.15, hipH - 0.04, hipZ + 0.4), tk * 0.8);
+      }
     }
-    if (g > 0.01) {
-      const ank = G.at[0] > 0 ? j.ankL : j.ankR;
-      const h = G.hand === 'L' ? j.hdL : j.hdR, o = G.hand === 'L' ? j.hdR : j.hdL;
-      h.lerp(tmpV.set(G.at[0], ank.y + G.at[1], G.at[2]), g);
-      o.lerp(tmpV.set(G.hand === 'L' ? -0.5 : 0.5, hipH + 0.32, hipZ + 0.1), g);
+    // sliding a rail: arms out wide, see-sawing to keep balance
+    if (K.rail > 0.01) {
+      const b = clamp(K.bal, -1, 1);
+      j.hdL.lerp(tmpV.set(0.52, hipH + 0.24 + b * 0.16, hipZ + 0.2), K.rail * 0.85);
+      j.hdR.lerp(tmpV.set(-0.52, hipH + 0.24 - b * 0.16, hipZ + 0.2), K.rail * 0.85);
     }
+    // touchdown: hands come forward and down over the knees as the legs soak it up
+    if (K.land > 0.01) {
+      const k = Math.min(1, K.land) * 0.6;
+      j.hdL.lerp(tmpV.set(0.3, hipH + 0.02, hipZ + 0.5), k);
+      j.hdR.lerp(tmpV.set(-0.3, hipH + 0.02, hipZ + 0.5), k);
+    }
+    // grabbing: the free arm out and up for balance
+    if (g > 0.01) (G.hand === 'L' ? j.hdR : j.hdL).lerp(tmpV.set(G.hand === 'L' ? -0.52 : 0.52, hipH + 0.36, hipZ + 0.05), g);
     if (this.twistNow) for (const h of [j.hdL, j.hdR]) h.sub(j.pelvis).applyQuaternion(tmpQ.setFromAxisAngle(Y, this.twistNow)).add(j.pelvis);
     // on the snow: hands forward where he can see them, and the pole plant
     this.groundArms(p);
+    // and the other hand on the ski itself, wherever the ski's turned (the palm reaches past the wrist)
+    this.gHand = -1;
+    if (g > 0.01) {
+      const ski = G.ski === 'L' ? P.skiL : P.skiR;
+      this.grabPoint(G, ski.position, ski.rotation, _gp);
+      (this.gPt ??= new THREE.Vector3()).copy(_gp);
+      this.shoulder(G, _sh);
+      _gp.addScaledVector(_gd.subVectors(_sh, _gp).normalize(), this.rig && this.real ? 0.075 : 0.04);
+      (G.hand === 'L' ? j.hdL : j.hdR).lerp(_gp, g);
+      this.gHand = G.hand === 'L' ? 0 : 1;
+    }
     this.flail(p, hipH, hipZ, 1);
     for (const [s, sg] of [[0, 1], [1, -1]]) this.ep[s].set(sg * 0.6, -0.6, -0.5).normalize().applyQuaternion(tmpQ.setFromAxisAngle(Y, this.twistNow));
   }
@@ -502,7 +550,9 @@ export class SkierModel {
     j.spine.set(Math.sin(ang) * Math.cos(pitch), Math.cos(ang) * Math.cos(pitch), Math.sin(pitch)).normalize();
     // shoulders open a little toward the nose; a shifty turns the board under them
     const shifty = (p.shifty || 0) * 0.9;
-    this.frameUpper(0.32 + (p.twist || 0) * 0.5 + shifty);
+    // (in the air the shoulders lead the spin instead)
+    const K = this.k;
+    this.frameUpper(0.32 + (p.twist || 0) * 0.5 * (1 - air) * (1 - K.rail) + K.lead * 0.6 + shifty);
     j.hipL.copy(j.pelvis).addScaledVector(this.hipSide, 0.095);
     j.hipR.copy(j.pelvis).addScaledVector(this.hipSide, -0.095);
     this.kp[0].set(0.12, 0.1, 1); this.kp[1].set(0.05, 0.1, 1);
@@ -546,6 +596,7 @@ export class SkierModel {
       h.lerp(at, g);
       o.lerp(tmpV.set(G.hand === 'L' ? -0.55 : 0.55, hipH + 0.38, 0.0), g);
     }
+    this.gHand = g > 0.01 ? (G.hand === 'L' ? 0 : 1) : -1;
     this.flail(p, hipH, hipZ, 1);
     this.ep[0].set(0.5, -0.6, -0.6).normalize(); this.ep[1].set(-0.5, -0.6, -0.6).normalize();
   }
@@ -560,6 +611,56 @@ export class SkierModel {
     if (twist) {
       const qT = tmpQ.setFromAxisAngle(Y, twist);
       j.spine.applyQuaternion(qT); j.side.applyQuaternion(qT); j.fwd.applyQuaternion(qT);
+    }
+  }
+
+  // the trick's body on top of the riding stance: the hips up as the legs snap straight at the
+  // pop, the body folded over a grab or into a flip's tuck, dipped and folded over the knees at
+  // touchdown, rocking side to side after a sketchy one
+  trickBody(G, g, tk, pop, ang, pitch) {
+    const j = this.j, K = this.k;
+    j.pelvis.y += pop * 0.08 - tk * 0.04 - K.land * 0.12;
+    j.pelvis.x += K.wob * 0.05;
+    const dp = G.curl * g + tk * 0.35 + K.land * 0.3 - pop * 0.12, da = K.wob * 0.22;
+    if (Math.abs(dp) < 1e-4 && Math.abs(da) < 1e-4) return;
+    const pt = pitch + dp, an = ang + da;
+    j.spine.set(Math.sin(an) * Math.cos(pt), Math.cos(an) * Math.cos(pt), Math.sin(pt)).normalize();
+  }
+
+  // a point on a ski: its origin (the sole under the boot) and rotation
+  grabPoint(G, pos, rot, out) {
+    return out.set(G.edge * (G.ski === 'L' ? 1 : -1) * 0.05, 0.012, G.along).applyEuler(rot).add(pos);
+  }
+
+  // where the grabbing arm's shoulder is (the real body's sits where its own legs put it)
+  shoulder(G, out) {
+    const j = this.j;
+    out.copy(j.pelvis).addScaledVector(j.spine, 0.46).addScaledVector(j.side, G.hand === 'L' ? 0.19 : -0.19);
+    if (this.rig && this.real) {
+      const kit = this.rig.kit, legK = (kit.leg[0] + kit.leg[1]) / (THIGH + SHIN);
+      out.y += -0.03 + (j.pelvis.y - (j.ankL.y + j.ankR.y) / 2) * (legK - 1);
+    }
+    return out;
+  }
+
+  // a grab: the ski comes up to the hand. Out of the arm's reach, the knee is pulled further up
+  // toward the chest (and the other ski comes with it) until the hand gets there, as far as the
+  // leg folds
+  grabReach(G, gs, go, g, rx, cross, shifty) {
+    const j = this.j, hp = G.ski === 'L' ? j.hipL : j.hipR;
+    _ge.set(rx, (G.ski === 'L' ? -cross : cross) - shifty, 0);
+    this.shoulder(G, _sh);
+    const reach = (this.rig && this.real ? this.rig.kit.arm[0] + this.rig.kit.arm[1] + 0.06 : UPPER + FORE + 0.03) * 0.93;
+    for (let it = 0; it < 4; it++) {
+      this.grabPoint(G, tmpV2.set(gs.x, gs.y - 0.17, gs.z), _ge, _gp);
+      const d = _gp.distanceTo(_sh) - reach;
+      if (d < 0.005) break;
+      _gd.subVectors(_sh, _gp).normalize().multiplyScalar(d * g);
+      _gd.x *= 0.5; // (up and in toward the chest, not out sideways)
+      gs.add(_gd); go.addScaledVector(_gd, 0.6);
+      gs.y = Math.min(gs.y, j.pelvis.y + 0.02);
+      const hd = gs.distanceTo(hp);
+      if (hd < 0.27) gs.sub(hp).multiplyScalar(0.27 / Math.max(hd, 1e-3)).add(hp);
     }
   }
 
@@ -605,7 +706,9 @@ export class SkierModel {
     // the head looks where it's going: up off the spine, turned toward the line (and into a spin)
     const headUp = (this._headUp ??= new THREE.Vector3()).copy(j.spine).lerp(this.upW ?? Y, 0.55 + tuck * 0.2).normalize();
     j.head.copy(j.neck).addScaledVector(headUp, 0.12);
-    const yaw = this.board ? 1.15 + (p.look || 0) : this.twistNow * 1.15 + (p.look || 0);
+    // (spinning, it leads into the turn and then spots the landing: Skier.trickPose)
+    const lw = this.k?.lookW ?? 0;
+    const yaw = this.board ? 1.15 + (p.look || 0) : (this.twistNow * 1.15 + (p.look || 0)) * (1 - lw) + (this.k?.look ?? 0) * lw;
     const hq = (this._hq ??= new THREE.Quaternion()).setFromUnitVectors(Y, headUp).multiply(tmpQ.setFromAxisAngle(Y, clamp(yaw, -1.95, 1.95)));
     for (const k of ['face', ...this.headGear]) { P[k].position.copy(j.head); P[k].quaternion.copy(hq); }
     if (P.bib) {
@@ -632,6 +735,8 @@ export class SkierModel {
       const r = this.rig;
       skull = r.skull;
       j.hdL.copy(r.palm[0]); j.hdR.copy(r.palm[1]);
+      // (how far the grabbing hand is from the ski: the tools check it)
+      this.gMiss = this.gHand >= 0 && this.gPt && !this.board ? r.palm[this.gHand].distanceTo(this.gPt) : 0;
       if (P.bib) {
         P.bib.position.copy(r.chestP).addScaledVector(j.spine, 0.05).addScaledVector(j.fwd, 0.17);
         P.bibBack.position.copy(r.chestP).addScaledVector(j.spine, 0.05).addScaledVector(j.fwd, -0.16);
