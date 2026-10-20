@@ -45,6 +45,72 @@ function plain(src) {
   return g;
 }
 
+// clothes don't follow the body's every curve: the jacket and pants bridge the hollows (between
+// the pecs, down the spine, the armpits and behind the knees) and soften the muscles, and their
+// shading with them. A smoothed copy of the body (split vertices welded so it doesn't tear at
+// the UV seams) gives each garment vertex a nudge along its normal and a softened normal; skin,
+// hands and feet stay as they are and pin the edges.
+const CLOTH_PARTS = new Set([2, 3, 4, 6, 7]);
+function drape(geo, part) {
+  const pos = geo.getAttribute('position'), nrm = geo.getAttribute('normal'), idx = geo.index.array, n = pos.count;
+  const keys = new Map(), id = new Int32Array(n);
+  let m = 0;
+  for (let i = 0; i < n; i++) {
+    const k = `${Math.round(pos.getX(i) * 2e4)},${Math.round(pos.getY(i) * 2e4)},${Math.round(pos.getZ(i) * 2e4)}`;
+    let w = keys.get(k);
+    if (w === undefined) { w = m++; keys.set(k, w); }
+    id[i] = w;
+  }
+  const P = new Float32Array(m * 3), N = new Float32Array(m * 3), free = new Uint8Array(m).fill(1);
+  for (let i = 0; i < n; i++) {
+    const w = id[i] * 3;
+    P[w] = pos.getX(i); P[w + 1] = pos.getY(i); P[w + 2] = pos.getZ(i);
+    N[w] += nrm.getX(i); N[w + 1] += nrm.getY(i); N[w + 2] += nrm.getZ(i);
+    if (!CLOTH_PARTS.has(part[i])) free[id[i]] = 0;
+  }
+  // neighbours (CSR) from the triangles' edges
+  const deg = new Int32Array(m + 1), E = [];
+  for (let t = 0; t < idx.length; t += 3) {
+    for (let e = 0; e < 3; e++) {
+      const a = id[idx[t + e]], b = id[idx[t + ((e + 1) % 3)]];
+      if (a !== b) { E.push(a, b); deg[a + 1]++; deg[b + 1]++; }
+    }
+  }
+  for (let i = 0; i < m; i++) deg[i + 1] += deg[i];
+  const nb = new Int32Array(deg[m]), fill = deg.slice(0, m);
+  for (let e = 0; e < E.length; e += 2) { nb[fill[E[e]]++] = E[e + 1]; nb[fill[E[e + 1]]++] = E[e]; }
+  const relax = (A, iters, k, normalize) => {
+    let S = A.slice(), T = A.slice();
+    for (let it = 0; it < iters; it++) {
+      for (let v = 0; v < m; v++) {
+        const o = v * 3;
+        if (!free[v] || deg[v + 1] === deg[v]) { T[o] = S[o]; T[o + 1] = S[o + 1]; T[o + 2] = S[o + 2]; continue; }
+        let x = 0, y = 0, z = 0;
+        for (let j = deg[v]; j < deg[v + 1]; j++) { const q = nb[j] * 3; x += S[q]; y += S[q + 1]; z += S[q + 2]; }
+        const c = 1 / (deg[v + 1] - deg[v]);
+        T[o] = S[o] + (x * c - S[o]) * k; T[o + 1] = S[o + 1] + (y * c - S[o + 1]) * k; T[o + 2] = S[o + 2] + (z * c - S[o + 2]) * k;
+        if (normalize) { const l = Math.hypot(T[o], T[o + 1], T[o + 2]) || 1; T[o] /= l; T[o + 1] /= l; T[o + 2] /= l; }
+      }
+      [S, T] = [T, S];
+    }
+    return S;
+  };
+  for (let v = 0; v < m; v++) { const o = v * 3, l = Math.hypot(N[o], N[o + 1], N[o + 2]) || 1; N[o] /= l; N[o + 1] /= l; N[o + 2] /= l; }
+  const SP = relax(P, 24, 0.6, false), SN = relax(N, 10, 0.7, true);
+  for (let i = 0; i < n; i++) {
+    const w = id[i], o = w * 3;
+    if (!free[w]) continue;
+    // along the normal only: in to soften a bulge a little (the clothes stand well off it),
+    // out to bridge a hollow
+    const d = Math.min(0.03, Math.max(-0.01, (SP[o] - P[o]) * N[o] + (SP[o + 1] - P[o + 1]) * N[o + 1] + (SP[o + 2] - P[o + 2]) * N[o + 2]));
+    pos.setXYZ(i, P[o] + N[o] * d, P[o + 1] + N[o + 1] * d, P[o + 2] + N[o + 2] * d);
+    // the normal: mostly the smoothed one (on a split vertex, keep its own facing at the seam)
+    const nx = nrm.getX(i) * 0.25 + SN[o] * 0.75, ny = nrm.getY(i) * 0.25 + SN[o + 1] * 0.75, nz = nrm.getZ(i) * 0.25 + SN[o + 2] * 0.75;
+    const l = Math.hypot(nx, ny, nz) || 1;
+    nrm.setXYZ(i, nx / l, ny / l, nz / l);
+  }
+}
+
 async function loadKit(name, loader, tl) {
   const tex = (f, srgb) => tl.loadAsync(TEXB + f).then((t) => {
     t.flipY = false; t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.anisotropy = 4; return t;
@@ -78,12 +144,19 @@ async function loadKit(name, loader, tl) {
     vp.fromBufferAttribute(pos, i);
     if (Math.min(vp.distanceTo(hands[0]), vp.distanceTo(hands[1])) > 0.26) part[i] = vp.y < waist ? 6 : 2;
   }
+  drape(geo, part);
   geo.setAttribute('aPart', new THREE.BufferAttribute(part, 1));
   geo.computeBoundingSphere();
   const I = (n) => names.indexOf(n);
   const len = (a, b) => bindP[I(a)].distanceTo(bindP[I(b)]);
+  const sh = ['Bip01_L_UpperArm', 'Bip01_R_UpperArm'].map((n) => bindP[I(n)]);
+  const th = ['Bip01_L_Calf', 'Bip01_R_Calf'].map((n) => bindP[I(n)]);
   return {
     name, names, parents, local, boneInverses, bindP, bindQ, geo, map, normal, mask, I,
+    // where the garments' panels meet: x the side seams' plane (z) on the jacket, y on the pants,
+    // z the shoulders' height, w how far the legs stand off the middle
+    body: new THREE.Vector4((sh[0].z + sh[1].z) / 2, (th[0].z + th[1].z) / 2, (sh[0].y + sh[1].y) / 2, (Math.abs(th[0].x) + Math.abs(th[1].x)) / 2),
+    neckP: bindP[I('Bip01_Neck')].clone(),
     waistY: bindP[I('Bip01_Pelvis')].y + 0.07,
     skull: bindP[I('Bip01_Head')].clone().add(new THREE.Vector3(0, 0.083, -0.008)),
     feet: ['Bip01_L_Foot', 'Bip01_R_Foot'].map((n) => bindP[I(n)].clone()),
@@ -105,11 +178,19 @@ export async function preloadAvatars(onEach) {
 // ---------------------------------------------------------------- material: the dyed kit
 const LUM = 'vec3( 0.2126, 0.7152, 0.0722 )';
 // crowd: a baked, posed copy (people.js) with the jacket colour per instance and no gear
+// the neck gaiters riders pull up over the chin: knit colours, picked per outfit
+// (no skin-like tans or browns: on a face they read as a beard)
+const GAITERS = [0x2b2d31, 0x5d6066, 0x2f4a3a, 0x1f2a44, 0x5a1e2a, 0x3d5a6e, 0x16171a, 0x4a4f2a, 0x7a1f24];
 export function kitMaterial(kit, outfit, crowd = false) {
-  const m = new THREE.MeshStandardMaterial({ map: kit.map, normalMap: kit.normal, roughness: 1, metalness: 0 });
+  // the riders' kit (not the baked crowd, not the phone setting) gets a fabric sheen
+  const sheen = !crowd && !LO;
+  const opts = { map: kit.map, normalMap: kit.normal, roughness: 1, metalness: 0 };
+  const m = sheen ? new THREE.MeshPhysicalMaterial({ ...opts, sheen: 1, sheenRoughness: 0.55, sheenColor: 0xffffff }) : new THREE.MeshStandardMaterial(opts);
   if (crowd) m.defines = { CROWD: '' };
   const c = (x) => new THREE.Color(x);
   const racer = !!outfit.racer;
+  const hj = Math.imul(c(outfit.jacket ?? 0).getHex() ^ c(outfit.pants ?? 0).getHex() * 3, 2654435761) >>> 0;
+  const gaiter = outfit.gaiter ?? (racer ? null : GAITERS[(hj >>> 7) % GAITERS.length]);
   const u = {
     uMask: { value: kit.mask },
     uJacket: { value: c(outfit.jacket) },
@@ -132,6 +213,11 @@ export function kitMaterial(kit, outfit, crowd = false) {
     // the feet live inside the boots (gear.js)
     uFootL: { value: kit.feet[0] }, uFootR: { value: kit.feet[1] },
     uHandL: { value: kit.hands[0] }, uHandR: { value: kit.hands[1] },
+    uBody: { value: kit.body }, uNeckP: { value: kit.neckP },
+    // the gaiter: x on, y its top at the front (over the chin) and z behind (up under the helmet),
+    // relative to the neck bone; w a two-tone stripe
+    uGait: { value: new THREE.Vector4(gaiter == null ? 0 : 1, 0.09, 0.11, (hj >>> 13) % 3 === 0 ? 1 : 0) },
+    uGaitC: { value: c(gaiter ?? 0) },
     // injuries (injury.js): blood on the head, and where a limb came off (rest-pose point, w on)
     uBlood: { value: 0 }, uCut: { value: new THREE.Vector4(0, 0, 0, 0) }, uCut2: { value: new THREE.Vector4(0, 0, 0, 0) }, uCut3: { value: new THREE.Vector4(0, 0, 0, 0) }, uCut4: { value: new THREE.Vector4(0, 0, 0, 0) }, uStain: { value: 0 },
   };
@@ -140,7 +226,7 @@ export function kitMaterial(kit, outfit, crowd = false) {
     Object.assign(sh.uniforms, u);
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>
-attribute float aPart; varying float vPart; varying vec3 vRest; uniform float uPuff; uniform vec2 uLmV, uFlap; uniform vec3 uSkull, uHatC, uHatR, uFootL, uFootR, uHandL, uHandR;
+attribute float aPart; varying float vPart; varying vec3 vRest; uniform float uPuff; uniform vec2 uLmV, uFlap; uniform vec3 uSkull, uHatC, uHatR, uFootL, uFootR, uHandL, uHandR, uNeckP; uniform vec4 uGait;
 float cvH(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
 float cvN(vec3 x) {
   vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
@@ -164,7 +250,7 @@ vRest = position;
   // (heights on the body at rest: a posed crowd or chair copy is baked already)
   float flare = smoothstep( 0.46, 0.2, vRest.y );
   // the collar stands up round the neck to just under the chin (lower at the front, where it zips)
-  float cTop = uLmV.y + 0.06 - 0.025 * step( 0.03, vRest.z );
+  float cTop = uLmV.y + 0.06 - 0.025 * smoothstep( 0.0, 0.06, vRest.z );
   float collar = 1.0 - smoothstep( cTop - 0.012, cTop + 0.002, vRest.y );
   // freeride cut: a roomy shell over a midlayer, sleeves cut long and loose with wide cuffs, and
   // baggy pants dropping in a stack over the boots. (the chest's puff eases off up into the
@@ -174,7 +260,7 @@ vRest = position;
   float cuff = 1.0 - smoothstep( 0.08, 0.2, cuffD );
   // the jacket's long hem hangs off the hips, away from the pants under it
   float hang = ( pp == 2.0 || pp == 6.0 ) ? smoothstep( hemY + 0.16, hemY + 0.02, vRest.y ) * step( hemY - 0.015, vRest.y ) : 0.0;
-  float puff = pp == 2.0 ? mix( 0.06, 0.014, smoothstep( uLmV.y - 0.12, uLmV.y - 0.01, vRest.y ) ) : pp == 3.0 ? 0.052 : pp == 4.0 ? 0.046 + 0.014 * cuff : pp == 6.0 ? 0.058 : pp == 7.0 ? 0.05 + 0.046 * flare : pp == 5.0 ? 0.012 : pp < 1.5 ? 0.012 * collar : 0.0;
+  float puff = pp == 2.0 ? mix( 0.06, 0.014, smoothstep( uLmV.y - 0.12, uLmV.y - 0.01, vRest.y ) * ( 1.0 - smoothstep( 0.08, 0.15, length( vRest.xz - uNeckP.xz ) ) ) ) : pp == 3.0 ? 0.052 : pp == 4.0 ? 0.046 + 0.014 * cuff : pp == 6.0 ? 0.058 : pp == 7.0 ? 0.05 + 0.046 * flare : pp == 5.0 ? 0.012 : pp < 1.5 ? 0.012 * collar : 0.0;
   puff += hang * 0.01;
 #ifndef CROWD
   if ( pp == 7.0 && uPuff > 0.5 ) transformed.y = max( transformed.y, hem - 0.03 );
@@ -183,14 +269,21 @@ vRest = position;
   // and the sleeves on the wrists
   float cloth = ( pp > 1.5 && pp < 7.5 && pp != 5.0 ) ? step( 0.5, uPuff ) : 0.0;
   if ( pp == 2.0 && vRest.y > uLmV.y - 0.05 ) cloth = 0.0;
-  // (only what the mesh can carry: broad bulges here, the fine creases are drawn per pixel)
-  float fold = ( cvN( vRest * vec3( 6.0, 11.0, 6.0 ) ) - 0.5 ) * 0.02;
+  // (only what the mesh can carry: broad drapes hanging down the body and limbs, not lumps; the
+  // fine creases are drawn per pixel)
+  float fold = ( cvN( vRest * vec3( 12.0, 3.4, 12.0 ) ) - 0.5 ) * 0.02;
   float stack = ( pp == 7.0 ? smoothstep( 0.42, 0.18, vRest.y ) : 0.0 ) + ( pp == 4.0 ? cuff : 0.0 );
   fold += stack * 0.006;
   // and the wind in it: loose hems, cuffs and the pants' legs ripple with speed
   float loose = hang + stack * 0.8 + ( pp == 3.0 || pp == 4.0 ? 0.35 : pp == 6.0 || pp == 7.0 ? 0.3 : pp == 2.0 ? 0.25 : 0.0 );
   float flap = sin( uFlap.x * 24.0 + vRest.y * 31.0 + vRest.x * 17.0 + vRest.z * 13.0 ) * 0.6 + sin( uFlap.x * 41.0 + vRest.y * 57.0 - vRest.x * 23.0 ) * 0.4;
   puff += cloth * ( fold + flap * loose * uFlap.y * 0.009 );
+  // the knit gaiter stands a few millimetres off the neck and chin
+  if ( pp < 1.5 && uGait.x > 0.5 ) {
+    float fr = smoothstep( uNeckP.z - 0.01, uNeckP.z + 0.06, vRest.z );
+    float gt = uLmV.y + mix( uGait.z, uGait.y, fr );
+    puff = max( puff, 0.005 * ( 1.0 - smoothstep( gt - 0.008, gt + 0.004, vRest.y ) ) );
+  }
   transformed += objectNormal * ( uPuff < 0.5 ? min( puff, uPuff ) : puff );
 #ifndef CROWD
   // feet shrink a little inside the boot shells
@@ -214,7 +307,11 @@ uniform float uBlood, uStain; uniform vec4 uCut, uCut2, uCut3, uCut4;
 #define JK uJacket
 #endif
 varying float vPart; varying vec3 vRest;
-float gRough; vec4 gNS; float gH;
+uniform vec4 uBody, uGait; uniform vec3 uGaitC, uNeckP;
+float gRough; vec4 gNS; float gH; float gNK = 1.0; vec3 gSheen = vec3( 0.0 );
+// a line d metres off its centre, w wide either side, over pixels mpp metres wide: never thinner
+// than a pixel, fainter instead (a thin line broken into dots reads as noise)
+float agL(float d, float w, float mpp) { float W = max(w, mpp * 0.7); return (w / W) * (1.0 - smoothstep(W - 0.5 * mpp, W + 0.5 * mpp, abs(d))); }
 float agH(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
 float agN(vec3 x) {
   vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
@@ -259,51 +356,143 @@ vec3 agPat(vec3 a, vec3 b, float pat, float part, vec3 p, vec2 lm) {
   float det = clamp( ( dot( m3, ${LUM} ) + 0.004 ) / ( dot( m6, ${LUM} ) + 0.004 ), 0.95, 1.04 );
   float fine = clamp( ( dot( a.rgb, ${LUM} ) + 0.004 ) / ( dot( m3, ${LUM} ) + 0.004 ), 0.97, 1.03 );
   gH = 0.0;
+  // the rest-pose surface on screen: metres per pixel, which way it faces (for a flat weave
+  // coordinate), how fast the body part changes (its edges are the sleeves' set-in seams), and
+  // the angle round the neck (the gaiter's ribs)
+  vec3 rdx = dFdx( vRest ), rdy = dFdy( vRest );
+  float mpp = max( max( length( rdx ), length( rdy ) ), 1e-5 );
+  vec3 an = abs( cross( rdx, rdy ) );
+  // (how fast z and y change along the surface: a seam on a plane the surface runs along would
+  // smear into a wide band, so it is measured along the surface and fades where it grazes)
+  vec3 rn = an / max( length( an ), 1e-12 );
+  vec2 alongZY = sqrt( max( vec2( 1.0 ) - vec2( rn.z * rn.z, rn.y * rn.y ), vec2( 0.0 ) ) );
+  vec2 wuv = an.x > an.y && an.x > an.z ? vRest.zy : an.z > an.y ? vRest.xy : vRest.xz;
+  float pw = max( fwidth( vPart ), 1e-4 );
+  float nAng = atan( vRest.x - uNeckP.x, vRest.z - uNeckP.z );
+  float nAngW = fwidth( nAng );
   vec3 dye = vec3( -1.0 );
-  float rough = 0.6;
+  float rough = 0.6, shK = 0.0;
   if ( bodyHalf || part > 0.5 ) {
     if ( part > 7.5 ) { dye = uBoots; rough = 0.35; }
-    else if ( part > 5.5 && part < 6.5 && vRest.y > uLm.x - 0.11 && uLm.y > 0.0 ) { dye = agPat( JK, uJacket2, uPat.x, 2.0, vRest, uLm ); rough = 0.5; }
-    else if ( part > 5.5 ) { dye = agPat( uPants, uPants2, uPat.y, part, vRest, uLm ); rough = 0.7; }
-    else if ( part > 4.5 ) { dye = uGloves; rough = 0.75; }
-    else if ( part > 1.5 ) { bool low = vRest.y < uLm.x - 0.11; dye = low ? agPat( uPants, uPants2, uPat.y, 6.0, vRest, uLm ) : agPat( JK, uJacket2, uPat.x, part, vRest, uLm ); rough = low ? 0.7 : 0.5;
+    else if ( part > 5.5 && part < 6.5 && vRest.y > uLm.x - 0.11 && uLm.y > 0.0 ) { dye = agPat( JK, uJacket2, uPat.x, 2.0, vRest, uLm ); rough = 0.64; shK = 0.3; }
+    else if ( part > 5.5 ) { dye = agPat( uPants, uPants2, uPat.y, part, vRest, uLm ); rough = 0.76; shK = 0.36; }
+    else if ( part > 4.5 ) { dye = uGloves; rough = 0.8; shK = 0.3; }
+    else if ( part > 1.5 ) { bool low = vRest.y < uLm.x - 0.11; dye = low ? agPat( uPants, uPants2, uPat.y, 6.0, vRest, uLm ) : agPat( JK, uJacket2, uPat.x, part, vRest, uLm ); rough = low ? 0.76 : 0.64; shK = low ? 0.36 : 0.3;
       // (skin weighted to the chest that reaches up the neck stays skin above the collar line)
-      if ( part < 2.5 && uLm.y > 0.0 && vRest.y > uLm.y + 0.064 - 0.025 * step( 0.03, vRest.z ) ) dye = vec3( -1.0 );
+      if ( part < 2.5 && uLm.y > 0.0 && vRest.y > uLm.y + 0.064 - 0.025 * smoothstep( 0.0, 0.06, vRest.z ) ) dye = vec3( -1.0 );
     }
   }
-  // the collar: everything round the neck below the line, head or neck alike
-  if ( part < 1.5 && uLm.y > 0.0 ) {
-    float top = uLm.y + 0.06 - 0.025 * step( 0.03, vRest.z );
-    float c = 1.0 - smoothstep( top - 0.008, top + 0.004, vRest.y );
-    // a folded-over edge: a little darker right at the top
-    float rim = smoothstep( top - 0.02, top - 0.006, vRest.y ) * c;
-    if ( c > 0.0 ) { dye = mix( a.rgb, agPat( JK, uJacket2, uPat.x, 2.0, vRest, uLm ) * ( 1.0 - rim * 0.2 ), c ); rough = 0.6; gH += rim * 0.8; }
+  // round the neck: the gaiter, and the jacket's collar standing up over it
+  float gaitK = 0.0, skinShade = 0.0;
+  // (with the chest skin reaching up the neck above the collar line)
+  if ( ( part < 1.5 || ( part < 2.5 && dye.r < 0.0 ) ) && uLm.y > 0.0 ) {
+    float top = uLm.y + 0.06 - 0.025 * smoothstep( 0.0, 0.06, vRest.z );
+    float c = 1.0 - smoothstep( top - 0.003, top + 0.001 + mpp, vRest.y );
+    vec3 under = a.rgb;
+    // the gaiter: a knit tube pulled up over the chin and round under the helmet
+    if ( uGait.x > 0.5 ) {
+      float fr = smoothstep( uNeckP.z - 0.01, uNeckP.z + 0.06, vRest.z );
+      float gt = uLm.y + mix( uGait.z, uGait.y, fr );
+      float g = 1.0 - smoothstep( gt - 0.0015, gt + mpp, vRest.y );
+      // (and its shadow on the skin just above the edge)
+      skinShade = smoothstep( gt + 0.014, gt, vRest.y ) * ( 1.0 - g );
+      if ( g > 0.0 ) {
+        float rf = 1.0 - smoothstep( 0.15, 0.45, nAngW * 14.0 );
+        float rib = sin( nAng * 88.0 );
+        // a rolled top edge, heathered yarn, and on some a two-tone band
+        float roll = smoothstep( gt - 0.012, gt - 0.003, vRest.y );
+        float heather = agN( vRest * vec3( 240.0, 70.0, 240.0 ) );
+        vec3 gc = uGaitC * ( 0.9 + 0.22 * mix( 0.5, heather, 1.0 - smoothstep( 0.2, 0.5, mpp * 240.0 ) ) );
+        if ( uGait.w > 0.5 ) gc = mix( gc, gc * 0.45 + vec3( 0.06 ), step( 0.5, fract( ( vRest.y - gt ) * 28.0 ) ) * step( vRest.y, gt - 0.015 ) );
+        under = mix( a.rgb, gc * ( 1.0 - 0.12 * roll ) * ( 1.0 - 0.04 * rib * rf ), g );
+        dye = under;
+        rough = mix( rough, 0.93, g ); shK = mix( shK, 0.8, g ); gaitK = g;
+        gH += g * ( 1.0 - c ) * ( rib * 0.1 * rf + roll * 0.7 );
+      }
+    }
+    if ( c > 0.0 ) {
+      // a folded-over edge: a little darker right at the top
+      float rim = smoothstep( top - 0.02, top - 0.006, vRest.y ) * c;
+      dye = mix( under, agPat( JK, uJacket2, uPat.x, 2.0, vRest, uLm ) * ( 1.0 - rim * 0.2 ), c ); rough = mix( rough, 0.66, c ); shK = mix( shK, 0.3, c ); gH += rim * 0.8; gaitK = max( gaitK, c );
+      // the main zip runs on up the collar
+      float zc = agL( vRest.x, 0.0035, mpp ) * step( 0.03, vRest.z ) * c;
+      dye = mix( dye, vec3( 0.045 ), zc * 0.9 ); gH -= zc * 0.5; rough = mix( rough, 0.32, zc );
+    }
   }
-  // the garment's make: zip, hem and cuffs on the jacket, a cargo pocket and knee darts on the pants, quilting
+  // (the neck's wrap is neck from here on, whichever bone carries it)
+  if ( gaitK > 0.0 ) part = 1.0;
+  // the garment's make
   if ( dye.r >= 0.0 && part > 1.5 && part < 7.5 && part != 5.0 ) {
     vec3 p = vRest;
     bool jacket = ( ( part > 1.5 && part < 4.5 ) || part == 6.0 ) && p.y > uLm.x - 0.11;
+    // ripstop: a grid of heavier threads catching the light, only where a pixel is fine enough to
+    // hold it (in the colour, not the bump: screen derivatives of something this fine go blocky)
+    float wk = jacket ? 180.0 : 140.0;
+    float wf = 1.0 - smoothstep( 0.1, 0.3, mpp * wk );
+    if ( wf > 0.0 ) { vec2 gq = abs( fract( wuv * wk ) - 0.5 ); dye *= 1.0 + wf * ( smoothstep( 0.36, 0.5, max( gq.x, gq.y ) ) * 0.07 - 0.02 ); }
+    // panel seams, welded and taped: one plane down the ribs and over the shoulders, along the
+    // sleeves' top and underside, and the pants' out- and inseams
+    float sd = ( p.z - ( jacket ? uBody.x : uBody.y ) ) / max( alongZY.x, 0.2 );
+    float seam = agL( sd, 0.0012, mpp ) * smoothstep( 0.2, 0.45, alongZY.x );
+    float tape = smoothstep( 0.01, 0.004, abs( sd ) );
     if ( jacket ) {
-      float zip = 1.0 - smoothstep( 0.004, 0.009, abs( p.x ) );
-      if ( p.z > 0.0 && p.y < uLm.y - 0.02 ) { dye = mix( dye, dye * 0.35, zip ); gH -= zip * 0.6; rough = mix( rough, 0.3, zip ); }
+      // the sleeves set in round the armholes, and a yoke across the shoulder blades
+      if ( vPart > 2.0 && vPart < 3.0 && p.y > uLm.y - 0.3 ) seam = max( seam, 1.0 - smoothstep( 0.0012, 0.0012 + mpp, abs( vPart - 2.5 ) / pw * mpp ) );
+      if ( part == 2.0 && p.z < uBody.x - 0.03 ) { float yk = ( p.y - ( uBody.z - 0.075 ) ) / max( alongZY.y, 0.2 ); seam = max( seam, agL( yk, 0.0012, mpp ) * smoothstep( 0.2, 0.45, alongZY.y ) ); tape = max( tape, smoothstep( 0.01, 0.004, abs( yk ) ) ); }
+    }
+    dye *= 1.0 - ( jacket ? 0.22 : 0.14 ) * seam; gH += tape * 0.15 - seam * 0.3; rough = mix( rough, rough - 0.04, tape );
+    if ( jacket ) {
+      // the centre zip, a storm flap over it
+      if ( p.z > 0.0 && p.y < uLm.y - 0.02 ) {
+        float zip = agL( p.x, 0.0035, mpp );
+        float teeth = sin( p.y * 2400.0 ) * 0.5 * ( 1.0 - smoothstep( 0.2, 0.5, mpp * 380.0 ) );
+        dye = mix( dye, vec3( 0.045 ), zip * 0.9 ); gH -= zip * ( 0.5 + 0.15 * teeth ); rough = mix( rough, 0.32, zip );
+        float sf = smoothstep( 0.021, 0.017, p.x ) * smoothstep( 0.004, 0.006, p.x );
+        gH += sf * 0.45; dye *= 1.0 - 0.2 * agL( p.x - 0.0205, 0.0007, mpp );
+      }
       float hemB = 1.0 - smoothstep( 0.0, 0.012, abs( p.y - ( uLm.x - 0.09 ) ) - 0.02 );
       gH += hemB * 0.5;
       float cuff = 1.0 - smoothstep( 0.05, 0.065, min( distance( p, uHandL ), distance( p, uHandR ) ) );
-      if ( part > 3.5 ) { dye = mix( dye, dye * 0.55, cuff ); gH += cuff * 0.6; }
-      // chest pocket zip, left side
-      float pz = ( 1.0 - smoothstep( 0.003, 0.006, abs( p.y - ( uLm.y - 0.12 ) + ( p.x - 0.07 ) * 0.5 ) ) ) * step( 0.04, p.x ) * step( p.x, 0.12 ) * step( 0.0, p.z );
-      dye = mix( dye, dye * 0.4, pz ); gH -= pz * 0.4;
+      if ( part > 3.5 ) { dye = mix( dye, dye * 0.55, cuff ); gH += cuff * 0.6; rough = mix( rough, 0.82, cuff ); }
+      if ( part == 2.0 && p.z > 0.0 ) {
+        // chest pocket zip, left side
+        float pz = agL( p.y - ( uLm.y - 0.12 ) + ( p.x - 0.07 ) * 0.5, 0.002, mpp ) * step( 0.04, p.x ) * step( p.x, 0.12 );
+        dye = mix( dye, vec3( 0.05 ), pz * 0.85 ); gH -= pz * 0.4; rough = mix( rough, 0.32, pz );
+        // two hand pockets, zips angled down to the hips under a welted flap, the pulls hanging at the top
+        vec2 q = vec2( abs( p.x ), p.y - uLm.x ), A = vec2( 0.072, 0.075 ), ba = vec2( 0.05, -0.135 );
+        vec2 pa = q - A; float h = clamp( dot( pa, ba ) / dot( ba, ba ), 0.0, 1.0 );
+        float dz = length( pa - ba * h );
+        float hz = agL( dz, 0.0022, mpp );
+        float welt = agL( dz - 0.008, 0.0035, mpp ) * step( 0.0, pa.x * ba.y - pa.y * ba.x );
+        vec2 pd = abs( q - A - ba * 0.07 );
+        float pull = step( pd.x, 0.0045 ) * step( pd.y, 0.012 );
+        dye = mix( dye, vec3( 0.05 ), max( hz * 0.85, pull ) ); gH += welt * 0.45 - hz * 0.5 + pull * 0.6; rough = mix( rough, 0.3, max( hz, pull ) );
+        // a small woven mountain mark on the right chest
+        vec2 lq = vec2( p.x + 0.085, p.y - ( uLm.y - 0.11 ) );
+        float mk = agL( lq.y - 0.007 + abs( abs( lq.x ) - 0.009 ) * 1.1, 0.0016, mpp ) * step( abs( lq.x ), 0.019 );
+        dye = mix( dye, dot( dye, ${LUM} ) > 0.3 ? vec3( 0.07 ) : vec3( 0.86 ), mk * 0.9 ); gH += mk * 0.35;
+      }
       if ( uPat.x > 12.5 && uPat.x < 13.5 ) { float q = fract( p.y * 13.0 ); gH += ( 1.0 - pow( abs( q - 0.5 ) * 2.0, 2.0 ) ) * 1.6; dye *= 0.88 + 0.12 * smoothstep( 0.0, 0.12, min( q, 1.0 - q ) ); }
     } else {
-      // pants: a cargo pocket on the outer thigh, knee darts
+      // pants: a cargo pocket on the outer thigh under a flap with two snaps, knee darts
       float side = abs( p.x );
       float pk = step( 0.12, side ) * step( uLm.x - 0.42, p.y ) * step( p.y, uLm.x - 0.24 );
       float edge = pk * ( 1.0 - smoothstep( 0.0, 0.008, min( min( p.y - ( uLm.x - 0.42 ), ( uLm.x - 0.24 ) - p.y ), 0.03 ) ) );
       gH += pk * 0.5 - edge * 0.5;
-      float flap = step( 0.12, side ) * ( 1.0 - smoothstep( 0.0, 0.006, abs( p.y - ( uLm.x - 0.26 ) ) ) );
-      dye = mix( dye, dye * 0.6, flap );
+      float fy = p.y - ( uLm.x - 0.26 );
+      float flap = step( 0.12, side ) * agL( fy, 0.0025, mpp );
+      float snap = step( 0.12, side ) * ( 1.0 - smoothstep( 0.004, 0.004 + mpp, length( vec2( fy + 0.012, abs( p.z - uBody.y ) - 0.03 ) ) ) );
+      dye = mix( dye, dye * 0.6, flap ); dye = mix( dye, dye * 0.5, snap ); gH += snap * 0.5 - flap * 0.3;
       float knee = ( 1.0 - smoothstep( 0.0, 0.006, abs( fract( p.y * 22.0 ) - 0.5 ) * 0.08 ) ) * step( 0.42, p.y ) * step( p.y, 0.56 ) * step( 0.0, p.z );
       gH -= knee * 0.3;
+      // scuff guards: tougher, darker fabric on the inside of the hems where the boots rub
+      float kp = smoothstep( 0.24, 0.225, p.y ) * smoothstep( uBody.w - 0.005, uBody.w - 0.02, side );
+      dye *= 1.0 - 0.32 * kp; rough = mix( rough, 0.88, kp ); gH += kp * 0.25;
+      // and a little snow caught on the hems
+      if ( p.y < 0.21 ) {
+        float sn = smoothstep( 0.21, 0.1, p.y ) * smoothstep( 0.5, 0.72, agN( p * vec3( 45.0, 28.0, 45.0 ) ) );
+        dye = mix( dye, vec3( 0.8, 0.82, 0.86 ), sn * 0.75 ); rough = mix( rough, 0.92, sn ); shK *= 1.0 - sn;
+      }
       if ( uPat.y > 12.5 && uPat.y < 13.5 ) { float q = fract( p.y * 11.0 ); gH += ( 1.0 - pow( abs( q - 0.5 ) * 2.0, 2.0 ) ) * 1.4; }
     }
   }
@@ -320,7 +509,8 @@ vec3 agPat(vec3 a, vec3 b, float pat, float part, vec3 p, vec2 lm) {
       gH += rings * ring * 1.1;
       float drape = sin( ( p.x * 0.7 + p.z ) * 38.0 + agN( p * vec3( 6.0, 2.5, 6.0 ) ) * 7.0 );
       gH += drape * 0.45 * ( part > 5.5 ? 1.0 : 0.6 ) * ( 1.0 - rings );
-      dye *= 1.0 - 0.06 * rings * smoothstep( 0.3, 1.0, -ring );
+      // (the fabric goes darker down in a fold, where less light reaches)
+      dye *= 1.0 - 0.07 * rings * smoothstep( 0.3, 1.0, -ring ) - 0.025 * drape * ( 1.0 - rings );
     }
     // soft folds in the fabric where it bunches, and the weave catching the light
     if ( part > 1.5 && part < 7.5 && part != 5.0 ) {
@@ -328,10 +518,20 @@ vec3 agPat(vec3 a, vec3 b, float pat, float part, vec3 p, vec2 lm) {
       float fold = agN( q ) * 0.65 + agN( q * 2.3 + 7.0 ) * 0.35;
       gH += ( fold - 0.5 ) * 2.2;
       dye *= 0.93 + 0.1 * fold;
-      rough += ( agN( vRest * 260.0 ) - 0.5 ) * 0.12;
+      rough += ( agN( vRest * 260.0 ) - 0.5 ) * 0.1;
     }
-    col = min( dye * det * fine, vec3( 0.82 ) );
+    // under fabric the body's own shading (a fitted shirt's muscles) is mostly gone: keep a
+    // little of the texture's folds, and only a touch of its normal map
+    float clothK = ( part > 1.5 && part < 7.5 ) || gaitK > 0.5 ? 1.0 : 0.0;
+    gNK = mix( 1.0, 0.3, clothK );
+    col = min( dye * mix( det * fine, mix( 1.0, fine, 0.6 ), clothK ), vec3( 0.82 ) );
     gRough = rough;
+    // a soft sheen off the fibres at grazing angles, tinted by the dye
+    gSheen = mix( col, vec3( dot( col, ${LUM} ) ), 0.3 ) * shK + vec3( 0.04 ) * shK;
+  } else {
+    // skin: fine down catching the light, and the gaiter's shadow
+    gSheen = vec3( 0.05, 0.035, 0.03 );
+    col *= 1.0 - 0.35 * skinShade;
   }
   // hurt: blood from the crown of the head, running down the face and neck
   if ( uBlood > 0.0 && part < 1.5 ) {
@@ -363,9 +563,10 @@ vec3 agPat(vec3 a, vec3 b, float pat, float part, vec3 p, vec2 lm) {
 }`)
       .replace('#include <color_fragment>', '#ifndef CROWD\n#include <color_fragment>\n#endif')
       .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = gRough;')
+      .replace('#include <lights_physical_fragment>', '#include <lights_physical_fragment>\n#ifdef USE_SHEEN\nmaterial.sheenColor = gSheen;\n#endif')
       .replace('#include <normal_fragment_maps>', THREE.ShaderChunk.normal_fragment_maps.replace(
         'vec3 mapN = texture2D( normalMap, vNormalMapUv ).xyz * 2.0 - 1.0;',
-        `vec3 mapN = vec3( gNS.xy * 2.0 - 1.0, 0.0 );
+        `vec3 mapN = vec3( ( gNS.xy * 2.0 - 1.0 ) * gNK, 0.0 );
 mapN.z = sqrt( max( 0.0, 1.0 - dot( mapN.xy, mapN.xy ) ) );`) + `
 // the garment's seams and quilting, as a bump on top
 {
