@@ -30,6 +30,17 @@ function makeNoiseTexture(size = 256) {
 
 export const noiseTex = makeNoiseTexture();
 
+// cloud shadows drifting over the mountain: x how dark (0 on a grey day), yz how far they've blown
+export const CLOUDS = { value: new THREE.Vector4(0, 0, 0, 0) };
+// (GLSL: how much sun gets through the clouds at a world xz)
+export const CLOUD_GLSL = `
+  float cloudSun(vec2 wp) {
+    if (uClouds.x < 0.01) return 1.0;
+    vec2 q = wp + uClouds.yz;
+    float cl = texture2D(uNoise, q / 1400.0).r * 0.62 + texture2D(uNoise, q / 420.0 + 0.31).g * 0.38;
+    return 1.0 - uClouds.x * smoothstep(0.5, 0.64, cl);
+  }`;
+
 // scanned PBR textures (Poly Haven, CC0; tools/build_assets.py)
 const TEX = import.meta.env.BASE_URL + (LO ? 'tex/lo/' : 'tex/');
 const texLoader = new THREE.TextureLoader();
@@ -55,6 +66,7 @@ export function makeSnowMaterial(env) {
     uRockR: { value: pbr('rock_face_04_arm.webp', false) },
     // the day's snow: x fresh (covers the corduroy), y wet (spring slush), z hard (ice)
     uCond: { value: new THREE.Vector3() },
+    uClouds: CLOUDS,
     // where the chunk LODs are chosen from, and the distances they switch at
     uCamXZ: { value: new THREE.Vector2() },
     uLodD: { value: new THREE.Vector4(LOD_DIST[0], LOD_DIST[1], LOD_DIST[2], 1e9) },
@@ -82,7 +94,8 @@ export function makeSnowMaterial(env) {
       .replace('#include <common>', `#include <common>
         #define OLD_LAYERS ${LO ? 2 : 3}
         uniform sampler2D uNoise; uniform vec3 uSunDir; uniform vec3 uSunCol;
-        uniform sampler2D uSnowC, uSnowN, uSnowR, uRockC, uRockN, uRockR; uniform vec3 uCond;
+        uniform sampler2D uSnowC, uSnowN, uSnowR, uRockC, uRockN, uRockR; uniform vec3 uCond; uniform vec4 uClouds;
+        ${CLOUD_GLSL}
         varying vec3 vWPos; varying vec3 vWNrm; varying float vPiste; varying float vIce;
         // fresh snow covers the grooming
         float pk() { return vPiste * (1.0 - uCond.x * 0.85); }
@@ -254,6 +267,10 @@ export function makeSnowMaterial(env) {
             DirectionalLightShadow dls = directionalLightShadows[0];
             sh = getShadow(directionalShadowMap[0], dls.shadowMapSize, dls.shadowIntensity, dls.shadowBias, dls.shadowRadius, vDirectionalShadowCoord[0]);
           #endif
+          // a cloud's shadow passing over
+          float cs = cloudSun(vWPos.xz);
+          reflectedLight.directDiffuse *= cs; reflectedLight.directSpecular *= cs;
+          sh *= cs;
           float dist = length(cameraPosition - vWPos);
           vec2 cell = floor(vWPos.xz * 26.0);
           float r = hash12(cell);
@@ -408,6 +425,9 @@ export class Terrain {
   update(px, pz, budgetMs = 5) {
     const t0 = performance.now();
     this.material.userData.shared.uCamXZ.value.set(px, pz);
+    // the clouds blow up the valley
+    const t = performance.now() / 1000;
+    CLOUDS.value.y = t * 6.5; CLOUDS.value.z = t * 4.2;
     // nearest-first refinement
     const pending = [];
     for (const c of this.chunks) {

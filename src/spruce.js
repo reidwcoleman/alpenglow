@@ -4,6 +4,8 @@
 // tiered skirts), instanced per variant and re-sorted by distance when the camera moves.
 import * as THREE from 'three';
 import { mulberry32 } from './noise.js';
+import { normalAt } from './course.js';
+import { noiseTex, CLOUDS, CLOUD_GLSL } from './terrain.js';
 
 export const SPRUCE_H = 16; // geometry height (m); instances scale to their own height
 const VARIANTS = 4;
@@ -20,9 +22,9 @@ function boughTextures() {
   g.lineCap = 'round';
   const line = (x0, y0, x1, y1) => { g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke(); };
   const PAL = [
-    ['#0c1d15', '#11261b', '#152d20'],
-    ['#1a3826', '#1f402b', '#244530', '#1c3a2e'],
-    ['#2f5a3c', '#3a6544', '#2d5640', '#456e4a'],
+    ['#10221a', '#152b1f', '#1a3224'],
+    ['#1f3d28', '#25452d', '#2a4a31', '#223f2c'],
+    ['#3a5c34', '#46683a', '#385535', '#4f7040'],
   ];
   // twigs off the stem, needles off the twigs; dark fill first, lit tips last
   const twigs = [];
@@ -148,7 +150,7 @@ function addTrunk(b, sh, top) {
 }
 
 // a dark, jagged cone inside the crown so it reads as a dense mass, not a lattice
-function addCore(b, sh, segs, sc = 0.3) {
+function addCore(b, sh, segs, sc = 0.24) {
   const rnd = sh.rnd;
   const rows = 6, ring = [];
   for (let j = 0; j <= rows; j++) {
@@ -157,8 +159,9 @@ function addCore(b, sh, segs, sc = 0.3) {
     const row = [];
     for (let k = 0; k < segs; k++) {
       const a = (k / segs) * Math.PI * 2 + j * 0.4;
-      const rr = r * (0.8 + rnd() * 0.4);
-      row.push(b.v(Math.cos(a) * rr, y, Math.sin(a) * rr, Math.cos(a) * 0.8, 0.6, Math.sin(a) * 0.8, -1, 0, 0.5 + 0.3 * j / rows, 0.15));
+      const rr = r * (0.6 + rnd() * 0.8);
+      const tw = (rnd() - 0.5) * 1.4; // (normals scattered: it reads as needles in shadow, not a cylinder)
+      row.push(b.v(Math.cos(a) * rr, y, Math.sin(a) * rr, Math.cos(a + tw) * 0.7, 0.4 + rnd() * 0.5, Math.sin(a + tw) * 0.7, -1, 0, 0.35 + 0.3 * j / rows, 0.1));
     }
     ring.push(row);
   }
@@ -204,9 +207,9 @@ function boughTree(v, detail) {
   const rnd = sh.rnd;
   const near = detail === 0;
   addTrunk(b, sh, SPRUCE_H * 0.9);
-  addCore(b, sh, near ? 9 : 6);
-  const gap = sh.gap * (near ? 1 : 2.1);
-  const perWhorl = near ? 10 : 6;
+  addCore(b, sh, near ? 12 : 6);
+  const gap = sh.gap * (near ? 0.82 : 2.1);
+  const perWhorl = near ? 13 : 6;
   const segs = near ? 3 : 1;
   for (let y = sh.y0, w = 0; y < SPRUCE_H - 0.6; y += gap * (0.85 + rnd() * 0.3), w++) {
     const hf = (y - sh.y0) / (SPRUCE_H - sh.y0);
@@ -216,7 +219,12 @@ function boughTree(v, detail) {
     for (let k = 0; k < n; k++) {
       const a = rot + (k / n) * Math.PI * 2 + (rnd() - 0.5) * 0.5;
       const L = R * (0.85 + rnd() * 0.3);
-      addBough(b, sh, y, a, L, near ? 0.75 : 1.0, segs, hf, near ? 1 : 0.8);
+      addBough(b, sh, y, a, L, near ? 0.85 : 1.0, segs, hf, near ? 1 : 0.8);
+    }
+    // up close, shorter boughs between the whorls fill the crown in toward the trunk
+    if (near) for (let k = 0; k < (n >> 1); k++) {
+      const a = rot + ((k + 0.5) / (n >> 1)) * Math.PI * 2 + (rnd() - 0.5) * 0.6;
+      addBough(b, sh, y + gap * 0.5, a, R * (0.45 + rnd() * 0.2), 0.95, 2, hf, 0.7);
     }
   }
   // the leader: two crossed vertical cards at the top
@@ -261,7 +269,7 @@ function skirtTree(v, tiers = 5, segs = 10) {
 
 // ---------- material ----------
 const SNOW_COL = 'vec3( 0.84, 0.88, 0.94 )';
-function spruceMaterial(tex, U, bough) {
+function spruceMaterial(tex, U, bough, snowK = 1) {
   const m = new THREE.MeshStandardMaterial({
     vertexColors: true, roughness: 0.88, metalness: 0,
     map: bough ? tex.map : null, alphaTest: bough ? 0.5 : 0, side: bough ? THREE.DoubleSide : THREE.FrontSide,
@@ -269,18 +277,27 @@ function spruceMaterial(tex, U, bough) {
   });
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, U);
+    sh.uniforms.uNoise = { value: noiseTex }; sh.uniforms.uClouds = CLOUDS;
     if (bough) sh.uniforms.uSnowMap = { value: tex.snow };
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute float aSnow;\nvarying float vSnow;\nuniform float uTime;')
+      .replace('#include <common>', '#include <common>\nattribute float aSnow;\nvarying float vSnow;\nuniform float uTime;\nvarying vec2 vCXZ;')
+      .replace('#include <fog_vertex>', `#include <fog_vertex>
+      #ifdef USE_INSTANCING
+        vCXZ = ( modelMatrix * instanceMatrix * vec4( transformed, 1.0 ) ).xz;
+      #else
+        vCXZ = ( modelMatrix * vec4( transformed, 1.0 ) ).xz;
+      #endif`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
-      vSnow = aSnow;
+      vSnow = aSnow * ${snowK.toFixed(2)};
       #ifdef USE_INSTANCING
         vec3 ip = instanceMatrix[3].xyz;
+        // every tree caught its own share of the snowfall (wind, shelter)
+        vSnow *= 0.55 + 0.6 * fract( sin( dot( ip.xz, vec2( 12.9898, 78.233 ) ) ) * 43758.5453 );
         float hh = position.y / ${SPRUCE_H.toFixed(1)};
         transformed.xz += vec2( sin( uTime * 1.1 + ip.x * 0.11 + ip.z * 0.07 ), cos( uTime * 0.9 + ip.z * 0.13 ) ) * 0.12 * hh * hh;
       #endif`);
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', `#include <common>\nvarying float vSnow;\nuniform float uTreeSnow;\n${bough ? 'uniform sampler2D uSnowMap;' : ''}`)
+      .replace('#include <common>', `#include <common>\nvarying float vSnow;\nvarying vec2 vCXZ;\nuniform sampler2D uNoise;\nuniform vec4 uClouds;\n${CLOUD_GLSL}\nuniform float uTreeSnow;\n${bough ? 'uniform sampler2D uSnowMap;' : ''}`)
       .replace('#include <color_fragment>', `#include <color_fragment>
       float sK;
       ${bough ? `
@@ -292,7 +309,7 @@ function spruceMaterial(tex, U, bough) {
         float sM = texture2D( uSnowMap, vMapUv ).r;
         // (u < 0: the solid trunk and the crown's dark core, painted flat)
         if ( vMapUv.x < -0.5 ) {
-          diffuseColor = vec4( ( vMapUv.x < -1.5 ? vec3( 0.045, 0.032, 0.024 ) : vec3( 0.03, 0.06, 0.04 ) ) * vColor.rgb, 1.0 );
+          diffuseColor = vec4( ( vMapUv.x < -1.5 ? vec3( 0.045, 0.032, 0.024 ) : vec3( 0.018, 0.038, 0.026 ) ) * vColor.rgb, 1.0 );
           sM = 0.0;
         }
         float th = 1.0 - 0.6 * clamp( vSnow * uTreeSnow, 0.0, 1.2 );
@@ -305,14 +322,17 @@ function spruceMaterial(tex, U, bough) {
       sK = clamp( vSnow * uTreeSnow, 0.0, 1.0 );`}
       diffuseColor.rgb = mix( diffuseColor.rgb, ${SNOW_COL}, sK );`)
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix( roughnessFactor, 0.7, sK );')
+      // (needles are matte: no sky sheen glancing off the cards' edges)
+      .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\nreflectedLight.indirectSpecular *= mix( 0.25, 0.6, sK );\n{ float cs = cloudSun( vCXZ ); reflectedLight.directDiffuse *= cs; reflectedLight.directSpecular *= cs; }')
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
       normal = normalize( mix( normal, normalize( ( viewMatrix * vec4( 0.0, 1.0, 0.0, 0.0 ) ).xyz ), sK * 0.85 ) );`);
   };
-  m.customProgramCacheKey = () => 'spruce-' + (bough ? 'b' : 's');
+  m.customProgramCacheKey = () => 'spruce-' + (bough ? 'b' : 's') + snowK;
   return m;
 }
 
 // ---------- the instanced forest ----------
+const _wn = new THREE.Vector3(), _wu = new THREE.Vector3(0, 1, 0), _wq = new THREE.Quaternion(), _wm = new THREE.Matrix4(), _wp = new THREE.Vector3(), _ws = new THREE.Vector3();
 // near cards / wider cards / skirts / (far off, a few pixels tall) three-tier cones; how far it draws
 const LODS = {
   low: [55, 200, 520, 2300], high: [85, 320, 800, 3200], ultra: [120, 450, 1150, 3600],
@@ -327,7 +347,8 @@ export class SpruceForest {
     const tex = boughTextures();
     const geos = [];
     for (let v = 0; v < VARIANTS; v++) geos.push([boughTree(v, 0), boughTree(v, 1), skirtTree(v), skirtTree(v, 2, 3)]);
-    const mats = [spruceMaterial(tex, this.U, true), spruceMaterial(tex, this.U, true), spruceMaterial(tex, this.U, false)];
+    // (far off, the snow on a crown reads as far less than it is: the dark under the boughs wins)
+    const mats = [spruceMaterial(tex, this.U, true), spruceMaterial(tex, this.U, true), spruceMaterial(tex, this.U, false, 0.7), spruceMaterial(tex, this.U, false, 0.45)];
     for (const m of mats) patch(m);
     this.tris = geos.map((g) => g.map((x) => x.index.count / 3));
     // per-tree matrices and tints
@@ -365,7 +386,7 @@ export class SpruceForest {
     for (let l = 0; l < NL; l++) {
       const row = [];
       for (let v = 0; v < VARIANTS; v++) {
-        const im = new THREE.InstancedMesh(geos[v][l], mats[Math.min(l, 2)], Math.max(1, perVar[v]));
+        const im = new THREE.InstancedMesh(geos[v][l], mats[l], Math.max(1, perVar[v]));
         im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
         im.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, perVar[v]) * 3), 3);
         im.instanceColor.setUsage(THREE.DynamicDrawUsage);
@@ -379,6 +400,20 @@ export class SpruceForest {
       }
       this.meshes.push(row);
     }
+    // tree wells: the hollow the snow leaves round a trunk, in the shade of the lowest boughs
+    // (the trees near enough to see one; their matrices worked out the first time they're needed)
+    {
+      const c = document.createElement('canvas'); c.width = c.height = 64;
+      const g = c.getContext('2d'), r = g.createRadialGradient(32, 32, 0, 32, 32, 31);
+      r.addColorStop(0, 'rgba(255,255,255,0.95)'); r.addColorStop(0.35, 'rgba(255,255,255,0.7)'); r.addColorStop(0.7, 'rgba(255,255,255,0.22)'); r.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = r; g.fillRect(0, 0, 64, 64);
+      const wm = new THREE.MeshBasicMaterial({ color: 0x23324a, alphaMap: new THREE.CanvasTexture(c), transparent: true, opacity: 0.42, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -8, polygonOffsetUnits: -8 });
+      this.wells = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), wm, Math.max(1, Math.min(N, 6000)));
+      this.wells.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      this.wells.count = 0; this.wells.frustumCulled = false; this.wells.renderOrder = 1;
+      this.group.add(this.wells);
+      this.wellMats = new Float32Array(N * 16); this.wellOk = new Uint8Array(N);
+    }
     this.lod = LODS[quality] ?? LODS.high;
     this.maxD = this.lod[3];
     this.last = new THREE.Vector3(1e9, 0, 0);
@@ -387,6 +422,16 @@ export class SpruceForest {
     this.pm = new THREE.Matrix4();
     this.age = 0;
     this.dir = new THREE.Vector3();
+  }
+
+  wellMatrix(i) {
+    const M = this.mats, x = M[i * 16 + 12], y = M[i * 16 + 13], z = M[i * 16 + 14];
+    const s = Math.hypot(M[i * 16 + 4], M[i * 16 + 5], M[i * 16 + 6]); // the tree's height scale
+    normalAt(x, z, _wn);
+    _wq.setFromUnitVectors(_wu, _wn);
+    const d = 5.6 * s;
+    _wm.compose(_wp.set(x, y + 0.14, z), _wq, _ws.set(d, 1, d)).toArray(this.wellMats, i * 16);
+    this.wellOk[i] = 1;
   }
 
   update(camera, elapsed) {
@@ -402,6 +447,8 @@ export class SpruceForest {
     this.frust.setFromProjectionMatrix(this.pm);
     const n2 = this.lod[0] ** 2, m2 = this.lod[1] ** 2, s2 = this.lod[2] ** 2, f2 = this.maxD ** 2;
     const cnt = this.meshes.map((r) => r.map(() => 0));
+    let nw = 0;
+    const wMax = this.wells.instanceMatrix.count, W = this.wells.instanceMatrix.array;
     const S = new THREE.Sphere();
     const cx = cp.x, cy = cp.y, cz = cp.z;
     for (const c of this.cells) {
@@ -418,8 +465,14 @@ export class SpruceForest {
         const k = cnt[l][v]++;
         im.instanceMatrix.array.set(this.mats.subarray(i * 16, i * 16 + 16), k * 16);
         im.instanceColor.array.set(this.cols.subarray(i * 3, i * 3 + 3), k * 3);
+        if (l < 2 && nw < wMax) {
+          if (!this.wellOk[i]) this.wellMatrix(i);
+          W.set(this.wellMats.subarray(i * 16, i * 16 + 16), nw++ * 16);
+        }
       }
     }
+    this.wells.count = nw;
+    this.wells.instanceMatrix.clearUpdateRanges(); this.wells.instanceMatrix.addUpdateRange(0, nw * 16); this.wells.instanceMatrix.needsUpdate = true;
     for (let l = 0; l < NL; l++) for (let v = 0; v < VARIANTS; v++) {
       const im = this.meshes[l][v], k = cnt[l][v];
       im.count = k;

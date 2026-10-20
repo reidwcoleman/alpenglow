@@ -40,6 +40,8 @@ Every part of every run has its name and difficulty sprayed on the snow where it
 
 Every rider leaves tracks, lit like the snow round them: carved turns leave two sharp grooves with a lip of pushed-up snow (one wide one for a board), skids a scraped glossy smear with a berm thrown to the outside, powder a deep trench, landings a slapped dent and falls a crater and a trench down the hill. Your own line keeps a ring of its own so it stays behind you; old track fades as it's reused. The pistes already carry the lines of earlier riders (fewer under fresh snow). Spray is two kinds of snow: grains that fly on their own arcs, glint and land, and a fine mist that hangs and drifts down. (`node tools/behind.mjs out.jpg [z] [wait]` looks back up the hill at your tracks.)
 
+The spruces carry their own share of the snowfall each, fuller crowns up close, darker far off (where the shade under the boughs wins over the snow on them), and a tree well in the snow round each trunk. On fair days cloud shadows drift across the mountain, and on cold clear ones diamond dust glitters in the air, brightest looking toward the sun. (`node tools/treecam.mjs out.jpg [z] [tod]` frames the nearest tree from a few distances; `node tools/gputime.mjs [port] [z] [tod]` times one view's render.)
+
 ## Modes
 - **The Run**: top to bottom with a timer, score, minimap and a results card. Hold R for 2 s to restart.
 - **Ski Park** (The Yard): laps of the terrain park. L picks a line, and holding R takes you to the top of yours.

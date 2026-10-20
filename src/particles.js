@@ -220,3 +220,90 @@ export class Snowfall {
     p.needsUpdate = true;
   }
 }
+
+// Diamond dust: on a cold clear day, ice crystals hang in the air around you and flash as they
+// turn through the sun (brightest looking toward it).
+const dustVert = /* glsl */`
+  attribute float aSeed;
+  uniform float uTime, uScale; uniform vec3 uSunDir;
+  varying float vA;
+  #include <fog_pars_vertex>
+  void main() {
+    vec4 wp = modelMatrix * vec4(position, 1.0);
+    vec4 mvPosition = viewMatrix * wp;
+    gl_Position = projectionMatrix * mvPosition;
+    vec3 dir = normalize(wp.xyz - cameraPosition);
+    float toward = pow(max(dot(dir, uSunDir), 0.0), 3.0);
+    // each crystal turns at its own rate and catches the sun for a moment each turn
+    float ph = fract(aSeed * 17.31 + uTime * (0.35 + fract(aSeed * 7.7) * 1.1));
+    float flash = smoothstep(0.84, 0.95, ph) * smoothstep(1.0, 0.95, ph);
+    float d = -mvPosition.z;
+    vA = flash * (0.25 + 1.6 * toward) * smoothstep(1.0, 3.0, d) * (1.0 - smoothstep(18.0, 30.0, d));
+    gl_PointSize = max(2.0, uScale * (0.05 + 0.04 * fract(aSeed * 3.1)) / max(0.1, d) * (0.6 + flash));
+    #include <fog_vertex>
+  }`;
+const dustFrag = /* glsl */`
+  uniform vec3 uColor;
+  varying float vA;
+  #include <fog_pars_fragment>
+  void main() {
+    vec2 c = gl_PointCoord - 0.5;
+    // a tiny star: a bright core with a cross of glare
+    float core = smoothstep(0.5, 0.0, length(c) * 2.2);
+    float cross = smoothstep(0.08, 0.0, abs(c.x)) * smoothstep(0.5, 0.0, abs(c.y)) + smoothstep(0.08, 0.0, abs(c.y)) * smoothstep(0.5, 0.0, abs(c.x));
+    float a = clamp(core + cross * 0.6, 0.0, 1.0) * vA;
+    if (a < 0.01) discard;
+    gl_FragColor = vec4(uColor * 2.2, a);
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
+    #include <fog_fragment>
+  }`;
+
+export class DiamondDust {
+  constructor(scene, n = 1600) {
+    this.n = n; this.box = 50;
+    const p = new Float32Array(n * 3), s = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      p[i * 3] = (Math.random() - 0.5) * this.box; p[i * 3 + 1] = Math.random() * 20; p[i * 3 + 2] = (Math.random() - 0.5) * this.box;
+      s[i] = Math.random();
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(p, 3).setUsage(THREE.DynamicDrawUsage));
+    g.setAttribute('aSeed', new THREE.BufferAttribute(s, 1));
+    this.uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
+      uColor: { value: new THREE.Color(1, 1, 1) }, uScale: { value: 600 }, uTime: { value: 0 }, uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+    }]);
+    this.mat = new THREE.ShaderMaterial({ uniforms: this.uniforms, vertexShader: dustVert, fragmentShader: dustFrag, transparent: true, depthWrite: false, fog: true, blending: THREE.AdditiveBlending });
+    this.points = new THREE.Points(g, this.mat);
+    this.points.frustumCulled = false;
+    this.points.visible = false;
+    this.points.renderOrder = 3;
+    scene.add(this.points);
+  }
+
+  // how much hangs in the air today (0 none)
+  setAmount(k) {
+    this.points.visible = k > 0;
+    this.points.geometry.setDrawRange(0, Math.round(this.n * Math.min(1, k)));
+  }
+
+  update(dt, cam, sunDir, sunCol) {
+    if (!this.points.visible) return;
+    const U = this.uniforms;
+    U.uTime.value += dt; U.uSunDir.value.copy(sunDir); U.uColor.value.copy(sunCol);
+    const p = this.points.geometry.attributes.position, arr = p.array, B = this.box, H = 20;
+    const cx = cam.x, cy = cam.y - 8, cz = cam.z, t = U.uTime.value;
+    for (let i = 0; i < this.n; i++) {
+      const k = i * 3;
+      // drifting down slowly on the air
+      arr[k + 1] -= (0.12 + (i % 5) * 0.03) * dt;
+      arr[k] += Math.sin(t * 0.3 + i) * 0.15 * dt + 0.25 * dt;
+      let x = arr[k] - cx, y = arr[k + 1] - cy, z = arr[k + 2] - cz;
+      x = ((x + B / 2) % B + B) % B - B / 2;
+      y = ((y % H) + H) % H;
+      z = ((z + B / 2) % B + B) % B - B / 2;
+      arr[k] = x + cx; arr[k + 1] = y + cy; arr[k + 2] = z + cz;
+    }
+    p.needsUpdate = true;
+  }
+}

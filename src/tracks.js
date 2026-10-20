@@ -183,8 +183,8 @@ function makeTrackMaterial(uHead, segs) {
           diffuseColor = vec4(col, gTAlpha);
         }`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-        // an edge polishes the bottom of its groove; a skid buffs the snow it scrapes
-        roughnessFactor = vInfo.z < 0.5 || (vInfo.z > 2.5 && vInfo.z < 3.5) ? mix(0.62, 0.32, clamp(-gTDepth, 0.0, 1.0)) : vInfo.z < 1.5 ? 0.42 : 0.72;`)
+        // an edge polishes the bottom of its groove a little; a skid buffs the snow it scrapes
+        roughnessFactor = vInfo.z < 0.5 || (vInfo.z > 2.5 && vInfo.z < 3.5) ? mix(0.72, 0.56, clamp(-gTDepth, 0.0, 1.0)) : vInfo.z < 1.5 ? 0.6 : 0.8;`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         {
           float u = vInfo.x, v = vInfo.y, kind = vInfo.z;

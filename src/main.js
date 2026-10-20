@@ -1,7 +1,7 @@
 // Shredline: boot, game modes (The Run / Ski Park / Race the Cup), scoring, loop, HUD.
 import * as THREE from 'three';
 import { Environment, PRESETS, COND, WX_WEIGHT } from './sky.js';
-import { Terrain } from './terrain.js';
+import { Terrain, CLOUDS } from './terrain.js';
 import { Forest } from './trees.js';
 import { Props, trailDiff } from './props.js';
 import { Smash } from './smash.js';
@@ -10,7 +10,7 @@ import { Trail } from './trail.js';
 import { Rescue } from './rescue.js';
 import { Music } from './music.js';
 import { Tracks } from './tracks.js';
-import { Particles, Snowfall } from './particles.js';
+import { Particles, Snowfall, DiamondDust } from './particles.js';
 import { Skier } from './skier.js';
 import { FarRiders } from './farriders.js';
 import { batchStatic } from './batch.js';
@@ -159,6 +159,7 @@ class Game {
     this.myTracks = new Tracks(scene, 16000);
     this.particles = new Particles(scene);
     this.snowfall = new Snowfall(scene);
+    this.dust = new DiamondDust(scene);
     this.debris = new Debris(scene);
     this.world = { scene, forest: this.forest, tracks: this.tracks, myTracks: this.myTracks, particles: this.particles, race: false, raceStarted: false, skiers: this.skiers, arcade: true, glades: !!MAP.glades,
       smash: this.smash, netHit: (s, z, pen) => this.props.netHit(s, z, pen) };
@@ -307,12 +308,16 @@ class Game {
     const cond = COND[P0.cond] ?? COND.groomed;
     if (this.world) this.world.snow = cond;
     this.terrain?.setCondition?.(cond);
+    // fair-weather clouds throw their shadows across the mountain
+    CLOUDS.value.x = { bluebird: 0.45, spring: 0.38, arctic: 0.3, golden: 0.32, alpenglow: 0.2 }[this.tod] ?? 0;
     this.lights?.setActive(night);
     AG.uAgDirect.value = night ? 0 : 1;
     const dusk = { bluebird: 0.05, golden: 0.45, alpenglow: 1, storm: 0.35, night: 1, nightsnow: 1, whiteout: 0.4, flurries: 0.25, arctic: 0.15, spring: 0 }[this.tod] ?? 0;
     this.props.setDusk(dusk);
     this.snowfall.points.visible = !!P0.snow;
     this.snowfall.setAmount?.(P0.snow ?? 0);
+    // diamond dust: ice crystals in the air on the cold clear days
+    this.dust?.setAmount({ arctic: 1, bluebird: 0.7, golden: 0.5, night: 0.25, spring: 0.2 }[this.tod] ?? 0);
     const warm = { bluebird: [1.0, 1.0, 1.02], golden: [1.04, 1.0, 0.95], alpenglow: [1.05, 0.98, 1.0], storm: [0.98, 1.0, 1.03], night: [0.98, 1.0, 1.06], nightsnow: [0.97, 1.0, 1.07],
       spring: [1.02, 1.0, 0.98], arctic: [0.97, 1.0, 1.05], flurries: [0.99, 1.0, 1.03], whiteout: [0.98, 1.0, 1.02] }[this.tod] ?? [1, 1, 1];
     this.post.lens.uniforms.uWarm.value.set(...warm);
@@ -1721,6 +1726,7 @@ class Game {
     if (!this.paused && !replaying) {
       this.spray(dt);
       this.particles.update(dt, this.sunLit, this.env.sunDir, this.camera);
+      this.dust.update(dt, this.camera.position, this.env.sunDir, this.env.sun.color);
       this.debris.update(dt);
       this.snowfall.update(dt, cam.position);
     }
