@@ -22,7 +22,18 @@ export const AG = {
   // valley mist (an inversion layer): x density at its base, y base height, z 1 / thickness
   uValley: { value: new THREE.Vector3(0, 0, 1 / 120) },
   uValleyCol: { value: new THREE.Color(1, 1, 1) },
+  // the cartoon look (Cork7's): 1 = soft two-tone light, flatter surfaces, little gloss; 0 = the
+  // photographic look
+  uToon: { value: 1 },
 };
+
+// (the sun's light on a surface: a soft cel ramp, nearly full light as soon as it faces the sun
+// at all, then a quick soft fall into its own shade)
+const TOON_DIRECT = THREE.ShaderChunk.lights_physical_pars_fragment.replace(
+  'vec3 irradiance = dotNL * directLight.color;',
+  'vec3 irradiance = mix(dotNL, 0.16 * dotNL + 0.84 * smoothstep(0.0, 0.3, dotNL), uToon) * directLight.color;');
+// (bumps and grain from normal maps, softened)
+const TOON_NMAP = THREE.ShaderChunk.normal_fragment_maps.replace('mapN.xy *= normalScale;', 'mapN.xy *= normalScale * (1.0 - 0.65 * uToon);');
 
 const FOG_PARS_V = `varying vec3 vAgW; uniform mat4 uCamWorld;
 #ifdef USE_FOG
@@ -33,6 +44,7 @@ const FOG_V = `vAgW = (uCamWorld * mvPosition).xyz;
   vFogDepth = - mvPosition.z;
 #endif`;
 const FOG_PARS_F = `varying vec3 vAgW;
+uniform float uToon;
 uniform vec3 uSunDirA; uniform vec3 uSunFog; uniform vec3 uFogRGB; uniform vec3 uValley; uniform vec3 uValleyCol; uniform float uFogFall; uniform float uFogBase; uniform float uAgDirect; uniform vec2 uSunset;
 uniform sampler2D uShadeTex; uniform vec4 uShadeBox;
 float agSun = 1.0;
@@ -86,6 +98,9 @@ const LIGHT_F = `#include <lights_fragment_end>
     reflectedLight.directSpecular *= mix(1.0, agSh.r, uAgDirect);
     reflectedLight.indirectDiffuse *= mix(1.0, agSh.g, 0.85);
     reflectedLight.indirectSpecular *= agSh.g;
+    // (matte, like painted plastic: little shine)
+    reflectedLight.directSpecular *= 1.0 - 0.55 * uToon;
+    reflectedLight.indirectSpecular *= 1.0 - 0.4 * uToon;
   }`;
 
 export function patchMaterial(mat) {
@@ -99,6 +114,9 @@ export function patchMaterial(mat) {
     sh.vertexShader = sh.vertexShader.replace('#include <fog_pars_vertex>', FOG_PARS_V).replace('#include <fog_vertex>', FOG_V);
     sh.fragmentShader = sh.fragmentShader.replace('#include <fog_pars_fragment>', FOG_PARS_F).replace('#include <fog_fragment>', FOG_F);
     if (sh.fragmentShader.includes('#include <lights_fragment_end>')) sh.fragmentShader = sh.fragmentShader.replace('#include <lights_fragment_end>', LIGHT_F);
+    if (sh.fragmentShader.includes('uniform float uToon;')) {
+      sh.fragmentShader = sh.fragmentShader.replace('#include <lights_physical_pars_fragment>', TOON_DIRECT).replace('#include <normal_fragment_maps>', TOON_NMAP);
+    }
   };
   mat.customProgramCacheKey = () => 'ag|' + prevKey;
   mat.needsUpdate = true;

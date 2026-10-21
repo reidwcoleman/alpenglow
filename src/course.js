@@ -133,7 +133,9 @@ export const ROLLERS = MAP.park ? { z0: 1058, z1: 1382, dx: -58, ...(MAP.rollers
 export const PARK_RAILS = MAP.parkRails ?? [];
 const RUN_RAILS = MAP.runRails;
 export const RAILS = [...RUN_RAILS, ...PARK_RAILS].sort((a, b) => a.z - b.z);
-const RAMP_L = 3.4;
+// (Cork7's run-ins: 8.5 m of snow ramp up to the rail's height, flat across 3 m, rolling off
+// to nothing at 6.4 m wide, so you can line up and ride straight on)
+const RAMP_L = 8.5, RAMP_W = 1.6;
 for (const R of RAILS) R.hw = R.kind === 'box' ? 0.32 : R.kind === 'log' ? 0.17 : 0.045;
 
 function jumpProfile(u, J) {
@@ -167,7 +169,7 @@ const B0 = -300, BS = 8, BN = Math.ceil((FINISH_Z + 900 - B0) / BS);
 const FEATS = [
   ...JUMPS.map((J) => ({ z0: J.z, z1: J.z + J.len, k: 0, J })),
   ...(MAP.park ? [{ z0: ROLLERS.z0, z1: ROLLERS.z1, k: 1 }, { z0: PIPE.z0, z1: PIPE.z1, k: 2 }] : []),
-  ...RAILS.map((R) => ({ z0: R.z - RAMP_L, z1: R.z + 0.35, k: 3, R })),
+  ...RAILS.map((R) => ({ z0: R.z - RAMP_L, z1: R.z + 3, k: 3, R })),
 ];
 function bucketize(list) {
   const B = Array.from({ length: BN }, () => []);
@@ -201,10 +203,13 @@ export function parkAt(dx, z) {
       if (a > 0 && a < PIPE.lip + PIPE.deck + PIPE.outer) y += pipeProfile(a) * pipeWalls(z);
     } else {
       const R = f.R, u = z - R.z;
-      const lat = 1 - smoothstep(R.hw + 0.45, R.hw + 1.0, Math.abs(dx - R.dx));
+      const ad = Math.abs(dx - R.dx);
+      const lat = 1 - smoothstep(RAMP_W, RAMP_W * 2, ad);
       if (lat <= 0) continue;
       const top = R.h - 0.06;
-      y += lat * (u < 0 ? top * Math.pow(Math.max(0, (u + RAMP_L) / RAMP_L), 1.3) : top * Math.max(0, 1 - u / 0.35));
+      // (rises smoothly to the rail's start, then the snow rolls away under it over 3 m)
+      const t = Math.max(0, (u + RAMP_L) / RAMP_L);
+      y += lat * (u < 0 ? top * t * t * (3 - 2 * t) : top * (1 - smoothstep(0, 3, u)));
     }
   }
   return y;
@@ -214,7 +219,7 @@ export function parkAt(dx, z) {
 export const PARK_FEET = [
   ...JUMPS.map((J) => ({ dx0: J.dx - J.w / 2 - 3 - J.h, dx1: J.dx + J.w / 2 + 3 + J.h, z0: J.z - 3, z1: J.z + J.len + 3 })),
   ...(MAP.park ? [{ dx0: ROLLERS.dx - 10, dx1: ROLLERS.dx + 10, z0: ROLLERS.z0 - 3, z1: ROLLERS.z1 + 3 }, { dx0: PIPE.dx - 23, dx1: PIPE.dx + 23, z0: PIPE.z0 - 3, z1: PIPE.z1 + 3 }] : []),
-  ...RAILS.map((R) => ({ dx0: R.dx - 3, dx1: R.dx + 3, z0: R.z - RAMP_L - 3, z1: R.z + 3 })),
+  ...RAILS.map((R) => ({ dx0: R.dx - RAMP_W * 2 - 1.5, dx1: R.dx + RAMP_W * 2 + 1.5, z0: R.z - RAMP_L - 3, z1: R.z + 5 })),
 ];
 const FEET_B = bucketize(PARK_FEET.map((f) => ({ ...f, z0: f.z0 - 2, z1: f.z1 + 2, f })));
 function inFeet(dx, z) {

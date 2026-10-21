@@ -268,6 +268,8 @@ export function makeSnowMaterial(env) {
             float strata = 0.5 + 0.3 * sin(sy) + 0.2 * sin(sy * 2.7 + 1.3);
             rock *= 0.78 + 0.44 * strata;
             rock = mix(rock, rock * vec3(1.1, 0.97, 0.86), smoothstep(0.55, 0.8, nL.a) * 0.55);
+            // cartoon: the scan's grain melts into flat slate bands
+            rock = mix(rock, vec3(0.34, 0.37, 0.43) * (0.82 + 0.36 * strata), uToon * 0.75);
             gRockRough = texture2D(uRockR, q.xz).g;
             // the rock's own relief (used for the light too): snow stays on whatever of it faces up,
             // so the edge of a rock band breaks into snowy ledges and dusted knobs
@@ -351,7 +353,7 @@ export function makeSnowMaterial(env) {
           // the old grooves' walls
           g.x += clamp(gOldG * 0.012, -0.5, 0.5);
           nW = normalize(nW + vec3(g.x, 0.0, g.y) * 1.6);
-          if (gRockRelief > 0.01) nW = normalize(nW + gRockN * gRockRelief * 1.4);
+          if (gRockRelief > 0.01) nW = normalize(nW + gRockN * gRockRelief * 1.4 * (1.0 - 0.7 * uToon));
           gNW = nW;
           normal = normalize((viewMatrix * vec4(nW, 0.0)).xyz);
         }`)

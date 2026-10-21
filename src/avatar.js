@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 import { HAIR, KNIT } from './gear.js';
 import { LO } from './gfx.js';
+import { AG } from './atmos.js';
 
 const BASE = (import.meta.env?.BASE_URL ?? '/') + 'people/';
 // the textures at half size on the phone setting (tools/shrink_assets.py)
@@ -223,7 +224,7 @@ export function kitMaterial(kit, outfit, crowd = false) {
   };
   m.userData.u = u;
   m.onBeforeCompile = (sh) => {
-    Object.assign(sh.uniforms, u);
+    Object.assign(sh.uniforms, u, { uToonK: AG.uToon });
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>
 attribute float aPart; varying float vPart; varying vec3 vRest; uniform float uPuff; uniform vec2 uLmV, uFlap; uniform vec3 uSkull, uHatC, uHatR, uFootL, uFootR, uHandL, uHandR, uNeckP; uniform vec4 uGait;
@@ -299,7 +300,7 @@ vRest = position;
 }`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
-uniform sampler2D uMask; uniform vec3 uJacket, uPants, uGloves, uBoots, uJacket2, uPants2, uHandL, uHandR; uniform vec2 uLm, uPat; uniform float uPuff;
+uniform sampler2D uMask; uniform vec3 uJacket, uPants, uGloves, uBoots, uJacket2, uPants2, uHandL, uHandR; uniform vec2 uLm, uPat; uniform float uPuff; uniform float uToonK;
 uniform float uBlood, uStain; uniform vec4 uCut, uCut2, uCut3, uCut4;
 #ifdef CROWD
 #define JK vColor.rgb
@@ -321,7 +322,8 @@ float agN(vec3 x) {
 // a garment's print: 1 chest band, 2 camo, 3 tartan, 4 colour-block sleeves, 5 fade
 vec3 agPat(vec3 a, vec3 b, float pat, float part, vec3 p, vec2 lm) {
   if (pat < 0.5) return a;
-  if (pat < 1.5) { float y = (p.y - lm.x) / (lm.y - lm.x); return (part > 1.5 && part < 2.5 && y > 0.42 && y < 0.7) || (part > 3.5 && part < 4.5) ? b : a; }
+  // (Cork7's starter shell: one dark band round the chest, the sleeves the jacket's colour)
+  if (pat < 1.5) { float y = (p.y - lm.x) / (lm.y - lm.x); return part > 1.5 && part < 2.5 && y > 0.42 && y < 0.7 ? b : a; }
   if (pat < 2.5) { float n = agN(p * 9.0) * 0.65 + agN(p * 23.0) * 0.35; return n > 0.62 ? b : n > 0.5 ? mix(a, b, 0.5) : a; }
   if (pat < 3.5) {
     float sx = step(0.62, fract(p.x * 9.0)), sy = step(0.62, fract(p.y * 9.0));
@@ -566,11 +568,12 @@ vec3 agPat(vec3 a, vec3 b, float pat, float part, vec3 p, vec2 lm) {
       .replace('#include <lights_physical_fragment>', '#include <lights_physical_fragment>\n#ifdef USE_SHEEN\nmaterial.sheenColor = gSheen;\n#endif')
       .replace('#include <normal_fragment_maps>', THREE.ShaderChunk.normal_fragment_maps.replace(
         'vec3 mapN = texture2D( normalMap, vNormalMapUv ).xyz * 2.0 - 1.0;',
-        `vec3 mapN = vec3( ( gNS.xy * 2.0 - 1.0 ) * gNK, 0.0 );
+        `vec3 mapN = vec3( ( gNS.xy * 2.0 - 1.0 ) * gNK * ( 1.0 - 0.7 * uToonK ), 0.0 );
 mapN.z = sqrt( max( 0.0, 1.0 - dot( mapN.xy, mapN.xy ) ) );`) + `
 // the garment's seams and quilting, as a bump on top
 {
-  float hh = gH * 0.004;
+  // (cartoon: the seams and quilting stay, the fine crumple mostly goes)
+  float hh = gH * 0.004 * ( 1.0 - 0.6 * uToonK );
   vec3 dpx = dFdx( -vViewPosition ), dpy = dFdy( -vViewPosition );
   float hx = dFdx( hh ), hy = dFdy( hh );
   vec3 r1 = cross( dpy, normal ), r2 = cross( normal, dpx );

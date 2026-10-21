@@ -272,7 +272,7 @@ export class Park {
       const at = (back, side) => [R.a.x - R.dir.x * back + sx * side, R.a.z - R.dir.z * back + sz * side];
       // (finely sampled: they drape over the snow banked up at the rail's foot)
       add(ribbon(Array.from({ length: 17 }, (_, k) => at(e, -2 + k / 4)), 0.36, 0.05));
-      for (const s of [-1, 1]) add(ribbon(Array.from({ length: 13 }, (_, k) => at(6 - k * (6 - e) / 12, s * 2)), 0.25, 0.05));
+      for (const s of [-1, 1]) add(ribbon(Array.from({ length: 17 }, (_, k) => at(8.2 - k * (8.2 - e) / 16, s * 1.9)), 0.25, 0.05));
     }
     // pipe lips, both walls
     if (MAP.park) for (const s of [-1, 1]) {

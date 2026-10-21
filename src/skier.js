@@ -513,7 +513,7 @@ export class Skier {
       this.onGround = false; this.airTime = 0; this.spin = 0; this.pitch = 0; this.flipAcc = 0; this.flipVel = 0;
       this.trickType = null; this.flipAxis.set(1, 0, 0); this.flipDir = 0; this.grabs = {}; this.butter = null;
       this.grabTime = 0; this.maxAirY = this.pos.y - gy; this.takeoffZ = this.pos.z; this.popped = pop > 0 || launched === 'pop';
-      this.shiftyT = 0; this.daffyT = 0; this.assist = null; this.tLand = 9; this.landProbe = 0; this.magnet = null;
+      this.shiftyT = 0; this.daffyT = 0; this.assist = null; this.tLand = 9; this.landProbe = 0; this.magnet = null; this.guide = null;
       this.offKicker = !!this.lipAhead(-1.6, 0.6);
       // an armed quick trick goes on a real jump, not every little hop
       this.auto = null;
@@ -680,6 +680,8 @@ export class Skier {
       if (this.airTime > 0.22) this.jumpCharge = 0;
       // the body has inertia: spins build up and wind down instead of switching on and off
       const maxR = 7.4 * (c.grab ? 1.12 : 1) * (this.popped ? 1.06 : 1);
+      // (let go of everything and the trick carries itself round to a clean landing)
+      if (this.strict && !this.auto && !this.pipeAir) this.landGuide(dt, c);
       if (this.assist) { /* the landing assist has the rotation now */ }
       else if (this.strict && this.auto && !this.auto.turn) { /* a combo is flying the spin */ }
       else if (this.strict) {
@@ -691,8 +693,11 @@ export class Skier {
         const g = C7.spin0 + (C7.spin1 + (C7.spinGrab - C7.spin1) * this.airGrab - C7.spin0) * this.spinTight;
         this.c7G = g;
         const tgt = -s * g;
-        this.spinVel = ease(this.spinVel, tgt, s ? (tgt * this.spinVel < 0 ? C7.spinRev : C7.spinUp) : C7.spinDown, dt);
-        if (!s && Math.abs(this.spinVel) < 0.015) this.spinVel = 0;
+        if (!s && this.guide) { /* the guide has the spin */ }
+        else {
+          this.spinVel = ease(this.spinVel, tgt, s ? (tgt * this.spinVel < 0 ? C7.spinRev : C7.spinUp) : C7.spinDown, dt);
+          if (!s && Math.abs(this.spinVel) < 0.015) this.spinVel = 0;
+        }
       } else if (Math.abs(c.steer) > 0.15) {
         const tgt = -Math.sign(c.steer) * maxR * Math.min(1, Math.abs(c.steer) * 1.2);
         this.spinVel += clamp(tgt - this.spinVel, -dt * 30, dt * 30);
@@ -743,7 +748,8 @@ export class Skier {
         const r = (this.c7G ?? C7.spin0) * T.rate / TRICKS.backflip.rate;
         const on = held && Math.sign(held) === Math.sign(this.flipDir);
         const want = on ? this.flipDir * r : 0;
-        this.flipVel = ease(this.flipVel, want, on ? (want * this.flipVel < 0 ? 3.2 : C7.spinUp) : C7.spinDown, dt);
+        if (!on && this.guide?.pitch != null) { /* the guide has the flip */ }
+        else this.flipVel = ease(this.flipVel, want, on ? (want * this.flipVel < 0 ? 3.2 : C7.spinUp) : C7.spinDown, dt);
         this.pitch += this.flipVel * dt;
         this.flipAcc += this.flipVel * dt;
       } else if (held && Math.sign(held) === Math.sign(this.flipDir)) {
@@ -788,7 +794,7 @@ export class Skier {
       if (c.down) this.daffyT += dt;
     }
     if (arc && !this.strict) this.landAssist(dt);
-    else if (this.strict) this.landMagnet(dt);
+    else if (this.strict && !this.guide) this.landMagnet(dt);
     if (this.pipeAir) {
       // never drift out over the deck
       const off = pipeAt(this.pos.x, this.pos.z);
@@ -941,6 +947,45 @@ export class Skier {
       if (y <= heightAt(x, z)) break;
     }
     this.tLand = t;
+  }
+
+  // Cork7's landing guide: let go of the keys in the air and the trick doesn't stop dead where it
+  // is, it keeps turning the way it was going to the next clean landing (the next half spin, the
+  // next whole flip) and settles there in time for the snow. Only when the air left is too short
+  // to get round does it turn back to the nearest one instead. Holding a key again hands the
+  // rotation straight back.
+  landGuide(dt, c) {
+    if (this.airTime < 0.1) return;
+    if (Math.abs(c.steer) > 0.06 || c.flip || c.roll) { this.guide = null; return; }
+    this.probeLand(dt);
+    const tl = Math.max(0.05, this.tLand - 0.08);
+    const hor = Math.atan2(this.vel.x, this.vel.z);
+    if (!this.guide) {
+      // (a little way past one, it goes on round to the next)
+      const pick = (f, vel, unit, past) => {
+        const near = Math.round(f);
+        if (Math.abs(vel) < 0.8) return near;
+        // (really turning, it commits sooner)
+        const pp = Math.abs(vel) > 3 ? past * 0.5 : past;
+        const ahead = vel > 0 ? Math.ceil(f - pp) : Math.floor(f + pp);
+        // (only if there's the air left to get there at a fair lick)
+        return Math.abs(ahead - f) * unit / tl < 15 ? ahead : near;
+      };
+      const spin = pick((this.heading - hor) / Math.PI, this.spinVel, Math.PI, 0.22);
+      const pitch = this.trickType ? pick(this.pitch / TAU, this.flipVel, TAU, 0.1) * TAU : null;
+      this.guide = { spin, pitch };
+    }
+    const G = this.guide;
+    // carry on at the speed it's going (never slower than an easy turn), quicker if the air is
+    // running out, and ease into the landing angle
+    const drive = (d, vel, minV, acc) => {
+      const need = Math.abs(d) / tl;
+      const cruise = clamp(Math.max(Math.min(Math.abs(vel), 7.5), minV, need * 1.2), 0, 16);
+      const want = Math.sign(d) * Math.min(cruise, Math.sqrt(2 * acc * Math.abs(d)));
+      return Math.abs(d) < 0.004 ? 0 : vel + clamp(want - vel, -dt * 40, dt * 40);
+    };
+    this.spinVel = drive(G.spin * Math.PI + hor - this.heading, this.spinVel, 3.2, 24);
+    if (G.pitch != null) this.flipVel = drive(G.pitch - this.pitch, this.flipVel, 3.6, 26);
   }
 
   // The player's near misses: in the last half second, a trick that's nearly round (the skis
@@ -1312,7 +1357,8 @@ export class Skier {
     for (const R of RAILS) {
       if (p.z < R.a.z - 1 || p.z > R.a.z + R.L + 1) continue;
       railAt(R, p.x, p.z, _r);
-      if (_r.s < 0.05 || _r.s > R.L - 0.4 || Math.abs(_r.lat) > R.hw + 0.32) continue;
+      // (the player's catch is wider, Cork7-style: ride up the ramp close to the line and you're on)
+      if (_r.s < 0.05 || _r.s > R.L - 0.4 || Math.abs(_r.lat) > R.hw + (this.strict ? 0.6 : 0.32)) continue;
       const dy = p.y - _r.y;
       if (dy < -0.32 || dy > 0.5) continue;
       const vs = this.vel.x * R.dir.x + this.vel.z * R.dir.z;
@@ -1401,7 +1447,7 @@ export class Skier {
     const g = this.grind;
     this.grind = null; this.grindCool = 0.35;
     const dist = Math.max(0, g.s - g.d0);
-    this.onGround = false; this.airTime = 0.13; this.spin = 0; this.pitch = 0; this.flipAcc = 0; this.flipVel = 0; this.grabTime = 0;
+    this.onGround = false; this.airTime = 0.13; this.spin = 0; this.pitch = 0; this.flipAcc = 0; this.flipVel = 0; this.grabTime = 0; this.guide = null;
     this.takeoffY = this.maxY = this.pos.y; this.maxAirY = 0; this.takeoffX = this.pos.x; this.takeoffZ = this.pos.z;
     this.takeoffSwitch = this.board ? !!this.boardSwitch : Math.abs(wrapAngle(this.heading - g.R.yaw)) > Math.PI / 2;
     this.fromRail = true;
@@ -1563,7 +1609,8 @@ export class Skier {
     if (back && Math.abs(c.steer) > 0.3) this.lookSide = -Math.sign(c.steer);
     this.backK = (this.backK ?? 0) + ((back ? 1 : 0) - (this.backK ?? 0)) * Math.min(1, vdt * 6);
     const lookS = (this.lookSide ?? 1) * this.backK;
-    let crouch = 0.18 + Math.abs(this.lean) * (this.board ? 0.26 : 0.12) + this.compress * 0.35 + gCrouch * (this.board ? 1 : 0.7) + this.jumpCharge * 0.5 + (c.brake > 0 ? 0.25 : 0) - this.spring * 1.6;
+    // (the player stands tall like a Cork7 rider; the computer riders sit lower)
+    let crouch = (this.strict ? 0.07 : 0.18) + Math.abs(this.lean) * (this.board ? 0.26 : 0.12) + this.compress * 0.35 + gCrouch * (this.board ? 1 : 0.7) + this.jumpCharge * 0.5 + (c.brake > 0 ? 0.25 : 0) - this.spring * 1.6;
     if (crashed) crouch = this.crashPhase === 'up' ? 0.9 * this.lie + 0.3 : 0.55;
     m.pose({
       // (the body's tilt eases off past ~40 degrees: angulation takes the rest)

@@ -8,6 +8,7 @@ import { Smash } from './smash.js';
 import { Injuries } from './injury.js';
 import { Trail } from './trail.js';
 import { Rescue } from './rescue.js';
+import { DropPicker } from './drop.js';
 import { Music } from './music.js';
 import { Tracks } from './tracks.js';
 import { Particles, Snowfall, DiamondDust } from './particles.js';
@@ -234,6 +235,7 @@ class Game {
     addEventListener('resize', () => this.resize());
     this.bindUI();
     this.replay = new Replay(this);
+    this.drop = new DropPicker(this);
     this.clock = new THREE.Timer();
     this.renderer.setAnimationLoop(() => this.frame());
     // the loading screen goes once there's something to see: straight into a run, after its
@@ -242,7 +244,11 @@ class Game {
     const mode = params.get('mode');
     if (params.get('event') && EVENT[params.get('event')]) this.startEvent(params.get('event'), Math.max(0, Math.min(2, Number(params.get('tier') ?? 1))));
     else if (params.get('menu') === '0' && mode) this.start(mode === 'race' ? 'race' : mode === 'park' ? 'park' : 'run');
-    else this.showMenu();
+    else {
+      this.showMenu();
+      // (just switched park from the menu: straight on to where to drop in)
+      if (params.get('drop') === 'run' || params.get('drop') === 'park') this.drop.open(params.get('drop'));
+    }
     // ?cwatch=<replay id>: a run from the global leaderboard
     if (params.get('cwatch')) this.menu.watchCloud(params.get('cwatch'), PARK_ID);
     // ?watch=<id>: a saved run from the Replays tab
@@ -407,6 +413,15 @@ class Game {
       b.textContent = label; b.className = k === store.get('gore', 'on') ? 'on' : '';
       b.onclick = () => { store.set('gore', k); [...gore.children].forEach((c) => c.classList.toggle('on', c === b)); };
       gore.appendChild(b);
+    }
+    // the look: Cork7's cartoon shading (default) or the photographic one
+    const look = $('look');
+    AG.uToon.value = store.get('look', 'cartoon') === 'cartoon' ? 1 : 0;
+    for (const [k, label] of [['cartoon', 'Cartoon'], ['real', 'Realistic']]) {
+      const b = document.createElement('button');
+      b.textContent = label; b.className = k === store.get('look', 'cartoon') ? 'on' : '';
+      b.onclick = () => { store.set('look', k); AG.uToon.value = k === 'cartoon' ? 1 : 0; [...look.children].forEach((c) => c.classList.toggle('on', c === b)); };
+      look.appendChild(b);
     }
     const wx = $('wx');
     for (const [k, label] of [['change', 'New every run'], ['fixed', 'Keep what I pick']]) {
@@ -676,13 +691,15 @@ class Game {
     if (this.selPark !== 'yard') mode = 'run';
     if (this.selPark !== PARK_ID) {
       store.set('park', this.selPark);
-      const q = new URLSearchParams({ park: this.selPark, menu: '0', mode, tod: this.tod });
+      // (a race starts straight away; otherwise the new park opens on the drop picker)
+      const q = new URLSearchParams(mode === 'race' ? { park: this.selPark, menu: '0', mode, tod: this.tod } : { park: this.selPark, drop: mode, tod: this.tod });
       if (this.who === 'multi') q.set('room', this.roomName || 'public');
       location.search = q.toString();
       return;
     }
     this.closeParks();
-    this.start(mode);
+    // pick where to drop in (a race always starts in the gate)
+    if (mode === 'race') this.start(mode); else this.drop.open(mode);
   }
 
   // ---------------- multiplayer ----------------
@@ -1251,6 +1268,15 @@ class Game {
       this.player.ai = new AIController(this.player, mode === 'race' ? 'racer' : 'park', this.rnd, this.world); this.player.ai.skill = 0.95;
       if (params.get('line')) { this.player.ai.line = params.get('line'); this.parkSpawn(this.player, params.get('line')); }
     }
+    // where they picked to drop in (kept for a restart)
+    const drop = opts.drop === undefined ? (opts.keepWeather ? this.curDrop : null) : opts.drop;
+    this.curDrop = drop;
+    if (drop && !drop.top) {
+      if (drop.line) this.parkSpawn(this.player, drop.line);
+      else this.player.place(centerX(drop.z) + drop.dx, drop.z, null, 4);
+      this.terrain.warm?.(this.player.pos.x, this.player.pos.z, 400);
+      if (mode !== 'race' && !this.event) this.say('DROP IN', '', drop.name, '', 2600);
+    }
     const z = Number(params.get('z'));
     if (z) this.player.place(centerX(z) + Number(params.get('x') ?? 0), z, null, Number(params.get('v') ?? 15));
     if (params.get('cam')) while (this.rig.mode !== params.get('cam')) this.cycleCam();
@@ -1743,14 +1769,15 @@ class Game {
       };
     }
     const typing = document.activeElement?.tagName === 'INPUT';
-    if (this.state === 'menu' && (inp.hit('Escape') || inp.padHit?.[9])) {
+    if (this.drop.on) { this.drop.keys(inp); inp.endFrame?.(); }
+    else if (this.state === 'menu' && (inp.hit('Escape') || inp.padHit?.[9])) {
       // Esc on the front page: close whatever's open, or open the menu
       const open = ['account', 'howto', 'credits', 'settings', 'parks'].find((id) => !$(id).classList.contains('hidden'));
       if (open === 'parks') this.closeParks(); else if (open) $(open).classList.add('hidden'); else $('settings').classList.remove('hidden');
     } else if (inp.hit('Escape') || inp.hit('KeyP') || inp.padHit?.[9]) this.setPaused(!this.paused);
     if (inp.hit('KeyM')) { this.setMuted(!this.audio.muted); this.menu?.sound(); }
     if (inp.hit('KeyC') || inp.padHit?.[12]) this.cycleCam();
-    if (inp.hit('Enter') || inp.padHit?.[0]) {
+    if (!this.drop.on && (inp.hit('Enter') || inp.padHit?.[0])) {
       if (this.state === 'menu' && !typing && ['settings', 'howto', 'account', 'credits'].every((id) => $(id).classList.contains('hidden'))) this.go();
       else if (this.state === 'results' && !$('results').classList.contains('hidden')) this.start(this.mode);
     }
@@ -1896,7 +1923,8 @@ class Game {
     this.audio.update(this.state === 'menu' ? null : this.player, nearFinish * (0.25 + (this.cheerT > 0 ? 0.75 : 0)));
     if (this.state !== 'menu' && this.player && !replaying) this.hud(dt);
     const sp = replaying ? this.replay.ghost.speed : this.player && this.state !== 'menu' ? this.player.speed : 0;
-    this.post.lens.uniforms.uSpeed.value = smoothstep(14, 40, sp) * (this.rig.mode === 'tv' ? 0 : 1);
+    // (only a whisper of speed blur: Cork7 keeps the picture calm and sharp at any speed)
+    this.post.lens.uniforms.uSpeed.value = smoothstep(20, 45, sp) * 0.2 * (this.rig.mode === 'tv' ? 0 : 1);
     this.post.lens.uniforms.uFlash.value *= 0.9;
     cam.updateMatrixWorld();
     AG.uCamWorld.value.copy(cam.matrixWorld);

@@ -24,7 +24,19 @@ export class CameraRig {
     return this.mode;
   }
 
-  bump(k) { this.shake = Math.max(this.shake, k); }
+  bump(k) { this.shake = Math.max(this.shake, k * 0.6); }
+
+  // where and when the rider comes down (Cork7's own probe: ballistic, then bisected onto the snow)
+  predictLand(s) {
+    const p = s.pos, v = s.vel, g = 0.5 * (s.airG ?? 9.81);
+    let a = 0, b = 0.12;
+    for (; b < 7; b += 0.12) { if (p.y + v.y * b - g * b * b <= heightAt(p.x + v.x * b, p.z + v.z * b)) break; a = b; }
+    for (let i = 0; i < 6; i++) { const m = (a + b) / 2; if (p.y + v.y * m - g * m * m > heightAt(p.x + v.x * m, p.z + v.z * m)) a = m; else b = m; }
+    this.td = this.td ?? new THREE.Vector3();
+    this.td.set(p.x + v.x * b, 0, p.z + v.z * b);
+    this.td.y = heightAt(this.td.x, this.td.z);
+    this.tdIn = b;
+  }
 
   update(dt, s) {
     this.t += dt;
@@ -38,10 +50,17 @@ export class CameraRig {
     let fov = 62 + clamp(sp - 8, 0, 30) * 0.55;
     const tgt = new THREE.Vector3();
     const look = new THREE.Vector3();
-    // big airs: the camera eases out and up to frame the whole trick and the landing
-    const airT = s.onGround || s.grind || s.crash > 0 ? 0 : s.airTime;
-    const big = smoothstep(0.25, 1.1, airT) * smoothstep(1.2, 5, s.maxAirY ?? 0);
-    this.pull = (this.pull ?? 0) + (big - (this.pull ?? 0)) * Math.min(1, dt * (big > (this.pull ?? 0) ? 1.6 : 1.1));
+    // Cork7's trick cam: an air that will last more than ~1.3 s eases the camera back, up and out
+    // to the side so the whole trick reads, aimed partway toward where it comes down, and hands
+    // back to the chase in the last third of a second
+    const inAir = !s.onGround && !s.grind && s.crash <= 0;
+    let big = 0;
+    if (inAir) {
+      this.predictLand(s);
+      const tot = s.airTime + this.tdIn;
+      big = clamp((tot - 1.3) / 0.7, 0, 1) * clamp(this.tdIn / 0.35, 0, 1);
+    }
+    this.pull = (this.pull ?? 0) + (big - (this.pull ?? 0)) * (1 - Math.exp(-(big > (this.pull ?? 0) ? 3 : 5) * dt));
     if (this.mode === 'chase') {
       // Cork7's rig: 4.3 m back and 1.3 m up on an arm that lies back along the slope, a little
       // to the side, a 58 degree lens that opens 8 more toward 38 m/s, the view tipped down the
@@ -52,21 +71,37 @@ export class CameraRig {
       this.grade = (this.grade ?? gr) + (gr - (this.grade ?? gr)) * Math.min(1, dt * (s.onGround || s.grind ? 4 : 0.8));
       const portrait = clamp(1.2 - cam.aspect, 0, 0.7);
       const b = (4.3 + portrait * 1.6) * (1 + 0.5 * pull), hh = 1.3 + 1.6 * pull;
+      // (the rider's height on a spring: rollers and bumps don't jolt the view)
+      const ry = s.onGround ? s.pos.y : s.pos.y + (this.airOff ?? 0);
+      if (this.snap || this.ry == null) { this.ry = ry; this.ryV = 0; }
+      else if (inAir) { this.ry = s.pos.y; this.ryV = s.vel.y; }
+      else {
+        const T = 0.12, w = 2 / T, x = w * dt, e = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
+        const ch = this.ry - ry, tmp = (this.ryV + w * ch) * dt;
+        this.ryV = (this.ryV - w * tmp) * e;
+        this.ry = clamp(ry + (ch + tmp) * e, s.pos.y - 0.5, s.pos.y + 0.5);
+      }
       const C = Math.atan(clamp(Math.min(0, this.grade), -0.9, 0));
       const E = b * Math.cos(C) + hh * Math.sin(C), D = hh * Math.cos(C) - b * Math.sin(C);
       // through a carve the camera swings out to the side of the turn
       this.swing = (this.swing ?? 0) + ((s.onGround ? -s.lean * 0.8 : 0) - (this.swing ?? 0)) * Math.min(1, dt * 2.5);
       const side = new THREE.Vector3(this.dir.z, 0, -this.dir.x);
-      tgt.copy(s.pos).addScaledVector(this.dir, -E).addScaledVector(side, 0.42 + this.swing);
+      tgt.copy(s.pos).addScaledVector(this.dir, -E).addScaledVector(side, 0.42 + this.swing + 1.4 * pull);
       // (kept 0.6 m over the snow all along the arm)
       let floor = heightAt(tgt.x, tgt.z);
       for (let k = 1; k <= 8; k++) floor = Math.max(floor, heightAt(tgt.x + this.dir.x * E * k / 8, tgt.z + this.dir.z * E * k / 8));
-      tgt.y = Math.max(s.pos.y + D, floor + 0.6);
+      tgt.y = Math.max(this.ry + D, floor + 0.6);
       fov = 58 + 8 * (clamp(sp, 0, 38) / 38) ** 2 + 18 * portrait + 6 * pull;
       const hd = Math.max(0.5, Math.hypot(x0 - tgt.x, z0 - tgt.z)), tv = Math.tan((fov * Math.PI) / 360);
       const riderA = Math.atan2(s.pos.y + 1 - tgt.y, hd);
       const slopeA = Math.atan(clamp(Math.min(0, this.grade), -0.9, 0) + clamp(Math.max(0, this.grade), 0, 0.8) * 0.6);
-      const tilt = clamp(slopeA, riderA - Math.atan(tv * 0.33), riderA + Math.atan(tv * 0.47));
+      let aim = slopeA;
+      if (pull > 0) {
+        // (aimed a third of the way to the landing)
+        const T = this.td, ax = x0 + (T.x - x0) * 0.35, az = z0 + (T.z - z0) * 0.35, ay = s.pos.y + 1 + (T.y - s.pos.y - 1) * 0.35;
+        aim += (Math.atan2(ay - tgt.y, Math.max(0.5, Math.hypot(ax - tgt.x, az - tgt.z))) - aim) * pull;
+      }
+      const tilt = clamp(aim, riderA - Math.atan(tv * 0.33), riderA + Math.atan(tv * 0.47));
       look.copy(tgt).addScaledVector(this.dir, 12);
       look.y = tgt.y + Math.tan(tilt) * 12;
     } else if (this.mode === 'action') {
@@ -127,7 +162,8 @@ export class CameraRig {
     s.model.hideHead?.(this.mode === 'helmet' && s.crash <= 0);
     // speed buzz + impact shake
     this.shake = Math.max(0, this.shake - dt * 2.2);
-    const buzz = smoothstep(18, 40, sp) * 0.012 * (s.onGround ? 1 : 0.2) + this.shake * 0.12;
+    // (Cork7 never rattles the view at speed: it stays calm however fast you go)
+    const buzz = this.shake * 0.12;
     if (buzz > 0) {
       cam.position.x += (Math.sin(this.t * 47) + Math.sin(this.t * 31)) * buzz;
       cam.position.y += (Math.sin(this.t * 53) + Math.sin(this.t * 23)) * buzz;

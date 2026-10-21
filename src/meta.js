@@ -30,7 +30,7 @@ export const ITEMS = [
   I('p-coal', 'pants', 'Coal', 'free', 0, 0x1b1d24), I('p-navy', 'pants', 'Navy', 'free', 0, 0x1f2f4a), I('p-stone', 'pants', 'Stone', 'free', 0, 0x8a8478),
   I('h-white', 'head', 'White Lid', 'free', 0, 0xf4f4f4, null, 0, { helmet: true }), I('h-black', 'head', 'Black Lid', 'free', 0, 0x15161a, null, 0, { helmet: true, fin: 1 }),
   I('h-red', 'head', 'Red Lid', 'free', 0, 0xd8342c, null, 0, { helmet: true }),
-  I('g-amber', 'goggles', 'Amber', 'free', 0, 0xff8a1e), I('g-sky', 'goggles', 'Sky', 'free', 0, 0x2aa8ff),
+  I('g-amber', 'goggles', 'Amber', 'free', 0, 0xff8a1e), I('g-sky', 'goggles', 'Sky', 'free', 0, 0x2aa8ff), I('g-smoke', 'goggles', 'Smoke', 'free', 0, 0x8e9fb8),
   I('s-white', 'skis', 'Whiteout', 'free', 0, 0xffffff, 0x15161a, 0, { design: 'stripe' }), I('s-black', 'skis', 'Blackout', 'free', 0, 0x111111, 0x8a8f99, 0, { design: 'logo' }),
   I('s-red', 'skis', 'Race Red', 'free', 0, 0xe63946, 0xffffff, 0, { design: 'tip' }),
   I('d-white', 'deck', 'Blank', 'free', 0, 0xffffff, 0x15161a, 0, { design: 'logo' }), I('d-black', 'deck', 'Shadow', 'free', 0, 0x111111, 0x8a8f99, 0, { design: 'stripe' }),
@@ -202,7 +202,7 @@ export const SETS = [
 ].map((s) => ({ ...s, price: Math.round(s.items.reduce((a, id) => a + (ITEM[id]?.price ?? 0), 0) * 0.7 / 50) * 50 }));
 
 // ---------------------------------------------------------------- the profile
-const KIT0 = { rider: 'r-kai', jacket: 'j-tealband', pants: 'p-slate', head: 'h-black', goggles: 'g-sky', skis: 's-red', deck: 'd-white', gloves: 'gl-black', poles: 'po-alu', trail: 't-none' };
+const KIT0 = { rider: 'r-kai', jacket: 'j-tealband', pants: 'p-slate', head: 'h-black', goggles: 'g-smoke', skis: 's-red', deck: 'd-white', gloves: 'gl-black', poles: 'po-alu', trail: 't-none' };
 export class Meta {
   constructor() {
     this.load();
@@ -226,6 +226,12 @@ export class Meta {
       const K = this.kit;
       if (K.jacket === 'j-ember' && K.pants === 'p-coal' && K.head === 'h-white' && K.goggles === 'g-amber') Object.assign(K, { jacket: KIT0.jacket, pants: KIT0.pants, head: KIT0.head, goggles: KIT0.goggles });
       store.set('kit7', '1');
+    }
+    // (once more: the Cork7 rider's smoke lenses instead of the blue ones)
+    if (store.get('kit8', '0') !== '1') {
+      const K = this.kit;
+      if (K.jacket === KIT0.jacket && K.goggles === 'g-sky') K.goggles = 'g-smoke';
+      store.set('kit8', '1');
     }
     this.day = store.json('day', { d: '', xp: 0, done: false });
     this.gold = store.get('gold', '0') === '1';

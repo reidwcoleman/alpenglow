@@ -56,10 +56,11 @@ export class Audio {
     const sp = s ? s.speed : 0;
     const air = s && !s.onGround;
     const ramp = (p, v) => { if (Number.isFinite(v)) p.setTargetAtTime(v, t, 0.06); };
-    const w = Math.min(1, sp / 32);
-    ramp(this.wind.g.gain, 0.04 + w * w * 0.75);
-    ramp(this.wind.filt.frequency, 280 + sp * 22);
-    ramp(this.windHi.g.gain, w * w * 0.18);
+    // (a soft rush rather than a roar: Cork7 sounds as calm at 150 km/h as at 50)
+    const w = Math.min(1, sp / 40);
+    ramp(this.wind.g.gain, 0.03 + w * w * 0.3);
+    ramp(this.wind.filt.frequency, 260 + sp * 11);
+    ramp(this.windHi.g.gain, w * w * 0.05);
     const grounded = s && s.onGround && s.crash <= 0 ? 1 : 0;
     const carve = grounded * Math.min(1, Math.abs(s ? s.lean : 0) * 1.4) * Math.min(1, sp / 15);
     ramp(this.carve.g.gain, carve * 0.35 + grounded * Math.min(1, sp / 25) * 0.06);
