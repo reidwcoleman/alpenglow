@@ -8,7 +8,7 @@ const ctx = await browser.newContext(phone ? { viewport: { width: 844, height: 3
 const page = await ctx.newPage();
 const cdp = await ctx.newCDPSession(page);
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
-await page.goto(`${process.env.URL ?? 'http://127.0.0.1:${process.env.PORT ?? 5260}/'}?menu=0&mode=${process.env.MODE ?? 'run'}&auto=1${process.env.Q ?? ''}`, { waitUntil: 'domcontentloaded' });
+await page.goto(`${process.env.URL ?? `http://127.0.0.1:${process.env.PORT ?? 5260}/`}?menu=0&mode=${process.env.MODE ?? 'run'}&auto=1${process.env.Q ?? ''}`, { waitUntil: 'domcontentloaded' });
 await page.waitForFunction(() => window.__ready === true, null, { timeout: 300000 });
 if (process.env.CPU) await cdp.send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.CPU) });
 await page.waitForTimeout(3000);
