@@ -26,6 +26,7 @@ export const ITEMS = [
   I('j-mustard', 'jacket', 'Mustard', 'free', 0, 0xf2b705), I('j-glacier', 'jacket', 'Glacier', 'free', 0, 0x2a7de1),
   I('j-pine', 'jacket', 'Pine', 'free', 0, 0x18a868), I('j-violet', 'jacket', 'Violet', 'free', 0, 0x8e3fd1),
   I('j-flamingo', 'jacket', 'Flamingo', 'free', 0, 0xff4f8b), I('j-chalk', 'jacket', 'Chalk', 'free', 0, 0xf4f4f4),
+  I('j-tealband', 'jacket', 'Teal Band', 'free', 0, 0x2e8e98, 0x1c2128, 1), I('p-slate', 'pants', 'Slate', 'free', 0, 0x3a4352),
   I('p-coal', 'pants', 'Coal', 'free', 0, 0x1b1d24), I('p-navy', 'pants', 'Navy', 'free', 0, 0x1f2f4a), I('p-stone', 'pants', 'Stone', 'free', 0, 0x8a8478),
   I('h-white', 'head', 'White Lid', 'free', 0, 0xf4f4f4, null, 0, { helmet: true }), I('h-black', 'head', 'Black Lid', 'free', 0, 0x15161a, null, 0, { helmet: true, fin: 1 }),
   I('h-red', 'head', 'Red Lid', 'free', 0, 0xd8342c, null, 0, { helmet: true }),
@@ -201,7 +202,7 @@ export const SETS = [
 ].map((s) => ({ ...s, price: Math.round(s.items.reduce((a, id) => a + (ITEM[id]?.price ?? 0), 0) * 0.7 / 50) * 50 }));
 
 // ---------------------------------------------------------------- the profile
-const KIT0 = { rider: 'r-kai', jacket: 'j-ember', pants: 'p-coal', head: 'h-white', goggles: 'g-amber', skis: 's-red', deck: 'd-white', gloves: 'gl-black', poles: 'po-alu', trail: 't-none' };
+const KIT0 = { rider: 'r-kai', jacket: 'j-tealband', pants: 'p-slate', head: 'h-black', goggles: 'g-sky', skis: 's-red', deck: 'd-white', gloves: 'gl-black', poles: 'po-alu', trail: 't-none' };
 export class Meta {
   constructor() {
     this.load();
@@ -219,7 +220,13 @@ export class Meta {
     this.rev = Number(store.get('rev', '0'));
     const old = Number(store.get('jacket', '0'));
     const oldJ = ITEMS.find((x) => x.cat === 'jacket' && x.r === 'free' && x.c === old);
-    this.kit = { ...KIT0, jacket: oldJ?.id ?? 'j-ember', ...store.json('kit', {}) };
+    this.kit = { ...KIT0, ...(oldJ ? { jacket: oldJ.id } : {}), ...store.json('kit', {}) };
+    // (once: riders still in the old starter kit move to the new one)
+    if (store.get('kit7', '0') !== '1') {
+      const K = this.kit;
+      if (K.jacket === 'j-ember' && K.pants === 'p-coal' && K.head === 'h-white' && K.goggles === 'g-amber') Object.assign(K, { jacket: KIT0.jacket, pants: KIT0.pants, head: KIT0.head, goggles: KIT0.goggles });
+      store.set('kit7', '1');
+    }
     this.day = store.json('day', { d: '', xp: 0, done: false });
     this.gold = store.get('gold', '0') === '1';
     this.fix();
@@ -411,9 +418,10 @@ export class Meta {
     const o = { ...base, jacket: j.c, jacket2: j.c2 ?? j.c, jpat: j.pat, pants: p.c, pants2: p.c2 ?? p.c, ppat: p.pat,
       goggles: gg.c, goggles2: gg.c2 ?? 0x16171c, skis: sk.c, skis2: sk.c2 ?? 0xffffff, skiDesign: sk.design ?? 'logo',
       deck: dk.c, deck2: dk.c2 ?? 0x15161a, deckDesign: dk.design ?? 'logo', gloves: gl.c, gloves2: gl.c2 ?? gl.c, poles: k('poles').c,
-      board: !!board, skin: r.c, avatar: r.body, male: true, trail: k('trail').fx === 'snow' ? null : { c: k('trail').c, c2: k('trail').c2, fx: k('trail').fx } };
+      board: !!board, skin: r.c, avatar: r.body, male: true, nopack: true, trail: k('trail').fx === 'snow' ? null : { c: k('trail').c, c2: k('trail').c2, fx: k('trail').fx } };
     if (h.beanie) { o.beanie = h.c; o.pom = !!h.pom; } else { o.beanie = 0; o.helmet = h.c; o.helmet2 = h.c2 ?? null; o.helmetFin = h.fin ?? 0; }
-    if (o.board && o.boots === 0xf0f0f0) o.boots = 0x2a2d35;
+    // (light grey ski boots under the kit, dark ones with a board)
+    o.boots = o.board ? 0x2a2d35 : 0xdfe2e7;
     return o;
   }
 

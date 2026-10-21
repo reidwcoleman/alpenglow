@@ -235,7 +235,8 @@ export class SkierModel {
       });
     }
     // a freeride pack on the back (not on a race suit), and the jacket's hood bunched behind the neck
-    if (!outfit.racer) {
+    // (the player rides without one: a clean back, the jacket's colours on show)
+    if (!outfit.racer && !outfit.nopack) {
       const packM = M(outfit.pack ?? 0x2b2f36, 0.82);
       const pack = new THREE.Group();
       // (pack frame: +z against the back, -z the outer face, +y up)
@@ -260,6 +261,8 @@ export class SkierModel {
       for (const m of pack.children) m.castShadow = true;
       this.frame.add(pack);
       P.pack = pack;
+    }
+    if (!outfit.racer) {
       const hood = new THREE.Mesh(packGeo.hood ??= new THREE.TorusGeometry(0.1, 0.04, 8, 16, Math.PI).rotateX(-Math.PI / 2).scale(1, 1, 0.8), jacketM);
       hood.castShadow = true;
       this.frame.add(hood);

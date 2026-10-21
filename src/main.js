@@ -119,7 +119,7 @@ class Game {
     const setLoad = (p, m) => { if (m) $('loadmsg').textContent = m; this.loadPart('steps', p / 100); (window.__loadT ??= []).push([Math.round(performance.now()), p, m ?? '']); };
     const canvas = $('gl');
     const r = (this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false }));
-    r.toneMapping = { aces: THREE.ACESFilmicToneMapping, agx: THREE.AgXToneMapping, neutral: THREE.NeutralToneMapping }[params.get('tm') ?? 'aces'];
+    r.toneMapping = { aces: THREE.ACESFilmicToneMapping, agx: THREE.AgXToneMapping, neutral: THREE.NeutralToneMapping }[params.get('tm') ?? 'agx'];
     r.outputColorSpace = THREE.SRGBColorSpace;
     r.shadowMap.enabled = true;
     r.shadowMap.type = THREE.PCFShadowMap;
@@ -319,13 +319,14 @@ class Game {
     this.snowfall.points.visible = !!P0.snow;
     this.snowfall.setAmount?.(P0.snow ?? 0);
     // diamond dust: ice crystals in the air on the cold clear days
-    this.dust?.setAmount({ arctic: 1, bluebird: 0.7, golden: 0.5, night: 0.25, spring: 0.2 }[this.tod] ?? 0);
+    this.dust?.setAmount(({ arctic: 1, bluebird: 0.7, golden: 0.5, night: 0.25, spring: 0.2 }[this.tod] ?? 0) * 0.35);
     const warm = { bluebird: [1.0, 1.0, 1.02], golden: [1.04, 1.0, 0.95], alpenglow: [1.05, 0.98, 1.0], storm: [0.98, 1.0, 1.03], night: [0.98, 1.0, 1.06], nightsnow: [0.97, 1.0, 1.07],
       spring: [1.02, 1.0, 0.98], arctic: [0.97, 1.0, 1.05], flurries: [0.99, 1.0, 1.03], whiteout: [0.98, 1.0, 1.02] }[this.tod] ?? [1, 1, 1];
-    this.post.lens.uniforms.uWarm.value.set(...warm);
+    // (and the house look leans cool: blue-grey shade, clean white snow)
+    this.post.lens.uniforms.uWarm.value.set(warm[0] * 0.975, warm[1] * 1.0, warm[2] * 0.99);
     // shade and light tints, and how much S-curve each day gets
     const G = {
-      bluebird: [[0.94, 0.98, 1.07], [1.02, 1.0, 0.97], 0.22], golden: [[0.9, 0.95, 1.08], [1.06, 1.0, 0.9], 0.3],
+      bluebird: [[0.93, 0.98, 1.07], [1.0, 1.0, 1.0], 0.22], golden: [[0.9, 0.95, 1.08], [1.06, 1.0, 0.9], 0.3],
       alpenglow: [[0.92, 0.95, 1.05], [1.07, 0.97, 0.96], 0.42, 0.94], storm: [[0.97, 0.99, 1.03], [1.0, 1.0, 0.99], 0.12],
       night: [[0.9, 0.97, 1.1], [1.04, 1.0, 0.94], 0.25], nightsnow: [[0.92, 0.97, 1.08], [1.03, 1.0, 0.96], 0.18],
       spring: [[0.96, 0.98, 1.04], [1.04, 1.01, 0.96], 0.2], arctic: [[0.92, 0.98, 1.09], [1.0, 1.0, 1.01], 0.25],
@@ -333,8 +334,13 @@ class Game {
     }[this.tod] ?? [[1, 1, 1], [1, 1, 1], 0];
     this.post.lens.uniforms.uShadowT.value.set(...G[0]);
     this.post.lens.uniforms.uHighT.value.set(...G[1]);
-    this.post.lens.uniforms.uCurve.value = G[2];
-    this.post.lens.uniforms.uSat.value = G[3] ?? 1.08;
+    // (a soft, muted grade: pale snow, a quiet sky, gentle contrast)
+    this.post.lens.uniforms.uCurve.value = G[2] * 0.5;
+    this.post.lens.uniforms.uSat.value = (G[3] ?? 1.08) * 0.84;
+    this.post.lens.uniforms.uCon.value = 0.97;
+    // (nights go deep navy, the shade lifted only a little and toward blue)
+    this.post.lens.uniforms.uLift.value.set(...(night ? [0.006, 0.014, 0.034] : [0.02, 0.03, 0.036]));
+    if (night) this.post.lens.uniforms.uWarm.value.multiply(new THREE.Vector3(0.82, 0.94, 1.16));
     this.post.shafts.uniforms.uTint.value.set(PRESETS[this.tod].sun ?? 0xffffff).multiplyScalar(0.9);
     const p = PRESETS[this.tod];
     // snow spray: lit like snow (albedo ~0.9 over pi) by the sun and the sky

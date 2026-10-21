@@ -13,7 +13,8 @@ const LensShader = {
     tDiffuse: { value: null },
     uSpeed: { value: 0 },
     uTime: { value: 0 },
-    uVignette: { value: 0.32 },
+    uVignette: { value: 0.14 },
+    uLift: { value: new THREE.Vector3(0.02, 0.03, 0.036) },
     uWarm: { value: new THREE.Vector3(1, 1, 1) },
     uShadowT: { value: new THREE.Vector3(1, 1, 1) },
     uHighT: { value: new THREE.Vector3(1, 1, 1) },
@@ -24,7 +25,7 @@ const LensShader = {
   },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
   fragmentShader: `
-    uniform sampler2D tDiffuse; uniform float uSpeed, uTime, uVignette, uFlash, uSat, uCon, uCurve; uniform vec3 uWarm, uShadowT, uHighT;
+    uniform sampler2D tDiffuse; uniform float uSpeed, uTime, uVignette, uFlash, uSat, uCon, uCurve; uniform vec3 uWarm, uShadowT, uHighT, uLift;
     varying vec2 vUv;
     float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }
     void main(){
@@ -42,10 +43,6 @@ const LensShader = {
         }
         col = acc / w;
       }
-      // subtle chromatic fringe at the edges
-      float ca = 0.0006 * smoothstep(0.25, 0.8, r);
-      col.r = mix(col.r, texture2D(tDiffuse, vUv + c * ca).r, 0.6);
-      col.b = mix(col.b, texture2D(tDiffuse, vUv - c * ca).b, 0.6);
       col *= uWarm;
       // grade: a touch more colour and snap
       float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
@@ -56,8 +53,10 @@ const LensShader = {
       // a soft film S-curve: deeper shade without clipping the snow
       vec3 cc = clamp(col, 0.0, 1.0);
       col = mix(col, cc * cc * (3.0 - 2.0 * cc), uCurve);
+      // a soft, airy finish: the shade lifted toward a cool grey, the whites held off pure white
+      col = uLift + col * (vec3(0.955) - uLift);
       col *= 1.0 - uVignette * smoothstep(0.3, 0.95, r * 1.25);
-      col += (h(vUv * 931.0 + uTime) - 0.5) * 0.022;
+      col += (h(vUv * 931.0 + uTime) - 0.5) * 0.01;
       col = mix(col, vec3(1.0), uFlash);
       // (SMAA after this blends edges: anything outside 0..1 comes out as bright fringes)
       gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);

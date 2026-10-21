@@ -644,6 +644,8 @@ function spruceMaterial(tex, U, bough, snowK = 1, band) {
       float pn = texture2D( uNoise, vCXZ * 0.31 ).r * 0.6 + texture2D( uNoise, vCXZ * 0.77 + 0.4 ).g * 0.4;
       sK = smoothstep( 0.12, 0.6, vS * uTreeSnow * 2.0 + ( pn - 0.5 ) * 1.0 ) * 0.92;
       treeSnowN = sK * 0.7;`}
+      // (the house look: needles a lighter blue-green, not near black)
+      diffuseColor.rgb *= vec3( 1.0, 1.35, 1.45 );
       diffuseColor.rgb = mix( diffuseColor.rgb, ${SNOW_COL} * sB, sK );`)
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix( roughnessFactor, 0.7, sK );')
       // (needles are matte: no sky sheen glancing off the cards' edges)
@@ -651,7 +653,7 @@ function spruceMaterial(tex, U, bough, snowK = 1, band) {
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
       normal = normalize( mix( normal, normalize( ( viewMatrix * vec4( 0.0, 1.0, 0.0, 0.0 ) ).xyz ), treeSnowN * treeSnowN * 0.85 ) );`);
   };
-  m.customProgramCacheKey = () => 'spruce2-' + (bough ? 'b' : 's') + snowK;
+  m.customProgramCacheKey = () => 'spruce3-' + (bough ? 'b' : 's') + snowK;
   return m;
 }
 

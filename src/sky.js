@@ -61,6 +61,9 @@ export const PRESETS = {
     envK: 0.15, moonK: 0.18, domeK: 0.45, fogK: 0.45, fogTint: [0.74, 0.78, 0.98], overcast: 1, castK: 0.85,
   },
 };
+// the house look on top of every sky: the photo's blue washed toward a soft steel grey, the haze
+// thicker so far ridges go pale, and the air's blue cast eased (thick days are hazy enough already)
+export const LOOK = { wash: 0.3, fog: 1.6, haze: 1.5, rgb: 0.6, exp: 0.98, fogTint: [0.95, 1.0, 1.02] };
 // what each sky does to the snow (see COND)
 for (const [k, c] of Object.entries({ bluebird: 'groomed', golden: 'groomed', alpenglow: 'packed', night: 'ice', storm: 'powder', spring: 'slush', arctic: 'ice', flurries: 'packed', whiteout: 'powder', nightsnow: 'powder' })) PRESETS[k].cond = c;
 // how often each comes up when the weather changes every run
@@ -86,7 +89,7 @@ const DOME_VERT = /* glsl */`
   }`;
 const DOME_FRAG = /* glsl */`
   uniform sampler2D map;
-  uniform float scale, yaw, rowsFrac, uHaze, uBright, uDiscR, uDiscVis, uHdriCut, uBelt, uMoon, uOvercast, uTime;
+  uniform float scale, yaw, rowsFrac, uWash, uHaze, uBright, uDiscR, uDiscVis, uHdriCut, uBelt, uMoon, uOvercast, uTime;
   uniform vec3 ground, uHazeCol, uZenith, uEnvTint, uSunW, uDiscCol, uAurCol, uHdriSun, uCastCol;
   varying vec3 vDir;
   float hash3(vec3 p) { p = fract(p * 0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }
@@ -116,6 +119,9 @@ const DOME_FRAG = /* glsl */`
     // dusk: the glow stays on the horizon, the sky overhead goes deep blue
     col *= mix(vec3(1.0), uZenith, smoothstep(0.0, 0.38, d.y));
     col *= uEnvTint;
+    // the house look: a quieter, greyer blue
+    float lw = dot(col, vec3(0.2126, 0.7152, 0.0722));
+    col = mix(col, vec3(lw) * vec3(0.86, 0.98, 1.1), uWash * mix(1.0, 0.7, smoothstep(0.1, 0.6, d.y)));
     float mu = dot(d, uSunW);
     // the earth's shadow rising opposite the sun, under a pink band (the belt of Venus)
     if (uBelt > 0.0) {
@@ -162,7 +168,7 @@ export class Environment {
     this.scene = scene;
     this.mat = new THREE.ShaderMaterial({
       uniforms: {
-        map: { value: null }, scale: { value: 1 }, yaw: { value: 0 }, rowsFrac: { value: 0.53 }, uBright: { value: 1 },
+        map: { value: null }, scale: { value: 1 }, uWash: { value: 0 }, yaw: { value: 0 }, rowsFrac: { value: 0.53 }, uBright: { value: 1 },
         ground: { value: new THREE.Color(0.5, 0.52, 0.56) }, uHaze: { value: 0 }, uHazeCol: { value: new THREE.Color() }, uZenith: { value: new THREE.Color(1, 1, 1) },
         uSunW: { value: new THREE.Vector3(0, 1, 0) }, uDiscR: { value: 0 }, uDiscVis: { value: 0 }, uEnvTint: { value: new THREE.Color(1, 1, 1) }, uDiscCol: { value: new THREE.Color() }, uAurCol: { value: new THREE.Color() },
         uHdriSun: { value: new THREE.Vector3(0, 1, 0) }, uHdriCut: { value: 0 }, uBelt: { value: 0 }, uMoon: { value: 0 }, uOvercast: { value: 0 }, uCastCol: { value: new THREE.Color() }, uTime: { value: 0 },
@@ -246,15 +252,19 @@ export class Environment {
     u.uBright.value = p.domeK ?? 1;
     u.uZenith.value.setRGB(...(p.zenith ?? [1, 1, 1]));
     const horiz = sunL * Math.max(0, this.sunDir.y) + skyL;
-    this.renderer.toneMappingExposure = p.key / horiz;
+    this.renderer.toneMappingExposure = p.key * LOOK.exp * (p.night ? 0.78 : 1) / horiz;
     this.exposure = this.renderer.toneMappingExposure;
     // haze in the same radiance units as the dome
     const hc = new THREE.Color(m.horizon[0], m.horizon[1], m.horizon[2]);
     hc.multiplyScalar(p.fogK ?? 1);
     if (p.fogTint) hc.multiply(new THREE.Color(...p.fogTint));
+    hc.multiply(new THREE.Color(...LOOK.fogTint));
     this.scene.fog.color.copy(hc);
-    this.scene.fog.density = p.fogD;
-    u.uHaze.value = p.haze;
+    // (clear days get the most of it; a low sun or a night has its own air already)
+    const clear = p.fogD < 0.0004 && !p.night && (p.elev ?? 30) > 12;
+    this.scene.fog.density = p.fogD * (clear ? LOOK.fog : 1.15);
+    u.uHaze.value = Math.min(1, p.haze * (clear ? LOOK.haze : 1.15));
+    u.uWash.value = LOOK.wash * (p.night ? 0.5 : 1);
     u.uHazeCol.value.copy(hc);
     u.ground.value.copy(hc).multiplyScalar(0.8);
     AG.uSunDirA.value.copy(this.sunDir);
@@ -262,7 +272,7 @@ export class Environment {
     AG.uFogFall.value = p.fogFall;
     if (p.sunset) AG.uSunset.value.set(...p.sunset); else AG.uSunset.value.set(-1e5, -9e4);
     // aerial perspective (blue scatters most) and the valley mist
-    AG.uFogRGB.value.set(...(p.fogRGB ?? [1, 1, 1]));
+    AG.uFogRGB.value.set(...(p.fogRGB ?? [1, 1, 1]).map((c) => 1 + (c - 1) * LOOK.rgb));
     const vl = p.valley ?? [0, 0, 120];
     AG.uValley.value.set(vl[0], vl[1], 1 / vl[2]);
     AG.uValleyCol.value.copy(hc).lerp(new THREE.Color(p.sunFog).multiplyScalar(lum(m.horizon)), 0.5).multiplyScalar(p.mistK ?? 1.3);
