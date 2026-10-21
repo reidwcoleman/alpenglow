@@ -146,7 +146,7 @@ class Game {
     this.env.apply(this.tod);
     setLoad(20, 'Growing the forest…');
     this.forest = new Forest(scene, await treesP);
-    await this.forest.buildRender(r, patchMaterial, this.quality);
+    await this.forest.buildRender(r, patchMaterial, this.quality, (params.get('look') ?? store.get('look', 'cartoon')) === 'cartoon');
     setLoad(40, 'Building the lift and the village…');
     await nextFrame();
     this.smash = new Smash(this.forest);
@@ -416,11 +416,11 @@ class Game {
     }
     // the look: Cork7's cartoon shading (default) or the photographic one
     const look = $('look');
-    AG.uToon.value = store.get('look', 'cartoon') === 'cartoon' ? 1 : 0;
+    AG.uToon.value = (params.get('look') ?? store.get('look', 'cartoon')) === 'cartoon' ? 1 : 0;
     for (const [k, label] of [['cartoon', 'Cartoon'], ['real', 'Realistic']]) {
       const b = document.createElement('button');
       b.textContent = label; b.className = k === store.get('look', 'cartoon') ? 'on' : '';
-      b.onclick = () => { store.set('look', k); AG.uToon.value = k === 'cartoon' ? 1 : 0; [...look.children].forEach((c) => c.classList.toggle('on', c === b)); };
+      b.onclick = () => { store.set('look', k); AG.uToon.value = k === 'cartoon' ? 1 : 0; this.forest?.setLook(k === 'cartoon'); [...look.children].forEach((c) => c.classList.toggle('on', c === b)); };
       look.appendChild(b);
     }
     const wx = $('wx');

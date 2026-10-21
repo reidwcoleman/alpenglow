@@ -15,6 +15,8 @@ const SPRUCE_H = 16; // (src/spruce.js: the geometry's height)
 const FIR = [4, 5], SNAG = 6, LARCH = 7, GHOST = 8, SAPLING = [2, 4];
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
+let toonGeos = null;
+
 export class Forest {
   // placed: placeTrees()'s arrays (worked out on a loading thread), or it's done here
   constructor(scene, placed = placeTrees()) {
@@ -120,12 +122,29 @@ export class Forest {
   }
 
   // the GPU side (browser only: the headless sim never builds it)
-  async buildRender(renderer, patch, quality = 'high') {
-    const { SpruceForest } = await import('./spruce.js');
+  // toon: the cartoon pine (src/toontrees.js) everywhere, or the realistic subalpine mix
+  async buildRender(renderer, patch, quality = 'high', toon = true) {
+    this.rq = [renderer, patch, quality];
+    this.toon = toon;
     // the tree-skiing park has trees all round you: keep the full-detail ring tighter there
     const q = MAP.glades && quality !== 'low' ? (quality === 'ultra' ? 'high' : 'low') : quality;
-    this.veg = new SpruceForest(this.trees, q, patch, treeSnow);
+    let veg;
+    if (toon) {
+      const { ToonForest, loadToonTree } = await import('./toontrees.js');
+      veg = new ToonForest(this.trees, q, patch, treeSnow, await (toonGeos ??= loadToonTree()));
+    } else {
+      const { SpruceForest } = await import('./spruce.js');
+      veg = new SpruceForest(this.trees, q, patch, treeSnow);
+    }
+    if (this.veg) { this.scene.remove(this.veg.group); this.veg.group.traverse((o) => o.isInstancedMesh && o.dispose()); }
+    this.veg = veg;
     this.scene.add(this.veg.group);
+  }
+
+  // the Look setting switched: grow the other forest
+  async setLook(toon) {
+    if (!this.rq || toon === this.toon) return;
+    await this.buildRender(...this.rq, toon);
   }
 
   update(camera, elapsed) {
