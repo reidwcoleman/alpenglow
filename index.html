@@ -481,7 +481,27 @@
   #course .alt { font: 400 20px var(--disp); margin-top: 10px; }
   #course .left { font: 400 12px var(--disp); opacity: .9; }
   #hint { position: absolute; left: 50%; bottom: 23%; transform: translateX(-50%); font: 400 15px var(--disp); text-transform: uppercase; white-space: nowrap; }
-  #tip { position: absolute; left: 50%; bottom: calc(max(16px, env(safe-area-inset-bottom)) + 40px); transform: translateX(-50%); font: 600 13px Inter; padding: 8px 14px; border-radius: 10px; background: rgba(24,31,44,.62); white-space: nowrap; }
+  #tip { position: absolute; left: 50%; bottom: calc(max(16px, env(safe-area-inset-bottom)) + 30px); transform: translateX(-50%); font: 400 17px/1 var(--disp); text-transform: uppercase; white-space: nowrap; text-shadow: 0 2px 0 rgba(0,0,0,.18), 0 3px 16px rgba(0,0,0,.35); }
+  #np { position: absolute; left: calc(clamp(18px, 3.6vw, 46px) + 100px); bottom: max(34px, env(safe-area-inset-bottom)); width: 270px; pointer-events: auto; }
+  #np .tray { display: flex; align-items: center; gap: 8px; padding: 6px 7px 6px 6px; border-radius: 19px; background: linear-gradient(165deg, #f5f6f7, #e2e5e7 55%, #d5d9dc); border: 1px solid rgba(255,255,255,.82); box-shadow: inset 0 1px #fff, inset 0 -1px rgba(0,0,0,.06), 0 10px 28px rgba(6,24,42,.28), 0 1px 3px rgba(6,24,42,.15); }
+  #np-open { flex: 1; min-width: 0; height: 46px; display: flex; align-items: center; gap: 9px; padding: 0 12px 0 7px; border: 0; border-radius: 13px; background: #0c0d0f; color: #f5f5f7; text-align: left; cursor: pointer; box-shadow: 0 0 0 1px rgba(0,0,0,.36), inset 0 0 0 1px rgba(255,255,255,.06); font-family: Inter, system-ui, sans-serif; }
+  #np .art { flex: none; width: 32px; height: 32px; border-radius: 7px; background: linear-gradient(160deg, #9fd0e6 0%, #e9f1f4 55%, #b9c9d2 100%); position: relative; overflow: hidden; }
+  #np .art i { position: absolute; left: 4px; right: 4px; bottom: 5px; height: 14px; background: #2e8e98; clip-path: polygon(0 100%, 38% 10%, 55% 45%, 72% 0, 100% 100%); }
+  #np .tx { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px; }
+  #np .tx b { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #np .tx small { font-size: 10px; color: rgba(235,235,245,.6); letter-spacing: .04em; }
+  #np .pr { height: 2px; margin-top: 4px; border-radius: 2px; background: rgba(118,118,128,.36); overflow: hidden; }
+  #np .pr i { display: block; height: 100%; width: 0; background: #eda26d; }
+  #np .ctl { flex: none; display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 50px; background: rgba(255,255,255,.7); box-shadow: inset 0 0 0 1px rgba(0,0,0,.06); }
+  #np .ctl button { width: 22px; height: 30px; border: 0; background: none; color: #5a6068; font-size: 7px; letter-spacing: -2px; cursor: pointer; padding: 0; }
+  #np .ctl #np-play { width: 30px; height: 30px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.18); display: grid; place-items: center; }
+  #np-play span { width: 8px; height: 10px; border-left: 3px solid #3a4048; border-right: 3px solid #3a4048; box-sizing: border-box; }
+  #np.off #np-play span { width: 0; height: 0; border: 0; border-left: 9px solid #3a4048; border-top: 6px solid transparent; border-bottom: 6px solid transparent; margin-left: 3px; }
+  #np.off .pr i { background: #8a8f96; }
+  #hud.nomap #np { left: clamp(18px, 3.6vw, 46px); }
+  body.touch #np { display: none; }
+  #wxtag { transition: opacity 1.2s; }
+  #wxtag.gone { opacity: 0; }
   #hold { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; font: 400 18px var(--disp); }
   #hold svg { width: 34px; height: 34px; transform: rotate(-90deg); }
   #botbar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255,255,255,.18); }
@@ -734,7 +754,7 @@
   // the park being loaded paints the loading screen; tips cycle; the bar eases toward what's
   // done (main.js calls __loadProgress) and the rider carves along it
   (function () {
-    var names = { yard: 'The Yard', slope: 'Trick Zone', forest: 'Forest Line', bigair: 'Big Air', timber: 'Timberline', grand: 'Grand Descent', mega: 'Mega Park', canyon: 'Shred Canyon' };
+    var names = { yard: 'The Yard', slope: 'Trick Zone', forest: 'Forest Line', bigair: 'Big Air', timber: 'Timberline', grand: 'Grand Descent', mega: 'Mega Park', canyon: 'Shred Canyon', cloud: 'Cloud Nine' };
     var id = null;
     try { id = new URLSearchParams(location.search).get('park') || localStorage.getItem('alpenglow.park'); } catch (e) {}
     if (!names[id]) id = 'yard';
@@ -1007,6 +1027,7 @@
     <div id="timer" class="disp">00:00</div>
   </div>
   <div id="course" class="shadow"><svg id="minimap" viewBox="0 0 44 128"></svg><div class="alt" id="alt"></div><div class="left" id="kmleft"></div></div>
+  <div id="np"><div class="tray"><button id="np-open" title="Music"><span class="art"><i></i></span><span class="tx"><b id="np-t">First Chair</b><small id="np-a">Shredline FM</small><span class="pr"><i id="np-p"></i></span></span></button><div class="ctl"><button id="np-prev" aria-label="Previous">&#9664;&#9664;</button><button id="np-play" aria-label="Pause"><span></span></button><button id="np-next" aria-label="Next">&#9654;&#9654;</button></div></div></div>
   <div id="botbar"><i></i></div>
   <div id="camlbl"></div>
 </div>

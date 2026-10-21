@@ -84,14 +84,17 @@ export class Floodlights {
 
   build() {
     const T = this.towers;
-    const poleM = new THREE.MeshStandardMaterial({ color: 0x2a2e35, roughness: 0.5, metalness: 0.6 });
+    // (Cork7's masts: grey steel on an orange padded foot, standing there by day too)
+    const poleM = new THREE.MeshStandardMaterial({ color: 0x6b737b, roughness: 0.45, metalness: 0.7 });
     const pole = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.11, 0.17, 12.5, 8).translate(0, 6.25, 0), poleM, T.length);
+    const pad = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.34, 0.36, 1.7, 12).translate(0, 0.85, 0), new THREE.MeshStandardMaterial({ color: 0xe8673a, roughness: 0.75 }), T.length);
     const headG = new THREE.BoxGeometry(1.7, 0.55, 0.5);
     this.lampM = new THREE.MeshStandardMaterial({ color: 0x111111, emissive: 0xfff1d8, emissiveIntensity: 0, roughness: 0.4 });
     const heads = new THREE.InstancedMesh(headG, this.lampM, T.length);
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(1, 1, 1);
     T.forEach((t, i) => {
       pole.setMatrixAt(i, m.makeTranslation(t.x, t.y - 0.3, t.z));
+      pad.setMatrixAt(i, m.makeTranslation(t.x, t.y - 0.3, t.z));
       // the head faces its target
       const d = _v.copy(t.target).sub(t.head).normalize();
       q.setFromRotationMatrix(new THREE.Matrix4().lookAt(t.head, t.target, new THREE.Vector3(0, 1, 0)));
@@ -99,7 +102,7 @@ export class Floodlights {
       t.dir = d.clone();
     });
     pole.castShadow = true;
-    this.group.add(pole, heads);
+    this.group.add(pole, pad, heads);
     // far glow: one additive point per lamp
     const pos = new Float32Array(T.length * 3);
     T.forEach((t, i) => { pos[i * 3] = t.head.x; pos[i * 3 + 1] = t.head.y; pos[i * 3 + 2] = t.head.z; });
@@ -129,12 +132,15 @@ export class Floodlights {
       beams.setMatrixAt(i, m.compose(t.head, q.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI)), sc));
     });
     beams.frustumCulled = false;
+    this.beams = beams;
     this.group.add(beams);
   }
 
   setActive(on) {
     this.on = on;
-    this.group.visible = on;
+    // the masts stand all day; the lamps, their glow and beams only at night
+    this.group.visible = true;
+    this.glow.visible = on; this.beams.visible = on;
     this.lampM.emissiveIntensity = on ? 40 : 0;
     this.beamM.uniforms.uK.value = on ? 1 : 0;
     for (const s of this.spots) { s.visible = on; s.intensity = on ? this.intensity : 0; }

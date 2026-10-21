@@ -9,6 +9,13 @@ const PROGS = [
   [[0, 1], [5, 1], [-2, 0], [3, 0]], // Am Dm G C
   [[-4, 0], [3, 0], [-2, 0], [0, 1]], // F C G Am
 ];
+// each progression is a 'track' on the in-run player, with its own tempo
+export const TRACKS = [
+  { name: 'First Chair', by: 'Shredline FM', bpm: 112 },
+  { name: 'Corduroy', by: 'Shredline FM', bpm: 104 },
+  { name: 'Low Sun', by: 'Shredline FM', bpm: 120 },
+  { name: 'Last Lift', by: 'Shredline FM', bpm: 98 },
+];
 const A2 = 110;
 const hz = (semi) => A2 * Math.pow(2, semi / 12);
 
@@ -47,6 +54,15 @@ export class Music {
 
   setMood(m) { this.mood = m; }
 
+  // the player: what's on, how far through, and skipping
+  get track() { return TRACKS[this.prog]; }
+  get progress() { return ((this.bar % 16) + this.step / 16) / 16; }
+  skip(d = 1) {
+    this.prog = (this.prog + d + PROGS.length) % PROGS.length;
+    this.bar = 0; this.step = 0;
+    this.bpm = TRACKS[this.prog].bpm;
+  }
+
   tick() {
     const ctx = this.a.ctx;
     if (!ctx || ctx.state !== 'running') return;
@@ -57,7 +73,8 @@ export class Music {
       this.step = (this.step + 1) % 16;
       if (this.step === 0) {
         this.bar++;
-        if (this.bar % 4 === 0) this.prog = (this.prog + (this.bar % 16 === 0 ? 1 : 0)) % PROGS.length;
+        if (this.bar % 16 === 0) this.prog = (this.prog + 1) % PROGS.length;
+        this.bpm = TRACKS[this.prog].bpm;
       }
     }
   }

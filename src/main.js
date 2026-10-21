@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { Environment, PRESETS, COND, WX_WEIGHT } from './sky.js';
 import { Terrain, CLOUDS } from './terrain.js';
 import { Forest } from './trees.js';
-import { Props, trailDiff } from './props.js';
+import { Props } from './props.js';
 import { Smash } from './smash.js';
 import { Injuries } from './injury.js';
 import { Trail } from './trail.js';
@@ -119,7 +119,7 @@ class Game {
     const setLoad = (p, m) => { if (m) $('loadmsg').textContent = m; this.loadPart('steps', p / 100); (window.__loadT ??= []).push([Math.round(performance.now()), p, m ?? '']); };
     const canvas = $('gl');
     const r = (this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false }));
-    r.toneMapping = { aces: THREE.ACESFilmicToneMapping, agx: THREE.AgXToneMapping, neutral: THREE.NeutralToneMapping }[params.get('tm') ?? 'agx'];
+    r.toneMapping = { aces: THREE.ACESFilmicToneMapping, agx: THREE.AgXToneMapping, neutral: THREE.NeutralToneMapping }[params.get('tm') ?? 'aces'];
     r.outputColorSpace = THREE.SRGBColorSpace;
     r.shadowMap.enabled = true;
     r.shadowMap.type = THREE.PCFShadowMap;
@@ -357,6 +357,9 @@ class Game {
       // falling flakes: the sky's light and some of the sun's (at night the floodlights catch them)
       flake: sky.clone().add(new THREE.Color(p.sun).multiplyScalar(sunI * 0.29 * 0.45)).multiplyScalar(night ? 2.2 : 1),
     };
+    // (at night the spray is thrown up into the floodlights over the piste, not the moonlight:
+    // without this it comes out as dark smoke over the lit snow)
+    if (night) { sky.multiplyScalar(3.4); this.sprayLight.bounce.multiplyScalar(3.4); }
   }
 
   // a random sky and snow for this run
@@ -395,7 +398,7 @@ class Game {
     for (const [k, label] of [['on', 'On'], ['off', 'Off']]) {
       const b = document.createElement('button');
       b.textContent = label; b.className = k === store.get('music', 'on') ? 'on' : '';
-      b.onclick = () => { store.set('music', k); this.music.setOn(k === 'on'); this.audio.start(); [...mus.children].forEach((c) => c.classList.toggle('on', c === b)); };
+      b.onclick = () => { store.set('music', k); this.music.setOn(k === 'on'); this.audio.start(); [...mus.children].forEach((c) => c.classList.toggle('on', c === b)); $('np').classList.toggle('off', k !== 'on'); };
       mus.appendChild(b);
     }
     const gore = $('gore');
@@ -458,6 +461,13 @@ class Game {
     for (const b of document.querySelectorAll('#pk-tod button')) b.onclick = () => { this.wxPinned = true; this.setNight(b.dataset.n === '1'); };
     addEventListener('resize', () => this.layoutParks());
     $('menubtn').onclick = () => this.setPaused(true);
+    // the music player in the corner (pausing it is the same as Music off in the menu)
+    const npSync = () => { $('np').classList.toggle('off', !this.music.on); [...$('mus').children].forEach((c, i) => c.classList.toggle('on', (i === 0) === this.music.on)); };
+    $('np-play').onclick = () => { const on = !this.music.on; store.set('music', on ? 'on' : 'off'); this.music.setOn(on); this.audio.start(); npSync(); };
+    $('np-next').onclick = () => { this.music.skip(1); this.audio.start(); };
+    $('np-prev').onclick = () => { this.music.skip(-1); this.audio.start(); };
+    $('np-open').onclick = () => this.setPaused(true);
+    npSync();
     $('p-resume').onclick = () => this.setPaused(false);
     $('p-restart').onclick = () => { this.setPaused(false); this.start(this.mode); };
     $('p-menu').onclick = () => { this.setPaused(false); this.showMenu(); };
@@ -608,8 +618,8 @@ class Game {
     $('parks').classList.remove('hidden');
     const pins = $('pk-pins');
     if (!pins.children.length) {
-      const POS = { yard: [15, 40], slope: [45, 47], forest: [57, 38], bigair: [76, 17], timber: [48, 80], grand: [30, 14], mega: [36, 64], canyon: [62, 62] };
-      const COL = { yard: '#7fe0c4', slope: '#ff8a5c', forest: '#9fd36b', bigair: '#ff5c7a', timber: '#c6e36b', grand: '#8ec8ff', mega: '#d68cff', canyon: '#ffb347' };
+      const POS = { yard: [15, 40], slope: [45, 47], forest: [57, 38], bigair: [76, 17], timber: [48, 80], grand: [30, 14], mega: [36, 64], canyon: [62, 62], cloud: [84, 34] };
+      const COL = { yard: '#7fe0c4', slope: '#ff8a5c', forest: '#9fd36b', bigair: '#ff5c7a', timber: '#c6e36b', grand: '#8ec8ff', mega: '#d68cff', canyon: '#ffb347', cloud: '#bfe8ff' };
       MAP_IDS.forEach((id, i) => {
         const M = MAPS[id];
         const b = document.createElement('button');
@@ -1079,7 +1089,6 @@ class Game {
     const big = total > 6000 || mult >= 1.5;
     this.replay?.mark(title);
     if (this.room && total >= 1500) this.room.event({ type: 'trick', name: title, pts: total });
-    if (total >= 2500) this.tipUntil = this.time + 3.5;
     this.say(notice, `+${total.toLocaleString()}`, (line + (name ?? '')).replace(/ · $/, ''), (big ? 'gold ' : '') + 'landed', 2300, chips);
     this.status(fresh.length && !sketchy ? 'NEW TRICK' : sketchy ? 'SKETCHY' : stomp ? 'STOMPED' : 'CLEAN LANDING');
     if (big || (fresh.length && !sketchy)) this.audio.chime();
@@ -1211,6 +1220,7 @@ class Game {
     $('racebox').classList.toggle('hidden', mode !== 'race');
     $('course').classList.toggle('hidden', mode === 'park');
     $('botbar').classList.toggle('hidden', mode === 'park');
+    $('hud').classList.toggle('nomap', mode === 'park');
     $('evtag').classList.toggle('hidden', !this.event && !this.online);
     $('wxtag').textContent = this.weatherLine();
     if (!this.coach) this.showCoach();
@@ -1267,8 +1277,9 @@ class Game {
     this.mm = { k, cx0 };
     const P = (x, z) => [(22 + x * k).toFixed(1), (4 + ((z - START_Z) / (FINISH_Z - START_Z)) * 120).toFixed(1)];
     const d = pts.map(([x, z], i) => (i ? 'L' : 'M') + P(x, z).join(' ')).join(' ');
-    const feats = JUMPS.map((J) => P(centerX(J.z) - cx0 + J.dx * 0.15, J.z)).map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.6" fill="rgba(255,255,255,.75)"/>`).join('');
-    svg.innerHTML = `<path d="${d}" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="5" stroke-linecap="round"/><path d="${d}" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/>${feats}<circle id="mmdot" r="4.5" fill="#fff" stroke="#10141c" stroke-width="2"/>`;
+    // (Cork7's: a pale line with the features as small blue beads, you as a ring)
+    const feats = [...JUMPS, ...RAILS].map((J) => P(centerX(J.z) - cx0 + J.dx * 0.15, J.z)).map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.5" fill="#a9e2f5"/>`).join('');
+    svg.innerHTML = `<path d="${d}" fill="none" stroke="rgba(255,255,255,.22)" stroke-width="5" stroke-linecap="round"/><path d="${d}" fill="none" stroke="rgba(255,255,255,.85)" stroke-width="1.5" stroke-linecap="round"/>${feats}<circle id="mmdot" r="3.6" fill="rgba(16,20,28,.35)" stroke="#fff" stroke-width="1.6"/>`;
   }
 
   finishRace() {
@@ -1940,7 +1951,7 @@ class Game {
       // a new part of the run: its name and difficulty, as on the trail signs and the snow
       this.secName = name;
       const z = $('zone');
-      z.innerHTML = `<i class="dif ${trailDiff(name)}"></i>${esc(name)}`;
+      z.textContent = name;
       z.classList.remove('in'); void z.offsetWidth; z.classList.add('in');
     }
     // speed, or air time while flying
@@ -2042,13 +2053,17 @@ class Game {
         const dz = J.z - p.pos.z;
         if (dz > 0 && dz < 45 && Math.abs(dx - J.dx) < J.w / 2 + 3) {
           const want = Math.round((p.strict ? J.pspeed : J.speed) * 3.6), now = kmh;
-          tip = `${J.name} · ${want - 2}–${want + 3} km/h${now < want - 6 ? ' · tuck!' : now > want + 8 ? ' · scrub some speed' : ' · good speed'}`;
+          tip = `${J.name} · ${want - 2}–${want + 3} km/h${now < want - 6 ? ' · tuck' : now > want + 8 ? ' · scrub speed' : ''}`;
           break;
         }
       }
     }
-    if (!tip && this.time < (this.tipUntil ?? 0)) tip = 'V · instant replay';
-    if (!tip && this.sc && this.time - (this.startAt ?? 0) < 10 && !document.body.classList.contains('touch')) tip = this.input.scheme === 'arrows' ? '← → carve · ↑ tuck · ↓ brake · in the air hold ← → to spin, ↑ ↓ to flip, or tap combos: ↓↓ grab · ←← 360 · ↓↓↓ backflip' : 'A/D spin · W/S flip · arrows roll · Shift Q E F X Z grab · ↑ shifty · hold Space, release to pop';
+    // (the conditions under the section name go after a few seconds)
+    $('wxtag').classList.toggle('gone', this.time - (this.startAt ?? 0) > 6);
+    // the music player: what's playing and how far through
+    const mu = this.music;
+    if (mu.track !== this.npTrack) { this.npTrack = mu.track; $('np-t').textContent = mu.track.name; $('np-a').textContent = mu.track.by; }
+    $('np-p').style.width = (mu.progress * 100).toFixed(1) + '%';
     const tp = $('tip');
     if (tip !== this.tipTxt) { this.tipTxt = tip; tp.textContent = tip; tp.classList.toggle('hidden', !tip); }
     // hold-to-restart ring

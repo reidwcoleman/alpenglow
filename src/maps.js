@@ -484,6 +484,75 @@ export const MAPS = {
       return d;
     },
   },
+
+  // wide open and bright like a Cork7 park: rolling white fields with only a few trees, a
+  // playground of rollers and hips, a big garden of rails, a field of waves, three step-up
+  // tables, a straight to tuck, one huge air and a last rail line
+  cloud: {
+    name: 'Cloud Nine', tag: 'Open freestyle · 3.2 km', blurb: 'Above the trees in the open: a playground of rollers and hips, a fifteen-piece rail garden, a field of waves, three step-up tables, a straight to tuck, one huge air and a last line of rails.',
+    start: 30, finish: 3180, km: 3.2, calm: true,
+    sections: [
+      { name: 'Summit Gate', z0: -200, z1: 120, grad: 0.15, width: 76 },
+      { name: 'Playground', z0: 120, z1: 640, grad: 0.21, width: 128 },
+      { name: 'Rail Garden', z0: 640, z1: 1080, grad: 0.17, width: 118 },
+      { name: 'Wave Field', z0: 1080, z1: 1420, grad: 0.25, width: 96 },
+      { name: 'Step Line', z0: 1420, z1: 1920, grad: 0.27, width: 100 },
+      { name: 'Straight Down', z0: 1920, z1: 2340, grad: 0.4, width: 74 },
+      { name: 'Cloud Air', z0: 2340, z1: 2720, grad: 0.33, width: 96 },
+      { name: 'Last Rails', z0: 2720, z1: 3110, grad: 0.16, width: 104 },
+      { name: 'Finish', z0: 3110, z1: 3260, grad: 0.13, width: 116 },
+      { name: 'Base', z0: 3260, z1: 9000, grad: 0.025, width: 120 },
+    ],
+    // long lazy bends, almost straight down the straight
+    curve: (z) => 48 * Math.sin(z / 520 + 0.2) + 18 * Math.sin(z / 210 + 2.4) * (1 - smoothstep(1900, 1960, z) * (1 - smoothstep(2300, 2360, z))),
+    curveClamp: [90, 3060],
+    crests: [
+      // the playground's rollers, and the wave field (pump them or boost off the backs)
+      ...[170, 250, 330, 560].map((z, i) => ({ z, off: 0, h: 0.9 + (i % 2) * 0.3, w: 110, ramp: 16 })),
+      ...Array.from({ length: 6 }, (_, i) => ({ z: 1110 + i * 50, off: 0, h: 1.2 + (i % 3) * 0.3, w: 84, ramp: 13 })),
+    ],
+    runJumps: [
+      { name: 'Gate Kicker', zone: 'Summit Gate', z: 92, dx: 20, h: 1.4, ramp: 6, table: 3, land: 7, w: 8 },
+      // the playground: hips each side, a spine, and two small tables down the middle
+      ...[[380, -38], [440, 38], [500, -36]].map(([z, dx], i) => ({ name: 'Hip', zone: 'Playground', z, dx, h: 2.0 + i * 0.3, ramp: 7.5, table: 3, land: 9, w: 10 })),
+      { name: 'Spine', zone: 'Playground', z: 410, dx: 0, h: 1.7, ramp: 6.5, table: 1.5, land: 7, w: 12 },
+      { name: 'Small', zone: 'Playground', z: 470, dx: 0, h: 1.8, ramp: 7, table: 5, land: 9, w: 10 },
+      { name: 'Medium', zone: 'Playground', z: 590, dx: 12, h: 2.4, ramp: 8.5, table: 7, land: 11, w: 11 },
+      // three step-ups, then a step-down to finish the line
+      { name: 'Step One', zone: 'Step Line', z: 1470, dx: 0, h: 2.6, ramp: 8.5, table: 8, land: 12, w: 13 },
+      { name: 'Step Two', zone: 'Step Line', z: 1620, dx: 0, h: 3.3, ramp: 10.5, table: 11, land: 15, w: 14 },
+      { name: 'Step Three', zone: 'Step Line', z: 1785, dx: 0, h: 4.1, ramp: 12, table: 13, land: 18, w: 15 },
+      { name: 'Step-Down', zone: 'Step Line', z: 1880, dx: -26, h: 2.6, ramp: 3, table: 7, land: 2.5, w: 12, drop: true },
+      { name: 'Cloud Air', zone: 'Cloud Air', z: 2400, dx: 0, h: 6.2, ramp: 19, table: 9, land: 34, w: 18 },
+      { name: 'Small', zone: 'Last Rails', z: 3040, dx: -22, h: 1.7, ramp: 6.5, table: 4, land: 8, w: 9 },
+    ],
+    runRails: [
+      { name: 'Gate Box', zone: 'Summit Gate', z: 96, dx: -20, len: 8, h: 0.5, kind: 'box', shape: 'flat', color: 0x2a7de1 },
+      // the rail garden: three lanes of four, then a long tube down the middle
+      ...[[690, 'box', 'flat', 8], [780, 'rail', 'down', 10], [870, 'box', 'rainbow', 9], [960, 'rail', 'kink', 12]]
+        .flatMap(([z, kind, shape, len], i) => [-34, 0, 34].map((dx, j) => ({
+          name: ['Flat Box', 'Down Rail', 'Rainbow', 'Kink'][i] + ' ' + ['L', 'C', 'R'][j], zone: 'Rail Garden', z: z + j * 14, dx,
+          len, h: kind === 'box' ? 0.5 : 0.65, kind, shape, color: [0x2a7de1, 0xf2b705, 0xff4f8b, 0xd8342c][i],
+        }))),
+      { name: 'Garden Tube', zone: 'Rail Garden', z: 1030, dx: 0, len: 16, h: 0.8, kind: 'rail', shape: 'down', color: 0xff6a2b },
+      { name: 'Cloud Box', zone: 'Rail Garden', z: 1036, dx: -30, len: 10, h: 0.5, kind: 'box', shape: 'down', color: 0x18a868 },
+      { name: 'Cloud Bar', zone: 'Rail Garden', z: 1036, dx: 30, len: 11, h: 0.7, kind: 'rail', shape: 'flat', color: 0x8e3fd1 },
+      // the last line
+      { name: 'Last Box', zone: 'Last Rails', z: 2780, dx: -22, len: 10, h: 0.5, kind: 'box', shape: 'flat', color: 0x2a7de1 },
+      { name: 'Last Rainbow', zone: 'Last Rails', z: 2800, dx: 22, len: 10, h: 0.55, kind: 'box', shape: 'rainbow', color: 0xff4f8b },
+      { name: 'Last Kink', zone: 'Last Rails', z: 2880, dx: 0, len: 13, h: 0.7, kind: 'rail', shape: 'kink', color: 0xd8342c },
+      { name: 'Last Tube', zone: 'Last Rails', z: 2960, dx: 22, len: 15, h: 0.8, kind: 'rail', shape: 'down', color: 0xf2b705 },
+    ],
+    zones: [
+      { name: 'Summit Gate', z1: 120 }, { name: 'Playground', z1: 640 }, { name: 'Rail Garden', z1: 1080 }, { name: 'Wave Field', z1: 1420 },
+      { name: 'Step Line', z1: 1920 }, { name: 'Straight Down', z1: 2340 }, { name: 'Cloud Air', z1: 2720 }, { name: 'Last Rails', z1: 3110 }, { name: 'Finish', z1: 3200 },
+    ],
+    signs: { 'Playground': 'ROLLERS · HIPS · SPINE', 'Rail Garden': '15 RAILS & BOXES', 'Wave Field': 'SIX WAVES · PUMP THEM', 'Step Line': 'THREE STEP-UPS',
+      'Straight Down': 'TUCK IT', 'Cloud Air': 'ONE HUGE AIR', 'Last Rails': 'RAILS · ONE MORE TABLE' },
+    icy: [[1930, 2330]],
+    // above the tree line: a few stands of spruce and nothing else
+    trees(z, s, d) { return d * (z < 1900 ? 0.18 : 0.28); },
+  },
 };
 
 export const MAP_IDS = Object.keys(MAPS);

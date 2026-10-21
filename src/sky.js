@@ -11,7 +11,7 @@ export const PRESETS = {
   bluebird: {
     label: 'Bluebird Morning', hdri: 'bluebird', az: 70, sun: 0xfff3e4, sunScale: 1.0,
     fogD: 0.00014, fogFall: 1 / 2600, sunFog: 0xfff0dc, key: 3.7, haze: 0.28, snow: 0, shafts: 0.04,
-    fogRGB: [0.74, 0.92, 1.28], valley: [0.00012, -40, 140], disc: 1, aureole: 0.25, proc: 1, cover: 0.8,
+    fogRGB: [0.74, 0.92, 1.28], valley: [0.00012, -40, 140], disc: 1, aureole: 0.25, proc: 1, cover: 1.6,
   },
   golden: {
     label: 'Golden Hour', hdri: 'golden', az: 8, elev: 9, sun: 0xffb46e, sunOverSky: 1.9,
@@ -38,12 +38,12 @@ export const PRESETS = {
   spring: {
     label: 'Spring Sun', hdri: 'bluebird', az: 120, elev: 50, sun: 0xfff6ea, sunScale: 1.0,
     fogD: 0.00015, fogFall: 1 / 2400, sunFog: 0xfff4e4, key: 3.8, haze: 0.32, snow: 0, shafts: 0.03,
-    fogRGB: [0.78, 0.93, 1.22], disc: 1, aureole: 0.3, proc: 1, cover: 0.55,
+    fogRGB: [0.78, 0.93, 1.22], disc: 1, aureole: 0.3, proc: 1, cover: 1.25,
   },
   arctic: {
     label: 'Arctic Blue', hdri: 'bluebird', az: 30, elev: 15, sun: 0xeef3ff, sunScale: 0.92,
     fogD: 0.00011, fogFall: 1 / 2600, sunFog: 0xe8f0ff, key: 3.5, haze: 0.2, snow: 0, shafts: 0.05,
-    fogRGB: [0.68, 0.9, 1.36], valley: [0.0005, -30, 100], mistK: 1.2, disc: 1, discVis: 1, aureole: 0.45, proc: 1, cover: 0.35,
+    fogRGB: [0.68, 0.9, 1.36], valley: [0.0005, -30, 100], mistK: 1.2, disc: 1, discVis: 1, aureole: 0.45, proc: 1, cover: 0.95,
   },
   flurries: {
     label: 'Snow Showers', hdri: 'storm', az: 75, elev: 38, sun: 0xf4f6ff, sunOverSky: 0.35,
@@ -63,7 +63,7 @@ export const PRESETS = {
 };
 // the house look on top of every sky: the photo's blue washed toward a soft steel grey, the haze
 // thicker so far ridges go pale, and the air's blue cast eased (thick days are hazy enough already)
-export const LOOK = { wash: 0.3, fog: 1.6, haze: 1.5, rgb: 0.6, exp: 0.98, fogTint: [0.95, 1.0, 1.02] };
+export const LOOK = { wash: 0.3, fog: 1.6, haze: 1.5, rgb: 0.6, exp: 1.2, fogTint: [0.95, 1.0, 1.02] };
 // what each sky does to the snow (see COND)
 for (const [k, c] of Object.entries({ bluebird: 'groomed', golden: 'groomed', alpenglow: 'packed', night: 'ice', storm: 'powder', spring: 'slush', arctic: 'ice', flurries: 'packed', whiteout: 'powder', nightsnow: 'powder' })) PRESETS[k].cond = c;
 // how often each comes up when the weather changes every run
@@ -102,7 +102,7 @@ const DOME_FRAG = /* glsl */`
   }
   // the clouds' body on their plane: broad shapes, their lumps, then frayed edges (stretched along the wind)
   float cloudBody(vec2 p) {
-    p *= vec2(1.0, 2.6);
+    p *= vec2(1.0, 1.8);
     return vn(p * 0.55) * 0.48 + vn(p * 1.4 + 3.1) * 0.27 + vn(p * 3.4 + 7.7) * 0.16 + vn(p * 8.0 + 1.3) * 0.09;
   }
   void main() {
@@ -144,13 +144,13 @@ const DOME_FRAG = /* glsl */`
       vec3 pc = mix(uSkyH, uSkyZ, pow(hh, 0.45));
       float up = clamp(uSunW.y, 0.0, 1.0);
       pc += uSkyH * (pow(max(mu, 0.0), 6.0) * 0.3 + pow(max(mu, 0.0), 48.0) * 0.5) * mix(0.35, 1.0, 1.0 - up) * (1.0 - hh * 0.6);
-      vec2 pl = d.xz / (hh + 0.07) * 1.5 + vec2(uTime * 0.007, uTime * 0.003);
+      vec2 pl = d.xz / (hh + 0.2) * 2.3 + vec2(uTime * 0.007, uTime * 0.003);
       float body = cloudBody(pl);
       float cov = mix(0.74, 0.6, uCover);
-      float dens = pow(smoothstep(cov, cov + 0.15, body), 0.7);
+      float dens = pow(smoothstep(cov, cov + 0.2, body), 0.8);
       vec2 tw = normalize(uSunW.xz + vec2(1e-4)) * 0.5 * (1.0 - up * 0.5);
       float sh = smoothstep(cov, cov + 0.2, cloudBody(pl + tw)) * 0.65 + smoothstep(cov, cov + 0.2, cloudBody(pl + tw * 2.2)) * 0.35;
-      float lit = exp(-sh * 2.2);
+      float lit = exp(-sh * 1.1);
       float rim = pow(max(mu, 0.0), 5.0) * (1.0 - dens) * 2.0;
       vec3 cc = mix(uSkyShade * mix(1.0, 0.75, dens), uSkyCloud * (0.85 + rim), lit);
       float fade = smoothstep(0.015, 0.14, hh) * (1.0 - smoothstep(0.75, 0.98, hh) * 0.3);
@@ -305,10 +305,10 @@ export class Environment {
     u.uProc.value = p.proc ?? 0;
     if (p.proc) {
       const H = lum(m.horizon);
-      u.uSkyH.value.setRGB(0.9, 0.96, 1.06).multiplyScalar(H * 0.95);
-      u.uSkyZ.value.setRGB(0.13, 0.32, 0.82).multiplyScalar(H * 0.8);
-      u.uSkyCloud.value.set(p.sun).lerp(new THREE.Color(1, 1, 1), 0.6).multiplyScalar(H * 1.45);
-      u.uSkyShade.value.setRGB(0.7, 0.79, 0.95).multiplyScalar(H * 0.72);
+      u.uSkyH.value.setRGB(0.9, 0.96, 1.06).multiplyScalar(H * 1.0);
+      u.uSkyZ.value.setRGB(0.06, 0.26, 1.0).multiplyScalar(H * 1.43);
+      u.uSkyCloud.value.set(p.sun).lerp(new THREE.Color(1, 1, 1), 0.8).multiplyScalar(H * 1.56);
+      u.uSkyShade.value.setRGB(0.8, 0.86, 0.97).multiplyScalar(H * 0.9);
       u.uCover.value = p.cover ?? 0.5;
     }
     u.uHazeCol.value.copy(hc);
