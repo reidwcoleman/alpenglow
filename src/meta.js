@@ -26,13 +26,13 @@ export const ITEMS = [
   I('j-mustard', 'jacket', 'Mustard', 'free', 0, 0xf2b705), I('j-glacier', 'jacket', 'Glacier', 'free', 0, 0x2a7de1),
   I('j-pine', 'jacket', 'Pine', 'free', 0, 0x18a868), I('j-violet', 'jacket', 'Violet', 'free', 0, 0x8e3fd1),
   I('j-flamingo', 'jacket', 'Flamingo', 'free', 0, 0xff4f8b), I('j-chalk', 'jacket', 'Chalk', 'free', 0, 0xf4f4f4),
-  I('j-tealband', 'jacket', 'Teal Band', 'free', 0, 0x2e8e98, 0x1c2128, 1), I('p-slate', 'pants', 'Slate', 'free', 0, 0x3a4352),
+  I('j-tealband', 'jacket', 'Petrol Shell', 'free', 0, 0x286d70, 0x1a1e24, 1), I('p-slate', 'pants', 'Ink', 'free', 0, 0x303946),
   I('p-coal', 'pants', 'Coal', 'free', 0, 0x1b1d24), I('p-navy', 'pants', 'Navy', 'free', 0, 0x1f2f4a), I('p-stone', 'pants', 'Stone', 'free', 0, 0x8a8478),
-  I('h-white', 'head', 'White Lid', 'free', 0, 0xf4f4f4, null, 0, { helmet: true }), I('h-black', 'head', 'Black Lid', 'free', 0, 0x15161a, null, 0, { helmet: true, fin: 1 }),
+  I('h-white', 'head', 'White Lid', 'free', 0, 0xf4f4f4, null, 0, { helmet: true }), I('h-black', 'head', 'Black Lid', 'free', 0, 0x14181d, null, 0, { helmet: true, fin: 1 }),
   I('h-red', 'head', 'Red Lid', 'free', 0, 0xd8342c, null, 0, { helmet: true }),
-  I('g-amber', 'goggles', 'Amber', 'free', 0, 0xff8a1e), I('g-sky', 'goggles', 'Sky', 'free', 0, 0x2aa8ff), I('g-smoke', 'goggles', 'Smoke', 'free', 0, 0x8e9fb8),
+  I('g-amber', 'goggles', 'Amber', 'free', 0, 0xff8a1e), I('g-sky', 'goggles', 'Sky', 'free', 0, 0x2aa8ff), I('g-smoke', 'goggles', 'Smoke', 'free', 0, 0x8e9fb8), I('g-silver', 'goggles', 'Park Silver', 'free', 0, 0xc4d0d8, 0xf3f3f1),
   I('s-white', 'skis', 'Whiteout', 'free', 0, 0xffffff, 0x15161a, 0, { design: 'stripe' }), I('s-black', 'skis', 'Blackout', 'free', 0, 0x111111, 0x8a8f99, 0, { design: 'logo' }),
-  I('s-red', 'skis', 'Race Red', 'free', 0, 0xe63946, 0xffffff, 0, { design: 'tip' }),
+  I('s-red', 'skis', 'Race Red', 'free', 0, 0xea1018, 0xffffff, 0, { design: 'tip' }),
   I('d-white', 'deck', 'Blank', 'free', 0, 0xffffff, 0x15161a, 0, { design: 'logo' }), I('d-black', 'deck', 'Shadow', 'free', 0, 0x111111, 0x8a8f99, 0, { design: 'stripe' }),
   I('gl-black', 'gloves', 'Black', 'free', 0, 0x15161a),
   I('po-alu', 'poles', 'Alloy', 'free', 0, 0x9ea5b0),
@@ -202,7 +202,7 @@ export const SETS = [
 ].map((s) => ({ ...s, price: Math.round(s.items.reduce((a, id) => a + (ITEM[id]?.price ?? 0), 0) * 0.7 / 50) * 50 }));
 
 // ---------------------------------------------------------------- the profile
-const KIT0 = { rider: 'r-kai', jacket: 'j-tealband', pants: 'p-slate', head: 'h-black', goggles: 'g-smoke', skis: 's-red', deck: 'd-white', gloves: 'gl-black', poles: 'po-alu', trail: 't-none' };
+const KIT0 = { rider: 'r-kai', jacket: 'j-tealband', pants: 'p-slate', head: 'h-black', goggles: 'g-silver', skis: 's-red', deck: 'd-white', gloves: 'gl-black', poles: 'po-alu', trail: 't-none' };
 export class Meta {
   constructor() {
     this.load();
@@ -232,6 +232,12 @@ export class Meta {
       const K = this.kit;
       if (K.jacket === KIT0.jacket && K.goggles === 'g-sky') K.goggles = 'g-smoke';
       store.set('kit8', '1');
+    }
+    // (and once more: the white park goggles the Cork7 starter rides in)
+    if (store.get('kit9', '0') !== '1') {
+      const K = this.kit;
+      if (K.jacket === KIT0.jacket && (K.goggles === 'g-smoke' || K.goggles === 'g-sky')) K.goggles = 'g-silver';
+      store.set('kit9', '1');
     }
     this.day = store.json('day', { d: '', xp: 0, done: false });
     this.gold = store.get('gold', '0') === '1';
@@ -426,8 +432,8 @@ export class Meta {
       deck: dk.c, deck2: dk.c2 ?? 0x15161a, deckDesign: dk.design ?? 'logo', gloves: gl.c, gloves2: gl.c2 ?? gl.c, poles: k('poles').c,
       board: !!board, skin: r.c, avatar: r.body, male: true, nopack: true, trail: k('trail').fx === 'snow' ? null : { c: k('trail').c, c2: k('trail').c2, fx: k('trail').fx } };
     if (h.beanie) { o.beanie = h.c; o.pom = !!h.pom; } else { o.beanie = 0; o.helmet = h.c; o.helmet2 = h.c2 ?? null; o.helmetFin = h.fin ?? 0; }
-    // (light grey ski boots under the kit, dark ones with a board)
-    o.boots = o.board ? 0x2a2d35 : 0xdfe2e7;
+    // (grey ski boots under the kit, dark ones with a board)
+    o.boots = o.board ? 0x2a2d35 : 0x70767c;
     return o;
   }
 

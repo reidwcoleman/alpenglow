@@ -256,13 +256,13 @@ vRest = position;
   // freeride cut: a roomy shell over a midlayer, sleeves cut long and loose with wide cuffs, and
   // baggy pants dropping in a stack over the boots. (the chest's puff eases off up into the
   // collar so the two meet without a step)
-  float hemY = uLmV.x - 0.11;
+  float hemY = uLmV.x - 0.17;
   float cuffD = min( distance( vRest, uHandL ), distance( vRest, uHandR ) );
   float cuff = 1.0 - smoothstep( 0.08, 0.2, cuffD );
   // the jacket's long hem hangs off the hips, away from the pants under it
   float hang = ( pp == 2.0 || pp == 6.0 ) ? smoothstep( hemY + 0.16, hemY + 0.02, vRest.y ) * step( hemY - 0.015, vRest.y ) : 0.0;
-  float puff = pp == 2.0 ? mix( 0.06, 0.014, smoothstep( uLmV.y - 0.12, uLmV.y - 0.01, vRest.y ) * ( 1.0 - smoothstep( 0.08, 0.15, length( vRest.xz - uNeckP.xz ) ) ) ) : pp == 3.0 ? 0.052 : pp == 4.0 ? 0.046 + 0.014 * cuff : pp == 6.0 ? 0.058 : pp == 7.0 ? 0.05 + 0.046 * flare : pp == 5.0 ? 0.012 : pp < 1.5 ? 0.012 * collar : 0.0;
-  puff += hang * 0.01;
+  float puff = pp == 2.0 ? mix( 0.052, 0.014, smoothstep( uLmV.y - 0.12, uLmV.y - 0.01, vRest.y ) * ( 1.0 - smoothstep( 0.08, 0.15, length( vRest.xz - uNeckP.xz ) ) ) ) : pp == 3.0 ? 0.046 : pp == 4.0 ? 0.042 + 0.016 * cuff : pp == 6.0 ? 0.066 : pp == 7.0 ? 0.062 + 0.04 * flare : pp == 5.0 ? 0.012 : pp < 1.5 ? 0.012 * collar : 0.0;
+  puff += hang * 0.024;
 #ifndef CROWD
   if ( pp == 7.0 && uPuff > 0.5 ) transformed.y = max( transformed.y, hem - 0.03 );
 #endif
@@ -323,7 +323,7 @@ float agN(vec3 x) {
 vec3 agPat(vec3 a, vec3 b, float pat, float part, vec3 p, vec2 lm) {
   if (pat < 0.5) return a;
   // (Cork7's starter shell: one dark band round the chest, the sleeves the jacket's colour)
-  if (pat < 1.5) { float y = (p.y - lm.x) / (lm.y - lm.x); return part > 1.5 && part < 2.5 && y > 0.42 && y < 0.7 ? b : a; }
+  if (pat < 1.5) { float y = (p.y - lm.x) / (lm.y - lm.x); return part > 1.5 && part < 2.5 && y > 0.16 && y < 0.46 ? b : a; }
   if (pat < 2.5) { float n = agN(p * 9.0) * 0.65 + agN(p * 23.0) * 0.35; return n > 0.62 ? b : n > 0.5 ? mix(a, b, 0.5) : a; }
   if (pat < 3.5) {
     float sx = step(0.62, fract(p.x * 9.0)), sy = step(0.62, fract(p.y * 9.0));
@@ -376,10 +376,10 @@ vec3 agPat(vec3 a, vec3 b, float pat, float part, vec3 p, vec2 lm) {
   float rough = 0.6, shK = 0.0;
   if ( bodyHalf || part > 0.5 ) {
     if ( part > 7.5 ) { dye = uBoots; rough = 0.35; }
-    else if ( part > 5.5 && part < 6.5 && vRest.y > uLm.x - 0.11 && uLm.y > 0.0 ) { dye = agPat( JK, uJacket2, uPat.x, 2.0, vRest, uLm ); rough = 0.64; shK = 0.3; }
+    else if ( part > 5.5 && part < 6.5 && vRest.y > uLm.x - 0.17 && uLm.y > 0.0 ) { dye = agPat( JK, uJacket2, uPat.x, 2.0, vRest, uLm ); rough = 0.64; shK = 0.3; }
     else if ( part > 5.5 ) { dye = agPat( uPants, uPants2, uPat.y, part, vRest, uLm ); rough = 0.76; shK = 0.36; }
     else if ( part > 4.5 ) { dye = uGloves; rough = 0.8; shK = 0.3; }
-    else if ( part > 1.5 ) { bool low = vRest.y < uLm.x - 0.11; dye = low ? agPat( uPants, uPants2, uPat.y, 6.0, vRest, uLm ) : agPat( JK, uJacket2, uPat.x, part, vRest, uLm ); rough = low ? 0.76 : 0.64; shK = low ? 0.36 : 0.3;
+    else if ( part > 1.5 ) { bool low = vRest.y < uLm.x - 0.17; dye = low ? agPat( uPants, uPants2, uPat.y, 6.0, vRest, uLm ) : agPat( JK, uJacket2, uPat.x, part, vRest, uLm ); rough = low ? 0.76 : 0.64; shK = low ? 0.36 : 0.3;
       // (skin weighted to the chest that reaches up the neck stays skin above the collar line)
       if ( part < 2.5 && uLm.y > 0.0 && vRest.y > uLm.y + 0.064 - 0.025 * smoothstep( 0.0, 0.06, vRest.z ) ) dye = vec3( -1.0 );
     }
@@ -426,7 +426,7 @@ vec3 agPat(vec3 a, vec3 b, float pat, float part, vec3 p, vec2 lm) {
   // the garment's make
   if ( dye.r >= 0.0 && part > 1.5 && part < 7.5 && part != 5.0 ) {
     vec3 p = vRest;
-    bool jacket = ( ( part > 1.5 && part < 4.5 ) || part == 6.0 ) && p.y > uLm.x - 0.11;
+    bool jacket = ( ( part > 1.5 && part < 4.5 ) || part == 6.0 ) && p.y > uLm.x - 0.17;
     // ripstop: a grid of heavier threads catching the light, only where a pixel is fine enough to
     // hold it (in the colour, not the bump: screen derivatives of something this fine go blocky)
     float wk = jacket ? 180.0 : 140.0;
@@ -452,7 +452,7 @@ vec3 agPat(vec3 a, vec3 b, float pat, float part, vec3 p, vec2 lm) {
         float sf = smoothstep( 0.021, 0.017, p.x ) * smoothstep( 0.004, 0.006, p.x );
         gH += sf * 0.45; dye *= 1.0 - 0.2 * agL( p.x - 0.0205, 0.0007, mpp );
       }
-      float hemB = 1.0 - smoothstep( 0.0, 0.012, abs( p.y - ( uLm.x - 0.09 ) ) - 0.02 );
+      float hemB = 1.0 - smoothstep( 0.0, 0.012, abs( p.y - ( uLm.x - 0.15 ) ) - 0.02 );
       gH += hemB * 0.5;
       float cuff = 1.0 - smoothstep( 0.05, 0.065, min( distance( p, uHandL ), distance( p, uHandR ) ) );
       if ( part > 3.5 ) { dye = mix( dye, dye * 0.55, cuff ); gH += cuff * 0.6; rough = mix( rough, 0.82, cuff ); }

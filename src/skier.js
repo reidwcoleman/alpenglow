@@ -1612,10 +1612,14 @@ export class Skier {
     // (the player stands tall like a Cork7 rider; the computer riders sit lower)
     let crouch = (this.strict ? 0.07 : 0.18) + Math.abs(this.lean) * (this.board ? 0.26 : 0.12) + this.compress * 0.35 + gCrouch * (this.board ? 1 : 0.7) + this.jumpCharge * 0.5 + (c.brake > 0 ? 0.25 : 0) - this.spring * 1.6;
     if (crashed) crouch = this.crashPhase === 'up' ? 0.9 * this.lie + 0.3 : 0.55;
+    // (the player's rider drawn a size up, like Cork7's: easier to read on the hill and in a trick)
+    const sc = this.strict ? 1.13 : 1;
+    if (m.group.scale.x !== sc) m.group.scale.setScalar(sc);
     m.pose({
       // (the body's tilt eases off past ~40 degrees: angulation takes the rest)
       lean: crashed ? 0 : 0.85 * Math.tanh(this.lean / 0.85),
       angulate: this.board ? 0.55 : 0.7,
+      tall: this.strict && !this.board ? 1 : 0,
       // the skis speeding up under him (+) or checked (-): the upper body rocks with it
       // (deep and slow in powder he sits back a little to keep the tips up)
       fore: crashed || !this.onGround ? 0 : clamp(this.accelS ?? 0, -6, 6) / 6 - this.surf.powder * 0.25 * (1 - smoothstep(6, 16, sp)),

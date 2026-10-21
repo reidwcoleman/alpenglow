@@ -1705,6 +1705,17 @@ class Game {
         if (n) this.particles.emit(s.pos.x - fx * 0.6 + lx * out * 0.1, y, s.pos.z - fz * 0.6 + lz * out * 0.1, vx * 0.55 + lx * out * k, 0.9 + edge * 1.2 + pw * 1.2, vz * 0.55 + lz * out * k,
           0.6 + pw * 1.2, 0.28 + pw * 0.3, 0.75 + pw * 0.5, n, 0.1, 2.2 - pw, 1 + pw, 0.3 + pw * 0.3);
       }
+      // Cork7's ride: soft round puffs kicked up off the ski tails the whole way down, more and
+      // bigger with speed and through a turn, hanging a moment behind the rider
+      if (s.isPlayer && s.strict && pw < 0.15) {
+        const n = rnd((3 + sp * 0.18 + edge * 12) * dt * near * (1 - ice * 0.5));
+        for (let i = 0; i < n; i++) {
+          const o = Math.random() < 0.5 ? 1 : -1;
+          const ox = s.pos.x - fx * 0.8 + lx * o * 0.1, oz = s.pos.z - fz * 0.8 + lz * o * 0.1;
+          this.particles.emit(ox, y + 0.06, oz, vx * 0.5 + lx * out * edge * 1.6, 0.3 + edge * 0.5, vz * 0.5 + lz * out * edge * 1.6,
+            0.4, 0.7 + sp * 0.008 + edge * 0.35, 0.55 + edge * 0.25, 1, 0.2, 0.5, 1.2, 0.7);
+        }
+      }
       // skids and stops: the whole length of the edges scrapes, a curtain of snow thrown out
       const skid = Math.min(4, s.skid) + (s.controls.brake ? 1.2 : 0);
       if (skid > 0.25) {

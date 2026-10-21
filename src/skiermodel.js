@@ -142,6 +142,21 @@ const BOARD_GRAB = {
 export const BOARD_NAME = { mute: 'indy', tail: 'tail', japan: 'melon', safety: 'method', critical: 'stalefish', nose: 'nose' };
 
 const packGeo = {};
+// a hood rolled down behind the neck: a half ring round the back, its tube thickest at the middle
+// of the back where the fabric bunches, flattened onto the shoulders
+function hoodGeometry() {
+  const g = new THREE.TorusGeometry(0.105, 0.05, 10, 20, Math.PI).rotateX(-Math.PI / 2);
+  const p = g.getAttribute('position');
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    // (z < 0 behind: the ring's back; its ends taper into the collar at the sides)
+    const back = Math.max(0, -z / 0.155), k = 0.55 + 0.45 * back;
+    const a = Math.atan2(z, x), cx = Math.cos(a) * 0.105, cz = Math.sin(a) * 0.105;
+    p.setXYZ(i, cx + (x - cx) * k, y * (0.75 + 0.35 * back) - 0.012 * back, (cz + (z - cz) * k) * 0.92 - 0.01 * back);
+  }
+  g.computeVertexNormals();
+  return g;
+}
 // the pack: a rounded bag, narrower at the top, its outer face bellied out with what's in it
 function packBodyGeometry() {
   const g = new RoundedBoxGeometry(0.3, 0.46, 0.15, 4, 0.06);
@@ -263,7 +278,8 @@ export class SkierModel {
       P.pack = pack;
     }
     if (!outfit.racer) {
-      const hood = new THREE.Mesh(packGeo.hood ??= new THREE.TorusGeometry(0.1, 0.04, 8, 16, Math.PI).rotateX(-Math.PI / 2).scale(1, 1, 0.8), jacketM);
+      // (a shell's hood, rolled up behind the neck: a fat half ring, fuller at the back)
+      const hood = new THREE.Mesh(outfit.nopack ? (packGeo.hood2 ??= hoodGeometry()) : (packGeo.hood ??= new THREE.TorusGeometry(0.1, 0.04, 8, 16, Math.PI).rotateX(-Math.PI / 2).scale(1, 1, 0.8)), jacketM);
       hood.castShadow = true;
       this.frame.add(hood);
       P.hood = hood;
@@ -391,7 +407,9 @@ export class SkierModel {
     const j = this.j, P = this.parts;
     const crouch = p.crouch, tuck = p.tuck, air = this.airS;
     const al = Math.abs(p.lean) * (1 - air);
-    const stance = 0.105 + p.plow * 0.16 + sstep(0.2, 0.8, al) * 0.02;
+    // (a Cork7-style rider stands tall over a narrower stance, the hands low by the hips)
+    const tall = p.tall || 0;
+    const stance = 0.105 - tall * 0.018 + p.plow * 0.16 + sstep(0.2, 0.8, al) * 0.02;
     j.ankL.set(stance, 0.17, 0);
     j.ankR.set(-stance, 0.17, 0);
     // long leg, short leg: tipped over, both skis stay on the snow, so the inside leg folds up
@@ -438,7 +456,7 @@ export class SkierModel {
     j.pelvis.set(-p.lean * 0.1 - (pushL - pushR) * 0.09, hipH, hipZ);
     if (this.gm) j.pelvis.x += this.gm.sway;
     // upper body: forward pitch and counter-roll (angulation), plus its swing
-    const pitch = 0.22 + crouch * 0.28 + tuck * 0.95 + air * 0.15 + g * 0.25 + (this.lagF || 0) * 0.14;
+    const pitch = 0.22 - tall * 0.09 + crouch * 0.28 + tuck * 0.95 + air * 0.15 + g * 0.25 + (this.lagF || 0) * 0.14;
     // (in the tipped frame: back toward upright, so the shoulders stay level-ish over the edges)
     const ang = p.lean * p.angulate - (this.lagR || 0) * 0.8;
     j.spine.set(Math.sin(ang) * Math.cos(pitch), Math.cos(ang) * Math.cos(pitch), Math.sin(pitch)).normalize();
@@ -746,13 +764,18 @@ export class SkierModel {
       }
     } else skull = tmpV2.copy(j.head).addScaledVector(headUp, -0.02);
     // the pack rides on the back of the chest, the hood on the back of the neck
-    if (P.pack) {
+    if (P.pack || P.hood) {
       const chest = this.rig && this.real ? this.rig.chestP : j.chest, neck = this.rig && this.real ? this.rig.neckP : j.neck;
       const bq = (this._bq ??= new THREE.Quaternion()).setFromRotationMatrix((this._bm ??= new THREE.Matrix4()).makeBasis(j.side, j.spine, j.fwd));
-      P.pack.position.copy(chest).addScaledVector(j.spine, -0.07).addScaledVector(j.fwd, -0.2);
-      P.pack.quaternion.copy(bq);
-      P.hood.position.copy(neck).addScaledVector(j.fwd, -0.06).addScaledVector(j.spine, -0.01);
-      P.hood.quaternion.copy(bq);
+      if (P.pack) {
+        P.pack.position.copy(chest).addScaledVector(j.spine, -0.07).addScaledVector(j.fwd, -0.2);
+        P.pack.quaternion.copy(bq);
+      }
+      // (without a pack the hood lies out on the shoulders, a little lower)
+      if (P.hood) {
+        P.hood.position.copy(neck).addScaledVector(j.fwd, P.pack ? -0.06 : -0.075).addScaledVector(j.spine, P.pack ? -0.01 : -0.035);
+        P.hood.quaternion.copy(bq);
+      }
     }
     // (all the head gear is built round the skull point, in the head's frame)
     for (const k of this.headGear) P[k].position.copy(skull);
@@ -882,7 +905,7 @@ export class SkierModel {
     if (!G) return;
     const w = (1 - this.airS) * (1 - this.gAmt) * (p.crash ? 0 : 1) * (1 - clamp(p.flail || 0, 0, 1));
     if (w < 0.001) return;
-    const al = Math.abs(p.lean), lr = this.lagR || 0, lf = this.lagF || 0, st = G.stop, sk = G.skid;
+    const al = Math.abs(p.lean), lr = this.lagR || 0, lf = this.lagF || 0, st = G.stop, sk = G.skid, tall = p.tall || 0;
     const inS = p.lean > 0 ? -1 : 1;
     const ch = (this._gch ??= new THREE.Vector3()).copy(j.pelvis).addScaledVector(j.spine, 0.44);
     const T = (this._gt ??= new THREE.Vector3());
@@ -890,9 +913,9 @@ export class SkierModel {
       // (the inside hand leads, forward and up over the inside knee; the outside one stays level)
       const inside = s === inS ? al : 0, lead = s === inS ? al : -al * 0.4;
       T.copy(ch)
-        .addScaledVector(j.side, s * (0.31 + st * 0.03 + sk * 0.07 + inside * 0.06))
-        .addScaledVector(j.fwd, 0.42 + lead * 0.14 - st * 0.08)
-        .addScaledVector(j.spine, -0.17 + inside * 0.12 - st * 0.05);
+        .addScaledVector(j.side, s * (0.31 - tall * 0.05 + st * 0.03 + sk * 0.07 + inside * 0.06))
+        .addScaledVector(j.fwd, 0.42 - tall * 0.16 + lead * 0.14 - st * 0.08)
+        .addScaledVector(j.spine, -0.17 - tall * 0.1 + inside * 0.12 - st * 0.05);
       // (they swing with the body's weight)
       T.x += lr * 0.2; T.y += Math.abs(lr) * 0.08; T.z -= lf * 0.1;
       h.lerp(T, w * (1 - p.tuck));
@@ -944,8 +967,10 @@ export class SkierModel {
     const L = POLE, A = (this._pa ??= new THREE.Vector3()), B = (this._pb ??= new THREE.Vector3());
     const lean = p.lean, lf = clamp(this.lagF || 0, -1, 1);
     const hRel = hd.y - this.snowAt(hd.x + s * 0.25, lean);
-    const vy = clamp((hRel - 0.24) / L, 0.3, 0.92);
-    this.poleDir(A, s * (0.4 + G.skid * 0.4), -1 + lf * 0.3 + G.skid * 0.3, vy);
+    // (a tall Cork7-style rider trails them further back, tips well up off the snow)
+    const tall = p.tall || 0;
+    const vy = clamp((hRel - 0.24) / L, 0.3, 0.92 - tall * 0.4);
+    this.poleDir(A, s * (0.4 - tall * 0.12 + G.skid * 0.4), -1 + lf * 0.3 + G.skid * 0.3, vy);
     // skating: the poles push off beside the boots
     if (p.skate) {
       const ph = Math.sin((p.skatePhase || 0) * 2);
