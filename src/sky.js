@@ -11,7 +11,7 @@ export const PRESETS = {
   bluebird: {
     label: 'Bluebird Morning', hdri: 'bluebird', az: 70, sun: 0xfff3e4, sunScale: 1.0,
     fogD: 0.00014, fogFall: 1 / 2600, sunFog: 0xfff0dc, key: 3.7, haze: 0.28, snow: 0, shafts: 0.04,
-    fogRGB: [0.74, 0.92, 1.28], valley: [0.00012, -40, 140], disc: 1, aureole: 0.25,
+    fogRGB: [0.74, 0.92, 1.28], valley: [0.00012, -40, 140], disc: 1, aureole: 0.25, proc: 1, cover: 0.8,
   },
   golden: {
     label: 'Golden Hour', hdri: 'golden', az: 8, elev: 9, sun: 0xffb46e, sunOverSky: 1.9,
@@ -38,12 +38,12 @@ export const PRESETS = {
   spring: {
     label: 'Spring Sun', hdri: 'bluebird', az: 120, elev: 50, sun: 0xfff6ea, sunScale: 1.0,
     fogD: 0.00015, fogFall: 1 / 2400, sunFog: 0xfff4e4, key: 3.8, haze: 0.32, snow: 0, shafts: 0.03,
-    fogRGB: [0.78, 0.93, 1.22], disc: 1, aureole: 0.3,
+    fogRGB: [0.78, 0.93, 1.22], disc: 1, aureole: 0.3, proc: 1, cover: 0.55,
   },
   arctic: {
     label: 'Arctic Blue', hdri: 'bluebird', az: 30, elev: 15, sun: 0xeef3ff, sunScale: 0.92,
     fogD: 0.00011, fogFall: 1 / 2600, sunFog: 0xe8f0ff, key: 3.5, haze: 0.2, snow: 0, shafts: 0.05,
-    fogRGB: [0.68, 0.9, 1.36], valley: [0.0005, -30, 100], mistK: 1.2, disc: 1, discVis: 1, aureole: 0.45,
+    fogRGB: [0.68, 0.9, 1.36], valley: [0.0005, -30, 100], mistK: 1.2, disc: 1, discVis: 1, aureole: 0.45, proc: 1, cover: 0.35,
   },
   flurries: {
     label: 'Snow Showers', hdri: 'storm', az: 75, elev: 38, sun: 0xf4f6ff, sunOverSky: 0.35,
@@ -91,8 +91,20 @@ const DOME_FRAG = /* glsl */`
   uniform sampler2D map;
   uniform float scale, yaw, rowsFrac, uWash, uHaze, uBright, uDiscR, uDiscVis, uHdriCut, uBelt, uMoon, uOvercast, uTime;
   uniform vec3 ground, uHazeCol, uZenith, uEnvTint, uSunW, uDiscCol, uAurCol, uHdriSun, uCastCol;
+  uniform float uProc, uCover; uniform vec3 uSkyH, uSkyZ, uSkyCloud, uSkyShade;
   varying vec3 vDir;
   float hash3(vec3 p) { p = fract(p * 0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }
+  // value noise and its octaves, for the drawn sky's cloud layer
+  float h2(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+  float vn(vec2 p) {
+    vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(h2(i), h2(i + vec2(1, 0)), f.x), mix(h2(i + vec2(0, 1)), h2(i + vec2(1, 1)), f.x), f.y);
+  }
+  // the clouds' body on their plane: broad shapes, their lumps, then frayed edges (stretched along the wind)
+  float cloudBody(vec2 p) {
+    p *= vec2(1.0, 2.6);
+    return vn(p * 0.55) * 0.48 + vn(p * 1.4 + 3.1) * 0.27 + vn(p * 3.4 + 7.7) * 0.16 + vn(p * 8.0 + 1.3) * 0.09;
+  }
   void main() {
     vec3 d = normalize(vDir);
     float c = cos(yaw), s = sin(yaw);
@@ -123,6 +135,29 @@ const DOME_FRAG = /* glsl */`
     float lw = dot(col, vec3(0.2126, 0.7152, 0.0722));
     col = mix(col, vec3(lw) * vec3(0.86, 0.98, 1.1), uWash * mix(1.0, 0.7, smoothstep(0.1, 0.6, d.y)));
     float mu = dot(d, uSunW);
+    float procDens = 0.0;
+    // the drawn sky (clear days): pale at the horizon, a soft steel blue overhead, a sun-glow in the
+    // air round the sun, and a layer of loose fair-weather cloud drifting across a plane above the
+    // mountain, thin and packed toward the horizon
+    if (uProc > 0.0) {
+      float hh = max(0.0, d.y);
+      vec3 pc = mix(uSkyH, uSkyZ, pow(hh, 0.45));
+      float up = clamp(uSunW.y, 0.0, 1.0);
+      pc += uSkyH * (pow(max(mu, 0.0), 6.0) * 0.3 + pow(max(mu, 0.0), 48.0) * 0.5) * mix(0.35, 1.0, 1.0 - up) * (1.0 - hh * 0.6);
+      vec2 pl = d.xz / (hh + 0.07) * 1.5 + vec2(uTime * 0.007, uTime * 0.003);
+      float body = cloudBody(pl);
+      float cov = mix(0.74, 0.6, uCover);
+      float dens = pow(smoothstep(cov, cov + 0.15, body), 0.7);
+      vec2 tw = normalize(uSunW.xz + vec2(1e-4)) * 0.5 * (1.0 - up * 0.5);
+      float sh = smoothstep(cov, cov + 0.2, cloudBody(pl + tw)) * 0.65 + smoothstep(cov, cov + 0.2, cloudBody(pl + tw * 2.2)) * 0.35;
+      float lit = exp(-sh * 2.2);
+      float rim = pow(max(mu, 0.0), 5.0) * (1.0 - dens) * 2.0;
+      vec3 cc = mix(uSkyShade * mix(1.0, 0.75, dens), uSkyCloud * (0.85 + rim), lit);
+      float fade = smoothstep(0.015, 0.14, hh) * (1.0 - smoothstep(0.75, 0.98, hh) * 0.3);
+      pc = mix(pc, cc, dens * fade * 0.9);
+      procDens = dens * fade;
+      col = mix(col, pc, uProc);
+    }
     // the earth's shadow rising opposite the sun, under a pink band (the belt of Venus)
     if (uBelt > 0.0) {
       vec2 hs = normalize(uSunW.xz + vec2(1e-5)), hd = normalize(d.xz + vec2(1e-5));
@@ -143,7 +178,8 @@ const DOME_FRAG = /* glsl */`
       // hidden behind the photo's clouds: they're whiter than the sky round them
       float sat = (raw.b - raw.r) / max(raw.b, 1e-3);
       float vis = uHdriCut > 0.0 ? smoothstep(0.03, 0.12, sat) : max(smoothstep(0.82, 0.97, max(raw.r, max(raw.g, raw.b))), smoothstep(0.05, 0.14, sat));
-      vis = mix(vis, 1.0, uDiscVis) * smoothstep(-0.01, 0.01, d.y);
+      vis = mix(vis, 1.0, uDiscVis);
+      vis = mix(vis, 1.0 - procDens, uProc) * smoothstep(-0.01, 0.01, d.y);
       float x = clamp(ang / uDiscR, 0.0, 1.0);
       float disc = 1.0 - smoothstep(0.86, 1.0, ang / uDiscR);
       float limb = 0.55 + 0.45 * sqrt(1.0 - x * x);
@@ -168,7 +204,7 @@ export class Environment {
     this.scene = scene;
     this.mat = new THREE.ShaderMaterial({
       uniforms: {
-        map: { value: null }, scale: { value: 1 }, uWash: { value: 0 }, yaw: { value: 0 }, rowsFrac: { value: 0.53 }, uBright: { value: 1 },
+        map: { value: null }, scale: { value: 1 }, uWash: { value: 0 }, uProc: { value: 0 }, uCover: { value: 0.5 }, uSkyH: { value: new THREE.Color() }, uSkyZ: { value: new THREE.Color() }, uSkyCloud: { value: new THREE.Color() }, uSkyShade: { value: new THREE.Color() }, yaw: { value: 0 }, rowsFrac: { value: 0.53 }, uBright: { value: 1 },
         ground: { value: new THREE.Color(0.5, 0.52, 0.56) }, uHaze: { value: 0 }, uHazeCol: { value: new THREE.Color() }, uZenith: { value: new THREE.Color(1, 1, 1) },
         uSunW: { value: new THREE.Vector3(0, 1, 0) }, uDiscR: { value: 0 }, uDiscVis: { value: 0 }, uEnvTint: { value: new THREE.Color(1, 1, 1) }, uDiscCol: { value: new THREE.Color() }, uAurCol: { value: new THREE.Color() },
         uHdriSun: { value: new THREE.Vector3(0, 1, 0) }, uHdriCut: { value: 0 }, uBelt: { value: 0 }, uMoon: { value: 0 }, uOvercast: { value: 0 }, uCastCol: { value: new THREE.Color() }, uTime: { value: 0 },
@@ -263,8 +299,18 @@ export class Environment {
     // (clear days get the most of it; a low sun or a night has its own air already)
     const clear = p.fogD < 0.0004 && !p.night && (p.elev ?? 30) > 12;
     this.scene.fog.density = p.fogD * (clear ? LOOK.fog : 1.15);
-    u.uHaze.value = Math.min(1, p.haze * (clear ? LOOK.haze : 1.15));
+    u.uHaze.value = Math.min(1, p.haze * (p.proc ? 1 : clear ? LOOK.haze : 1.15));
     u.uWash.value = LOOK.wash * (p.night ? 0.5 : 1);
+    // the clear days get the drawn sky, in the photo's own radiance (its horizon sets the scale)
+    u.uProc.value = p.proc ?? 0;
+    if (p.proc) {
+      const H = lum(m.horizon);
+      u.uSkyH.value.setRGB(0.9, 0.96, 1.06).multiplyScalar(H * 0.95);
+      u.uSkyZ.value.setRGB(0.13, 0.32, 0.82).multiplyScalar(H * 0.8);
+      u.uSkyCloud.value.set(p.sun).lerp(new THREE.Color(1, 1, 1), 0.6).multiplyScalar(H * 1.45);
+      u.uSkyShade.value.setRGB(0.7, 0.79, 0.95).multiplyScalar(H * 0.72);
+      u.uCover.value = p.cover ?? 0.5;
+    }
     u.uHazeCol.value.copy(hc);
     u.ground.value.copy(hc).multiplyScalar(0.8);
     AG.uSunDirA.value.copy(this.sunDir);
@@ -291,13 +337,14 @@ export class Environment {
     u.uOvercast.value = p.overcast ?? 0;
     u.uCastCol.value.copy(hc).multiplyScalar(p.castK ?? 1);
     // image-based light from the same dome (haze off: the fog is applied per surface)
-    const hz = u.uHaze.value, dr = u.uDiscR.value;
-    u.uHaze.value = 0; u.uDiscR.value = 0;
+    // (and from the photo, not the drawn sky: the light stays the same either way)
+    const hz = u.uHaze.value, dr = u.uDiscR.value, pr = u.uProc.value;
+    u.uHaze.value = 0; u.uDiscR.value = 0; u.uProc.value = 0;
     // (the light the sky throws can be cooler than the sky looks: dusk shade is blue, not pink)
     u.uEnvTint.value.setRGB(...(p.envTint ?? [1, 1, 1]));
     if (this.envRT) this.envRT.dispose();
     this.envRT = this.pmrem.fromScene(this.envScene, 0, 0.1, 500);
-    u.uHaze.value = hz; u.uDiscR.value = dr; u.uEnvTint.value.setRGB(1, 1, 1);
+    u.uHaze.value = hz; u.uDiscR.value = dr; u.uProc.value = pr; u.uEnvTint.value.setRGB(1, 1, 1);
     this.scene.environment = this.envRT.texture;
     // at night the sky only fills in a little: the floodlights carry the scene
     this.scene.environmentIntensity = p.envK ?? 1;
@@ -307,6 +354,7 @@ export class Environment {
   // keep the shadow frustum centred on the player, snapped to texels to avoid shimmer
   follow(target, dt) {
     this.time += dt;
+    this.mat.uniforms.uTime.value = this.time;
     const d = this.sunDir;
     const size = this.sun.shadow.camera.right - this.sun.shadow.camera.left;
     const texel = size / this.sun.shadow.mapSize.x;

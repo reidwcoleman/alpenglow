@@ -19,7 +19,7 @@ const lip = await page.evaluate((jump) => {
   g.rig.snap = true;
   window.__calls = [];
   const orig = g.say.bind(g);
-  g.say = (n, p, s2, c, ms) => { window.__calls.push(String(n).replace(/<[^>]+>/g, '')); return orig(n, p, s2, c, ms); };
+  g.say = (n, p, s2, c, ms, ch) => { window.__calls.push([n, s2].filter(Boolean).map((x) => String(x).replace(/<[^>]+>/g, '')).join(' · ')); return orig(n, p, s2, c, ms, ch); };
   return J.lip;
 }, jump);
 // pop at the lip

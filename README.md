@@ -193,6 +193,8 @@ node tools/phone.mjs shots/phone        # an iPhone in landscape: the front page
 node tools/portrait.mjs out.jpg 4 1.6 1.66 20   # rider portraits (OUTFITS='[{"head":"hx-racer"}]')
 PARK=forest node tools/sim.mjs free 150   # any park headless
 ```
+Cork7 sky and trick HUD: clear presets (proc: 1, cover) draw the sky in sky.js (gradient in the HDRI's horizon radiance, sun glow, a value-noise cloud plane that drifts with uTime); the image-based light is still captured from the photo (uProc off for the PMREM). In the air main shows the trick so far live (Skier.airTrick(), trickName, trickPoints chips: INVERTED, SWITCH, GRABS, REPEAT via peekRepeat); landings call STOMPED / SAVED IT / CLEAN LANDING with the trick name under it; #charge is the pop bar; the air readout shows speed and distance from the takeoff. tools/hold.mjs takes SHOTS=prefix.
+
 Park look (Cork7's): rails and boxes in black painted steel on black legs; every feature's surface carries aFace (how steeply it rises out of the run, from parkAt) and the snow shader shades those faces a little bluer so the shapes read in flat light; dye lines on the snow: across each lip and down both sides of its run-in, faint lines along the landing's edges, and across and beside each rail's entry; a tall marker pole each side of a kicker's run-in with its number and sweet-spot speed on an orange board (one atlas, one instanced mesh).
 
 URL flags: `?park=yard|slope|forest|bigair|timber|grand|mega|canyon&room=name&event=cup|sprint|trial|jam|slopestyle|freeride|bigair&tier=0|1|2&cwatch=<replay id>&menu=0&mode=race|run|park&line=jumps|rails|pipe&auto=1&tod=bluebird|golden|alpenglow|night|storm|spring|arctic|flurries|whiteout|nightsnow&tm=aces|agx|neutral&z=1200&cam=chase|action|helmet|tv&q=low|high|ultra`.

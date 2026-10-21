@@ -524,7 +524,7 @@ export class Skier {
       this.spinVel = this.world.arcade ? -c.steer * (c7 ? C7.spin0 : 7.4) * 0.7 * (Math.abs(c.steer) > 0.3 ? 1 : 0) : 0;
       this.spinTight = Math.abs(c.steer) > 0.3 ? 0.7 : 0;
       this.fromRail = false;
-      this.takeoffY = this.maxY = this.pos.y;
+      this.takeoffY = this.maxY = this.pos.y; this.takeoffX = this.pos.x; this.takeoffZ = this.pos.z;
       this.takeoffSwitch = this.board ? !!this.boardSwitch : Math.abs(wrapAngle(this.heading - Math.atan2(v.x, v.z))) > Math.PI / 2 || !!this.switchStance;
       this.switchStance = false;
       this.pipeAir = false;
@@ -1383,12 +1383,26 @@ export class Skier {
     if (g.s >= R.L || g.v < 0.4 || pop || fell) this.endGrind(pop, fell);
   }
 
+  // the trick so far, mid-air: what the landing would call it if it came down now (only the
+  // rotation already finished counts)
+  airTrick() {
+    const grabs = Object.entries(this.grabs).filter(([, t]) => t >= 0.25).sort((a, b) => b[1] - a[1]);
+    const sp = Math.abs(this.spin), fl = Math.abs(this.trickType ? this.pitch : this.flipAcc);
+    return {
+      air: this.airTime, height: this.maxAirY,
+      spin: Math.floor((sp + 0.35) / Math.PI) * 180, spinDir: Math.sign(this.spin), spin90: Math.floor((sp + 0.2) / (Math.PI / 2)) * 90,
+      flips: Math.floor((fl + 0.6) / TAU), flipDir: this.trickType ? this.flipDir : Math.sign(this.flipAcc), type: this.trickType,
+      grabs, rise: this.maxY - this.takeoffY, pipe: this.pipeAir, switchIn: this.takeoffSwitch, fromRail: !!this.fromRail,
+      board: this.board, shifty: this.shiftyT >= 0.22, daffy: this.daffyT >= 0.22,
+    };
+  }
+
   endGrind(pop, fell) {
     const g = this.grind;
     this.grind = null; this.grindCool = 0.35;
     const dist = Math.max(0, g.s - g.d0);
     this.onGround = false; this.airTime = 0.13; this.spin = 0; this.pitch = 0; this.flipAcc = 0; this.flipVel = 0; this.grabTime = 0;
-    this.takeoffY = this.maxY = this.pos.y; this.maxAirY = 0;
+    this.takeoffY = this.maxY = this.pos.y; this.maxAirY = 0; this.takeoffX = this.pos.x; this.takeoffZ = this.pos.z;
     this.takeoffSwitch = this.board ? !!this.boardSwitch : Math.abs(wrapAngle(this.heading - g.R.yaw)) > Math.PI / 2;
     this.fromRail = true;
     this.popped = false; this.spinVel = 0; this.perfectPop = false; this.offKicker = false;
