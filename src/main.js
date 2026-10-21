@@ -248,7 +248,7 @@ class Game {
     // ?watch=<id>: a saved run from the Replays tab
     if (params.get('watch')) getRun(params.get('watch')).then((run) => { if (run) { this.menu.setTab('replays'); this.replay.reset(); this.replay.load(run); this.replay.open('all'); } });
     window.__game = this;
-    window.__course = { centerX, halfWidth, heightAt, FINISH_Z };
+    window.__course = { centerX, halfWidth, heightAt, FINISH_Z, JUMPS, RAILS };
     window.__cx = centerX;
     window.__parkJumps = PARK_JUMPS;
     window.__rails = RAILS;

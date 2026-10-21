@@ -75,7 +75,7 @@ export function makeSnowMaterial(env) {
     Object.assign(sh.uniforms, mat.userData.shared);
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>
-        attribute float aPiste; attribute float aIce; attribute float aWind; attribute vec2 aMorph; uniform vec2 uCamXZ; uniform vec4 uLodD;
+        attribute float aPiste; attribute float aIce; attribute float aWind; attribute float aFace; varying float vFace; attribute vec2 aMorph; uniform vec2 uCamXZ; uniform vec4 uLodD;
         varying vec3 vWPos; varying vec3 vWNrm; varying float vPiste; varying float vIce; varying float vWind;`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
         // geomorph: toward the switch distance a chunk eases into the coarser level's shape
@@ -89,7 +89,7 @@ export function makeSnowMaterial(env) {
       .replace('#include <fog_vertex>', `#include <fog_vertex>
         vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
         vWNrm = normalize(mat3(modelMatrix) * objectNormal);
-        vPiste = aPiste; vIce = aIce; vWind = aWind;`);
+        vPiste = aPiste; vIce = aIce; vWind = aWind; vFace = aFace;`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
         #define OLD_LAYERS ${LO ? 2 : 3}
@@ -97,7 +97,7 @@ export function makeSnowMaterial(env) {
         uniform sampler2D uNoise; uniform vec3 uSunDir; uniform vec3 uSunCol;
         uniform sampler2D uSnowC, uSnowN, uSnowR, uRockC, uRockN, uRockR; uniform vec3 uCond; uniform vec4 uClouds;
         ${CLOUD_GLSL}
-        varying vec3 vWPos; varying vec3 vWNrm; varying float vPiste; varying float vIce; varying float vWind;
+        varying vec3 vWPos; varying vec3 vWNrm; varying float vPiste; varying float vIce; varying float vWind; varying float vFace;
         // the prevailing wind (blowing toward +x, a little down the valley) and across it
         const vec2 WD = vec2(0.9285, 0.3714);
         const vec2 WDP = vec2(-0.3714, 0.9285);
@@ -285,6 +285,9 @@ export function makeSnowMaterial(env) {
           diffuseColor.rgb = mix(snow, rock, gRock);
           // scraped ice: grey-blue, polished
           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.66, 0.72, 0.82), smoothstep(0.0, 0.6, vIce) * 0.4);
+          // a feature's faces (kicker ramps, knuckles, landings, pipe walls) a shade bluer than the
+          // run, so their shape reads in flat light and at noon when everything else is one white
+          diffuseColor.rgb *= mix(vec3(1.0), vec3(0.82, 0.885, 0.975), vFace);
         }`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
         // (wind crust is packed smooth: a soft sheen across it in low light)

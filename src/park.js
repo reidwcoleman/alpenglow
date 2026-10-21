@@ -3,7 +3,10 @@
 // lips and knuckles, and the signs.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { heightAt, centerX, halfWidth, PARK_FEET, RAILS, railAt, JUMPS, PIPE, ROLLERS, PARK, MAP, surfaceAt } from './course.js';
+import { heightAt, centerX, halfWidth, PARK_FEET, RAILS, railAt, JUMPS, PIPE, ROLLERS, PARK, MAP, surfaceAt, parkAt } from './course.js';
+
+// the steel's paint, the dye on the snow (strong lines and the fainter landing edges)
+const RAIL_BLACK = 0x252a30, DYE = 0x2a86ae, DYE_FAINT = 0x77b6cc;
 
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
 
@@ -22,7 +25,7 @@ function surface(f, ddx, dz) {
     }
   }
   const pos = new Float32Array(nx * nz * 3), nrm = new Float32Array(nx * nz * 3);
-  const pst = new Float32Array(nx * nz).fill(1), ice = new Float32Array(nx * nz);
+  const pst = new Float32Array(nx * nz).fill(1), ice = new Float32Array(nx * nz), face = new Float32Array(nx * nz);
   const surf = { powder: 0, ice: 0 };
   let v = 0;
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
@@ -30,6 +33,11 @@ function surface(f, ddx, dz) {
     const z = f.z0 + j * dz;
     pos[v * 3] = X[k]; pos[v * 3 + 1] = H[k]; pos[v * 3 + 2] = z;
     pst[v] = 1 - surfaceAt(X[k], z, surf).powder;
+    // how steeply the feature itself rises out of the run here (its faces get a blue shade)
+    const ddx0 = X[k] - centerX(z);
+    const fx = (parkAt(ddx0 + 0.4, z) - parkAt(ddx0 - 0.4, z)) / 0.8, fz = (parkAt(ddx0, z + 0.4) - parkAt(ddx0, z - 0.4)) / 0.8;
+    const fs = Math.hypot(fx, fz);
+    face[v] = Math.min(1, Math.max(0, (fs - 0.06) / 0.34)) ** 1.5;
     const hx = (H[k + 1] - H[k - 1]) / (2 * ddx), hz = (H[k + gx] - H[k - gx]) / (2 * dz);
     const l = Math.hypot(hx, 1, hz);
     nrm[v * 3] = -hx / l; nrm[v * 3 + 1] = 1 / l; nrm[v * 3 + 2] = -hz / l;
@@ -46,6 +54,7 @@ function surface(f, ddx, dz) {
   g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
   g.setAttribute('aPiste', new THREE.BufferAttribute(pst, 1));
   g.setAttribute('aIce', new THREE.BufferAttribute(ice, 1));
+  g.setAttribute('aFace', new THREE.BufferAttribute(face, 1));
   g.setIndex(new THREE.BufferAttribute(idx, 1));
   g.computeBoundingSphere();
   return g;
@@ -97,7 +106,9 @@ export class Park {
     scene.add(this.group);
     this.snowMat = terrainMaterial;
     this.steel = new THREE.MeshStandardMaterial({ color: 0x3b4048, metalness: 0.75, roughness: 0.38 });
-    this.dye = new THREE.MeshStandardMaterial({ color: 0x1d5fe0, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    const dye = (c, o) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.95, side: THREE.DoubleSide, transparent: true, opacity: o, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    this.dye = dye(DYE, 0.82);
+    this.dyeFaint = dye(DYE_FAINT, 0.6);
   }
 
   async build() {
@@ -174,18 +185,19 @@ export class Park {
           g.setIndex(idx); g.computeVertexNormals();
           boxG.push(tint(g, c));
         };
-        const e = 0.05 / R.hw, cop = 0xc3c8ce, top = 0x1c1f24;
+        // (Cork7's look: black painted steel, a bare steel coping)
+        const e = 0.05 / R.hw, cop = 0x5d666f, top = 0x1c1f24;
         strip([-1, 0.004], [-1 + e, 0.004], cop);
         strip([-1 + e, 0], [1 - e, 0], top);
         strip([1 - e, 0.004], [1, 0.004], cop);
         for (const s of [-1, 1]) {
           strip([s, 0.004], [s, -0.05], cop);
-          strip([s, -0.05], [s, -0.24], R.color);
+          strip([s, -0.05], [s, -0.24], RAIL_BLACK);
         }
         // end plates
         for (const i of [0, n - 1]) {
           const p = pt(i);
-          steelG.push(tint(new THREE.BoxGeometry(R.hw * 2 + 0.02, 0.25, 0.04).rotateY(R.yaw).translate(p.x, p.y - 0.115, p.z), 0x3b4048));
+          steelG.push(tint(new THREE.BoxGeometry(R.hw * 2 + 0.02, 0.25, 0.04).rotateY(R.yaw).translate(p.x, p.y - 0.115, p.z), RAIL_BLACK));
         }
       } else {
         const curve = new THREE.CurvePath();
@@ -196,11 +208,11 @@ export class Park {
         // the round rail, capped at both ends, on a square spine below it
         const tube = new THREE.TubeGeometry(curve, Math.max(8, n), 0.05, 12, false);
         tube.translate(0, -0.05, 0);
-        railG.push(tint(tube, R.color));
-        for (const p of [pt(0), pt(n - 1)]) railG.push(tint(new THREE.SphereGeometry(0.05, 12, 8).translate(p.x, p.y - 0.05, p.z), R.color));
+        railG.push(tint(tube, RAIL_BLACK));
+        for (const p of [pt(0), pt(n - 1)]) railG.push(tint(new THREE.SphereGeometry(0.05, 12, 8).translate(p.x, p.y - 0.05, p.z), RAIL_BLACK));
         const spine = new THREE.TubeGeometry(curve, Math.max(8, n), 0.045, 4, false);
         spine.translate(0, -0.22, 0);
-        steelG.push(tint(spine, 0x3b4048));
+        steelG.push(tint(spine, RAIL_BLACK));
       }
       // supports down to the snow (and a little into it): posts on base plates for a rail, wide
       // legs for a box, with a gusset up to the rail and snow banked round each foot
@@ -214,11 +226,11 @@ export class Park {
         const top = r.y - (box ? 0.24 : 0.22);
         const h = top - gy;
         if (h < 0.05) continue;
-        if (box) steelG.push(tint(new THREE.BoxGeometry(R.hw * 1.6, h, 0.07).rotateY(R.yaw).translate(x, gy + h / 2, z), 0x3b4048));
+        if (box) steelG.push(tint(new THREE.BoxGeometry(R.hw * 1.6, h, 0.07).rotateY(R.yaw).translate(x, gy + h / 2, z), RAIL_BLACK));
         else {
-          steelG.push(tint(new THREE.CylinderGeometry(0.038, 0.038, h, 8).translate(x, gy + h / 2, z), 0x3b4048));
-          steelG.push(tint(new THREE.BoxGeometry(0.02, 0.17, 0.14).rotateY(R.yaw).translate(x, r.y - 0.135, z), 0x3b4048));
-          steelG.push(tint(new THREE.BoxGeometry(0.34, 0.025, 0.34).rotateY(R.yaw).translate(x, snowY - 0.005, z), 0x50555d));
+          steelG.push(tint(new THREE.CylinderGeometry(0.038, 0.038, h, 8).translate(x, gy + h / 2, z), RAIL_BLACK));
+          steelG.push(tint(new THREE.BoxGeometry(0.02, 0.17, 0.14).rotateY(R.yaw).translate(x, r.y - 0.135, z), RAIL_BLACK));
+          steelG.push(tint(new THREE.BoxGeometry(0.34, 0.025, 0.34).rotateY(R.yaw).translate(x, snowY - 0.005, z), 0x5d666f));
         }
         const m = box ? R.hw * 0.95 : 0.2;
         snowG.push(tint(new THREE.SphereGeometry(1, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2).scale(m, 0.09, box ? 0.22 : m).rotateY(R.yaw).translate(x, snowY - 0.03, z), 0xffffff));
@@ -230,23 +242,37 @@ export class Park {
       m.castShadow = shadow; m.receiveShadow = true;
       this.group.add(m);
     };
-    add(steelG, new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.75, roughness: 0.38 }));
-    add(railG, new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.55, roughness: 0.26 }));
+    add(steelG, new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.78, roughness: 0.44 }));
+    add(railG, new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.78, roughness: 0.44 }));
     add(boxG, new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.35, roughness: 0.4, side: THREE.DoubleSide }));
     add(snowG, new THREE.MeshStandardMaterial({ color: 0xdde3ec, vertexColors: true, roughness: 0.92 }), false);
   }
 
   buildLines() {
-    const add = (g) => { const m = new THREE.Mesh(g, this.dye); m.receiveShadow = true; this.group.add(m); };
+    const add = (g, m = this.dye) => { const ms = new THREE.Mesh(g, m); ms.receiveShadow = true; ms.renderOrder = 1; this.group.add(ms); };
     const across = (dx, z, w) => {
       const pts = [];
       for (let k = 0; k <= 16; k++) { const d = dx - w / 2 + (k / 16) * w; pts.push([centerX(z) + d, z]); }
       return pts;
     };
+    const along = (dx, z0, z1, n = Math.max(8, Math.ceil(Math.abs(z1 - z0) / 0.6))) => Array.from({ length: n + 1 }, (_, k) => { const z = z0 + ((z1 - z0) * k) / n; return [centerX(z) + dx, z]; });
     for (const J of JUMPS) {
-      add(ribbon(across(J.dx, J.lip - 0.25, J.w - 1.2), 0.3, 0.05)); // the lip
-      add(ribbon(across(J.dx, J.lip + J.table, J.w - 1.4), 0.35)); // the knuckle
-      add(ribbon(across(J.dx, J.lip + J.table + J.land * 0.42, J.w - 2), 0.25)); // the sweet spot
+      // a line across the lip and one down each side of the run-in, the landing's edges marked faintly
+      add(ribbon(across(J.dx, J.lip - 0.65, J.w), 0.36, 0.05));
+      for (const s of [-1, 1]) {
+        add(ribbon(along(J.dx + s * (J.w / 2 - 0.7), J.z + 2, J.lip - 0.65), 0.25, 0.05));
+        const k0 = J.lip + J.table, k1 = k0 + J.land * 0.72;
+        add(ribbon(along(J.dx + s * (J.w / 2 + 3 + J.h * 0.5), k0, k1), 0.1, 0.05), this.dyeFaint);
+      }
+    }
+    // rails: a line across where you pop on, one down each side of the way in
+    for (const R of RAILS) {
+      if (R.kind === 'log') continue;
+      const sx = R.dir.z, sz = -R.dir.x, e = 0.25;
+      const at = (back, side) => [R.a.x - R.dir.x * back + sx * side, R.a.z - R.dir.z * back + sz * side];
+      // (finely sampled: they drape over the snow banked up at the rail's foot)
+      add(ribbon(Array.from({ length: 17 }, (_, k) => at(e, -2 + k / 4)), 0.36, 0.05));
+      for (const s of [-1, 1]) add(ribbon(Array.from({ length: 13 }, (_, k) => at(6 - k * (6 - e) / 12, s * 2)), 0.25, 0.05));
     }
     // pipe lips, both walls
     if (MAP.park) for (const s of [-1, 1]) {
@@ -256,36 +282,11 @@ export class Park {
     }
   }
 
-  // pennants on the jump lips and knuckles, banner fences on the pipe decks
+  // a tall marker pole each side of every kicker's run-in with its number board (and the speed
+  // it wants), banner fences on the pipe decks
   buildFlags() {
-    const COLS = [0xff6a2b, 0x2a7de1, 0xf2b705, 0xff4f8b, 0x18a868];
-    const poleG = new THREE.CylinderGeometry(0.025, 0.03, 2.4, 6).translate(0, 1.2, 0);
-    const flagG = new THREE.BufferGeometry();
-    flagG.setAttribute('position', new THREE.Float32BufferAttribute([0, 2.35, 0, 0, 1.75, 0, 0.75, 2.08, 0.04], 3));
-    flagG.computeVertexNormals();
     const poleM = new THREE.MeshStandardMaterial({ color: 0xdedede, roughness: 0.5 });
-    const flagMs = COLS.map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.8, side: THREE.DoubleSide }));
-    // every pole one instanced mesh, the flags one per colour; each a slot the smash can tip
-    const spots = [];
-    for (const J of JUMPS) for (const s of [-1, 1]) {
-      spots.push([centerX(J.lip) + J.dx + s * (J.w / 2 + 1.6), J.lip - 0.5, s]);
-      spots.push([centerX(J.lip + J.table) + J.dx + s * (J.w / 2 + 2.2), J.lip + J.table, s]);
-    }
-    // (square to the rail, which can run at an angle down the hill: not across the run's x)
-    for (const R of RAILS) for (const s of [-1, 1]) spots.push([R.a.x - R.dir.x * 3.5 + s * R.dir.z * 1.6, R.a.z - R.dir.z * 3.5 - s * R.dir.x * 1.6, s]);
-    if (spots.length) {
-      const poles = new THREE.InstancedMesh(poleG, poleM, spots.length);
-      const flags = flagMs.map((m, c) => new THREE.InstancedMesh(flagG, m, Math.ceil((spots.length - c) / flagMs.length)));
-      const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
-      spots.forEach(([x, z, out], k) => {
-        p.set(x, heightAt(x, z) - 0.1, z);
-        poles.setMatrixAt(k, m4.compose(p, q.identity(), one));
-        const f = flags[k % flagMs.length], fi = Math.floor(k / flagMs.length);
-        f.setMatrixAt(fi, m4.compose(p, q.setFromAxisAngle(Y, out > 0 ? 0.4 : Math.PI - 0.4), one));
-        this.smash?.add(x, z, 0.2, [{ im: poles, i: k }, { im: f, i: fi }], { h: 2.3, slow: 0.015 });
-      });
-      for (const im of [poles, ...flags]) { im.castShadow = true; im.computeBoundingSphere(); this.group.add(im); }
-    }
+    this.buildMarkers();
     // banner fences along both pipe decks
     const bannerT = signTexture(['SHREDLINE', 'PARK · PIPE'], '#0f1420', '#fff', '#ff8a3d');
     bannerT.wrapS = THREE.RepeatWrapping;
@@ -310,6 +311,60 @@ export class Park {
         }
       }
     }
+  }
+
+  buildMarkers() {
+    const list = JUMPS.filter((J) => !J.drop);
+    if (!list.length) return;
+    // every board's face in one atlas: the number large, the speed under it
+    const CW = 4, CH = Math.ceil(list.length / CW), px = 256;
+    const c = document.createElement('canvas'); c.width = CW * px; c.height = CH * px;
+    const g = c.getContext('2d');
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    list.forEach((J, k) => {
+      const x = (k % CW) * px, y = Math.floor(k / CW) * px;
+      g.fillStyle = '#f26b34'; g.fillRect(x, y, px, px);
+      g.strokeStyle = '#ffffff'; g.lineWidth = 8; g.strokeRect(x + 12, y + 12, px - 24, px - 24);
+      g.fillStyle = '#ffffff';
+      g.font = 'italic 800 132px "Barlow Condensed", "Arial Narrow", sans-serif';
+      g.fillText(String(k + 1).padStart(2, '0'), x + px / 2, y + 108);
+      g.font = '700 40px Inter, Arial, sans-serif';
+      g.fillText(Math.round(J.pspeed * 3.6) + ' KM/H', x + px / 2, y + 200);
+    });
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+    const boardM = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7, side: THREE.DoubleSide });
+    boardM.onBeforeCompile = (sh) => {
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute vec2 aCell;')
+        .replace('#include <uv_vertex>', `#include <uv_vertex>\nvMapUv = (vMapUv + aCell) * vec2(${(1 / CW).toFixed(6)}, ${(1 / CH).toFixed(6)});`);
+    };
+    boardM.customProgramCacheKey = () => 'marker-board';
+    const poleG = new THREE.BoxGeometry(0.09, 4.3, 0.09).translate(0, 2.15 - 0.1, 0);
+    const boardG = new THREE.PlaneGeometry(1.15, 1.15).translate(0, 3.55, 0);
+    const n = list.length * 2;
+    const poles = new THREE.InstancedMesh(poleG, new THREE.MeshStandardMaterial({ color: 0x22383e, roughness: 0.6, metalness: 0.45 }), n);
+    const cell = new Float32Array(n * 2);
+    boardG.setAttribute('aCell', new THREE.InstancedBufferAttribute(cell, 2));
+    const boards = new THREE.InstancedMesh(boardG, boardM, n);
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
+    let i = 0;
+    list.forEach((J, k) => {
+      const z = J.z + Math.min(7, (J.lip - J.z) * 0.4);
+      for (const s of [-1, 1]) {
+        const x = centerX(z) + J.dx + s * (J.w / 2 + 5);
+        p.set(x, heightAt(x, z), z);
+        // (the boards face up the hill, toward riders coming in)
+        const yaw = Math.atan2(centerX(z - 20) + J.dx - x, -20);
+        q.setFromAxisAngle(Y, yaw);
+        poles.setMatrixAt(i, m4.compose(p, q, one));
+        boards.setMatrixAt(i, m4.compose(p.clone().setX(x + s * 0.65), q, one));
+        cell[i * 2] = k % CW; cell[i * 2 + 1] = CH - 1 - Math.floor(k / CW);
+        this.smash?.add(x, z, 0.25, [{ im: poles, i }, { im: boards, i }], { h: 4.2, slow: 0.02 });
+        i++;
+      }
+    });
+    for (const im of [poles, boards]) { im.castShadow = true; im.receiveShadow = true; im.computeBoundingSphere(); this.group.add(im); }
   }
 
   buildSigns() {
@@ -352,13 +407,6 @@ export class Park {
       seen.add(f.zone);
       const z = f.z - 26, side = Math.sign(f.dx) || 1;
       sign(centerX(z) + side * (halfWidth(z) + 1.6), z, 4.2, 2.1, signTexture([f.zone.toUpperCase(), SUBS[f.zone] ?? ''], '#11161f', '#fff', '#3d8bff'), side * 0.35, 1.4);
-    }
-    // size boards beside every takeoff, with the speed it wants
-    for (const J of JUMPS) {
-      if (J.drop) continue;
-      const z = J.z - 2;
-      const size = J.name === 'XL' ? 'XL' : J.h < 2 ? 'S' : J.h < 3 ? 'M' : J.h < 4 ? 'L' : J.h < 5 ? 'XL' : 'XXL';
-      sign(centerX(z) + J.dx - J.w / 2 - 2.4, z, 1.6, 1.1, signTexture([size, Math.round(J.pspeed * 3.6) + ' KM/H'], '#11161f', '#fff', '#3d8bff'), 0, 1.0);
     }
   }
 }
