@@ -9,7 +9,8 @@ export const TIERS = [
 ];
 
 // what the computer field scores in each contest, at Pro
-const FIELD = { yard: 42000, slope: 52000, forest: 21000, bigair: 15000 };
+// (Cork7's points: a run scores about half as much again as it did)
+const FIELD = { yard: 63000, slope: 78000, forest: 31500, bigair: 22500 };
 const SPREAD = [1, 0.88, 0.77, 0.66, 0.56, 0.46, 0.36];
 
 export const EVENTS = [

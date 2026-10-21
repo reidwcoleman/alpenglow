@@ -15,7 +15,7 @@ const lip = await page.evaluate((jump) => {
   const z = J.z - 30;
   for (const o of [...g.skiers]) if (o !== g.player) { o.dispose(); g.skiers.splice(g.skiers.indexOf(o), 1); }
   g.ais.length = 0;
-  g.player.place(window.__cx(z) + J.dx, z, null, J.speed ?? 16);
+  g.player.place(window.__cx(z) + J.dx, z, null, J.pspeed ?? J.speed ?? 16);
   g.rig.snap = true;
   window.__calls = [];
   const orig = g.say.bind(g);

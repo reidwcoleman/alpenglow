@@ -454,8 +454,8 @@ function today() { const d = new Date(); return `${d.getFullYear()}-${d.getMonth
 
 // the mountain's regulars to chase on each park's board (computer riders, marked as such)
 export const RIVALS = {
-  yard: [['Ana Berg', 96000], ['Kai Lindqvist', 81000], ['Mila Novak', 67000], ['Theo Baumann', 52000], ['Elin Strand', 40000], ['Luca Ferrari', 29000], ['Hanna Aas', 18000]],
-  slope: [['Jonas Falk', 64000], ['Sofia Rinaldi', 53000], ['Nils Eriksen', 41000], ['Clara Huber', 31000], ['Felix Gruber', 22000], ['Emil Steiner', 13000]],
-  forest: [['Ingrid Dahl', 48000], ['Marco Valli', 39000], ['Lena Moser', 30000], ['Kai Lindqvist', 21000], ['Hanna Aas', 12000]],
-  bigair: [['Theo Baumann', 34000], ['Mila Novak', 27000], ['Ana Berg', 20000], ['Jonas Falk', 13000], ['Elin Strand', 7000]],
+  yard: [['Ana Berg', 144000], ['Kai Lindqvist', 121500], ['Mila Novak', 100500], ['Theo Baumann', 78000], ['Elin Strand', 60000], ['Luca Ferrari', 43500], ['Hanna Aas', 27000]],
+  slope: [['Jonas Falk', 96000], ['Sofia Rinaldi', 79500], ['Nils Eriksen', 61500], ['Clara Huber', 46500], ['Felix Gruber', 33000], ['Emil Steiner', 19500]],
+  forest: [['Ingrid Dahl', 72000], ['Marco Valli', 58500], ['Lena Moser', 45000], ['Kai Lindqvist', 31500], ['Hanna Aas', 18000]],
+  bigair: [['Theo Baumann', 51000], ['Mila Novak', 40500], ['Ana Berg', 30000], ['Jonas Falk', 19500], ['Elin Strand', 10500]],
 };

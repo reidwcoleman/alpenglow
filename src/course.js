@@ -331,7 +331,7 @@ export function normalAt(x, z, out, e = 0.6) {
 
 // every kicker without a measured approach speed gets one: the speed off the lip (no pop)
 // whose flight comes down a third of the way down the landing
-function sweetSpeed(J) {
+function sweetSpeed(J, g = 9.81, kick = 0) {
   const x0 = centerX(J.lip) + J.dx;
   const zl = J.lip - 0.01;
   const y0 = heightAt(x0, zl);
@@ -339,9 +339,10 @@ function sweetSpeed(J) {
   const want = J.lip + J.table + (J.drop ? 4 : J.land * 0.35);
   const landZ = (v) => {
     const il = 1 / Math.hypot(1, sl);
-    let z = zl, y = y0, vz = v * il, vy = v * sl * il;
+    // (kick: the lip's own pop, square to the ramp)
+    let z = zl, y = y0, vz = v * il - kick * sl * il, vy = v * sl * il + kick * il;
     for (let t = 0; t < 8; t += 0.01) {
-      vy -= 9.81 * 0.01; z += vz * 0.01; y += vy * 0.01;
+      vy -= g * 0.01; z += vz * 0.01; y += vy * 0.01;
       if (t > 0.05 && y <= heightAt(centerX(z) + J.dx, z)) return z;
     }
     return z;
@@ -352,6 +353,9 @@ function sweetSpeed(J) {
 }
 // (quoted at the foot of the ramp, like the measured park tables: the climb costs speed)
 for (const J of JUMPS) if (!J.speed) J.speed = +Math.sqrt(sweetSpeed(J) ** 2 + 2 * 9.81 * J.h).toFixed(1);
+// the player rides Cork7's physics (the slope at 1.7 g, the air at 17.5, a 1.2 m/s kick off
+// every lip): his sweet spot, quoted at the foot of the ramp the same way
+for (const J of JUMPS) J.pspeed = +Math.sqrt(sweetSpeed(J, 17.5, 1.2) ** 2 + 2 * 9.81 * 1.7 * J.h).toFixed(1);
 
 // rail tops: a straight line on the ground plan, heights per shape (sampled every 0.25 m)
 for (const R of RAILS) {

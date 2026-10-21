@@ -271,7 +271,8 @@ export class Park {
       spots.push([centerX(J.lip) + J.dx + s * (J.w / 2 + 1.6), J.lip - 0.5, s]);
       spots.push([centerX(J.lip + J.table) + J.dx + s * (J.w / 2 + 2.2), J.lip + J.table, s]);
     }
-    for (const R of RAILS) for (const s of [-1, 1]) spots.push([R.a.x + s * 1.6, R.a.z - 3.5, s]);
+    // (square to the rail, which can run at an angle down the hill: not across the run's x)
+    for (const R of RAILS) for (const s of [-1, 1]) spots.push([R.a.x - R.dir.x * 3.5 + s * R.dir.z * 1.6, R.a.z - R.dir.z * 3.5 - s * R.dir.x * 1.6, s]);
     if (spots.length) {
       const poles = new THREE.InstancedMesh(poleG, poleM, spots.length);
       const flags = flagMs.map((m, c) => new THREE.InstancedMesh(flagG, m, Math.ceil((spots.length - c) / flagMs.length)));
@@ -357,7 +358,7 @@ export class Park {
       if (J.drop) continue;
       const z = J.z - 2;
       const size = J.name === 'XL' ? 'XL' : J.h < 2 ? 'S' : J.h < 3 ? 'M' : J.h < 4 ? 'L' : J.h < 5 ? 'XL' : 'XXL';
-      sign(centerX(z) + J.dx - J.w / 2 - 2.4, z, 1.6, 1.1, signTexture([size, Math.round(J.speed * 3.6) + ' KM/H'], '#11161f', '#fff', '#3d8bff'), 0, 1.0);
+      sign(centerX(z) + J.dx - J.w / 2 - 2.4, z, 1.6, 1.1, signTexture([size, Math.round(J.pspeed * 3.6) + ' KM/H'], '#11161f', '#fff', '#3d8bff'), 0, 1.0);
     }
   }
 }

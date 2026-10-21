@@ -967,9 +967,15 @@ class Game {
 
   lineMult() { return 1 + 0.25 * Math.max(0, this.sc.n - 1); }
 
+  // (Cork7: only your last three airs count against a repeat; the other way round, switch or
+  // another flip is a different trick)
   repeat(key) {
-    const n = this.sc.reps.get(key) ?? 0;
-    this.sc.reps.set(key, n + 1);
+    const sc = this.sc;
+    sc.recent ??= [];
+    const n = sc.recent.filter((k) => k === key).length;
+    sc.recent.push(key);
+    if (sc.recent.length > 3) sc.recent.shift();
+    sc.reps.set(key, (sc.reps.get(key) ?? 0) + 1);
     return [1, 0.75, 0.55, 0.4][Math.min(n, 3)];
   }
 
@@ -1013,11 +1019,13 @@ class Game {
   }
 
   // landing on snow banks the line
-  bank(name, sketchy, air, stomp = false) {
+  // side: how sideways a saved landing came down (0..1); Cork7 pays it down to half, and only a
+  // stomp (clean, from a real air) adds 450 and 15% of the line
+  bank(name, sketchy, air, stomp = false, side = 1) {
     const sc = this.sc;
     const mult = this.lineMult();
-    let award = sc.pend * mult * (sketchy ? 0.5 : 1);
-    const bonus = air >= 0.5 ? 450 + award * 0.15 : 0;
+    let award = sc.pend * mult * (sketchy ? 1 - 0.5 * clamp(side, 0, 1) : 1);
+    const bonus = stomp ? 450 + award * 0.15 : 0;
     const total = Math.round(award + bonus);
     sc.pend = 0;
     if (total <= 0) return;
@@ -1067,7 +1075,7 @@ class Game {
     const sc = this.sc;
     if (!sc) return;
     const name = `${b.tail ? 'Tail' : 'Nose'} Butter${b.spin ? ' ' + b.spin : ''}`;
-    const pts = Math.round((150 + (b.spin / 180) * 230) * this.repeat(name));
+    const pts = Math.round((b.spin >= 360 ? 600 : b.spin >= 180 ? 300 : 150) * this.repeat(name));
     this.checkLessons([name]);
     if (!this.book.has(name)) { this.book.add(name); this.saveBook(); sc.fresh = (sc.fresh ?? 0) + 1; this.status('NEW TRICK'); }
     sc.score += pts;
@@ -1085,23 +1093,36 @@ class Game {
     const trick = t.spin >= 180 || t.flips > 0 || t.grabs.length > 0 || t.shifty || t.daffy || (t.fromRail && t.spin90 >= 90);
     // little hops on the flat don't count
     if (t.air < 0.5 && !trick) { if (sc.pend > 0) this.bank(sc.names[sc.names.length - 1] ?? '', t.sketchy, 0); return; }
-    const turns = (t.fromRail ? t.spin90 : t.spin) / 360 + t.flips;
-    const rot = turns > 0 ? 900 * turns * turns * (1 + 0.15 * t.flips) * (t.switchIn ? 1.25 : 1) : 0;
+    // Cork7: 1,500 x turns^2 (a 720 is four 360s); flips count as turns, but an off-axis one's
+    // inversion is already in its spin; +15% for every time upside down, x1.25 switch
+    const spinT = (t.fromRail ? t.spin90 : t.spin) / 360;
+    const offAxis = ['cork', 'bio', 'rodeo', 'misty', 'flatspin'].includes(t.type);
+    const inv = offAxis ? Math.min(t.flips, Math.max(1, Math.floor((spinT * 360) / 450))) : t.flips;
+    const turns = spinT + (offAxis ? 0 : t.flips);
+    const rot = turns > 0 ? Math.round(1500 * turns * turns * (1 + 0.15 * inv) * (t.switchIn ? 1.25 : 1)) : 0;
     let pts = rot + 135 * t.air + 36 * Math.max(0, t.height);
-    if (t.grabs.length) pts *= (1.25 + 0.25 * smoothstep(0.25, 1, t.grabs[0][1])) * (t.grabs.length > 1 ? 1.3 : 1);
+    // grabs: 840 a second held (to a second each), 300 a grab, and on a spin a tail or japan
+    // held a second adds 25% of the rotation, every other grab 5%
+    if (t.grabs.length) {
+      const QE = this.player.board ? ['tail', 'melon'] : ['tail', 'japan'];
+      const hold = t.grabs.reduce((a, [, s]) => a + Math.min(1, s), 0);
+      const qe = Math.min(1, Math.max(0, ...t.grabs.filter(([k]) => QE.includes(k)).map(([, s]) => s)));
+      pts += hold * 840 + t.grabs.length * 300 + rot * (0.25 * qe + 0.05 * (t.grabs.length - 1));
+    }
     if (t.pipe) pts += Math.max(0, t.rise) * 90;
     if (t.shifty) pts += 350;
     if (t.daffy) pts += 300;
-    // stomped it: a landing that matched the slope pays 15% more
-    if (t.stomp) pts *= 1.15;
     const name = this.trickName(t);
     // riding off the end of a rail is part of the rail, not a feature of its own
-    if (t.fromRail && !trick) { sc.pend += pts; this.bank(sc.names[sc.names.length - 1] ?? '', t.sketchy, t.air); return; }
-    pts *= this.repeat(name || 'air');
+    if (t.fromRail && !trick) { sc.pend += pts; this.bank(sc.names[sc.names.length - 1] ?? '', t.sketchy, t.air, t.stomp, t.side); return; }
+    pts *= this.repeat((name || 'air') + (t.spin >= 180 ? (t.spinDir > 0 ? ' L' : ' R') : ''));
     this.addFeature(pts, name);
-    this.bank(name, t.sketchy, t.air, t.stomp);
-    // land it clean and it sends you: a boost out of every trick, bigger for bigger tricks
-    if (!t.sketchy && trick) {
+    this.bank(name, t.sketchy, t.air, t.stomp, t.side);
+    // Cork7: a stomp onto a downslope sends you (the skier gives the 2.6 m/s)
+    if (p.strict) {
+      if (t.boost > 0) { this.burst(p, 40, 2.5); this.audio.beep(660, 0.12, 0.08, 'sawtooth'); this.status(`BOOST +${Math.round(t.boost * 3.6)} KM/H`); }
+    } else if (!t.sketchy && trick) {
+      // land it clean and it sends you: a boost out of every trick, bigger for bigger tricks
       const boost = clamp(1.2 + pts / 1800, 1.2, 4.5) * (t.stomp ? 1.2 : 1);
       p.vel.addScaledVector(p.forward(_v), boost * (p.skiSwitch ? -1 : 1));
       this.burst(p, 40, 2.5);
@@ -1947,7 +1968,7 @@ class Game {
         if (J.drop) continue;
         const dz = J.z - p.pos.z;
         if (dz > 0 && dz < 45 && Math.abs(dx - J.dx) < J.w / 2 + 3) {
-          const want = Math.round(J.speed * 3.6), now = kmh;
+          const want = Math.round((p.strict ? J.pspeed : J.speed) * 3.6), now = kmh;
           tip = `${J.name} · ${want - 2}–${want + 3} km/h${now < want - 6 ? ' · tuck!' : now > want + 8 ? ' · scrub some speed' : ' · good speed'}`;
           break;
         }

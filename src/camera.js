@@ -31,7 +31,9 @@ export class CameraRig {
     const sp = s.speed;
     const hv = new THREE.Vector3(s.vel.x, 0, s.vel.z);
     const want = hv.lengthSq() > 4 ? hv.normalize() : new THREE.Vector3(Math.sin(s.heading), 0, Math.cos(s.heading));
-    this.dir.lerp(want, this.snap ? 1 : Math.min(1, dt * (s.onGround || s.grind ? 3.2 : 1.2))).normalize();
+    // (Cork7's chase turns with you quickly, a little lazier through a hard carve)
+    const turnK = this.mode === 'chase' ? 6 - 2.5 * Math.min(1, Math.abs(s.lean ?? 0)) : 3.2;
+    this.dir.lerp(want, this.snap ? 1 : Math.min(1, dt * (s.onGround || s.grind ? turnK : 1.2))).normalize();
     const cam = this.cam;
     let fov = 62 + clamp(sp - 8, 0, 30) * 0.55;
     const tgt = new THREE.Vector3();
@@ -41,18 +43,32 @@ export class CameraRig {
     const big = smoothstep(0.25, 1.1, airT) * smoothstep(1.2, 5, s.maxAirY ?? 0);
     this.pull = (this.pull ?? 0) + (big - (this.pull ?? 0)) * Math.min(1, dt * (big > (this.pull ?? 0) ? 1.6 : 1.1));
     if (this.mode === 'chase') {
-      // low and close behind, the rider in the lower middle of the frame
+      // Cork7's rig: 4.3 m back and 1.3 m up on an arm that lies back along the slope, a little
+      // to the side, a 58 degree lens that opens 8 more toward 38 m/s, the view tipped down the
+      // hill but never letting the rider out of the frame (and pulled back for a big air)
       const pull = this.pull;
-      const dist = 3.5 + clamp(sp, 0, 50) * 0.028 + pull * 4;
-      const h = 1.3 + clamp(sp, 0, 50) * 0.008 + pull * 2.2;
+      const x0 = s.pos.x, z0 = s.pos.z, g0 = heightAt(x0, z0);
+      const gr = clamp((heightAt(x0 + this.dir.x * 8, z0 + this.dir.z * 8) - g0) / 8, -1.1, 1.1);
+      this.grade = (this.grade ?? gr) + (gr - (this.grade ?? gr)) * Math.min(1, dt * (s.onGround || s.grind ? 4 : 0.8));
+      const portrait = clamp(1.2 - cam.aspect, 0, 0.7);
+      const b = (4.3 + portrait * 1.6) * (1 + 0.5 * pull), hh = 1.3 + 1.6 * pull;
+      const C = Math.atan(clamp(Math.min(0, this.grade), -0.9, 0));
+      const E = b * Math.cos(C) + hh * Math.sin(C), D = hh * Math.cos(C) - b * Math.sin(C);
       // through a carve the camera swings out to the side of the turn
-      this.swing = (this.swing ?? 0) + ((s.onGround ? -s.lean * 1.6 : 0) - (this.swing ?? 0)) * Math.min(1, dt * 2.5);
+      this.swing = (this.swing ?? 0) + ((s.onGround ? -s.lean * 0.8 : 0) - (this.swing ?? 0)) * Math.min(1, dt * 2.5);
       const side = new THREE.Vector3(this.dir.z, 0, -this.dir.x);
-      tgt.copy(s.pos).addScaledVector(this.dir, -dist).addScaledVector(side, this.swing);
-      tgt.y = Math.max(s.pos.y + h, heightAt(tgt.x, tgt.z) + 0.9);
-      look.copy(s.pos).addScaledVector(this.dir, 5.5 * (1 - pull * 0.7));
-      look.y = s.pos.y + 0.75 + pull * 0.2;
-      fov = 64 + clamp(sp - 6, 0, 40) * 0.42 + pull * 4;
+      tgt.copy(s.pos).addScaledVector(this.dir, -E).addScaledVector(side, 0.42 + this.swing);
+      // (kept 0.6 m over the snow all along the arm)
+      let floor = heightAt(tgt.x, tgt.z);
+      for (let k = 1; k <= 8; k++) floor = Math.max(floor, heightAt(tgt.x + this.dir.x * E * k / 8, tgt.z + this.dir.z * E * k / 8));
+      tgt.y = Math.max(s.pos.y + D, floor + 0.6);
+      fov = 58 + 8 * (clamp(sp, 0, 38) / 38) ** 2 + 18 * portrait + 6 * pull;
+      const hd = Math.max(0.5, Math.hypot(x0 - tgt.x, z0 - tgt.z)), tv = Math.tan((fov * Math.PI) / 360);
+      const riderA = Math.atan2(s.pos.y + 1 - tgt.y, hd);
+      const slopeA = Math.atan(clamp(Math.min(0, this.grade), -0.9, 0) + clamp(Math.max(0, this.grade), 0, 0.8) * 0.6);
+      const tilt = clamp(slopeA, riderA - Math.atan(tv * 0.33), riderA + Math.atan(tv * 0.47));
+      look.copy(tgt).addScaledVector(this.dir, 12);
+      look.y = tgt.y + Math.tan(tilt) * 12;
     } else if (this.mode === 'action') {
       const close = true;
       const dist = close ? 2.7 + sp * 0.015 : 4.3 + sp * 0.045;
