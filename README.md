@@ -138,7 +138,7 @@ A soundtrack made as it plays (drums, bass, pads and an arpeggio over four chord
 - Rotation pays by the square of the turns: a 720 is worth four 360s, and flips count as turns. Each inversion adds 15%, riding switch 25%.
 - Air time and height add a little on every jump. A grab held 0.25 s multiplies the trick by 1.25, held a full second by 1.5 (and is called "Tweaked"); switching grabs mid-air ("Mute to Tail") adds x1.3. A shifty adds 350, a daffy 300.
 - Pop at the lip (release Space right at it, or just off it) for a perfect pop: more height and a faster flip. A landing that matches the slope is "stomped" and pays 15% more.
-- Each jump or rail in a row adds x0.25 to the line. Landing on snow banks it with +450 and 15% on top; a sketchy (sideways) landing keeps half; a bail loses it.
+- Each jump or rail in a row adds x0.25 to the line. Landing on snow banks it with +450 and 15% on top; a sketchy (sideways) landing keeps half; a bail loses it, and that much (the unbanked line plus the trick you were in) comes off your score, never below zero.
 - Rails pay 750 a second, 450 per swap, and more while you press (hold Space); a nose or tail press held for 40% of the slide pays 30% more. A spin off the end counts in quarters ("270 Out"). Butters pay 150, plus 230 for every half turn of pivot.
 - Repeating the same trick pays 75%, then 55%, then 40%.
 

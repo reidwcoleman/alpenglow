@@ -8,6 +8,7 @@ const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 await page.goto(`http://127.0.0.1:${process.env.PORT ?? 5260}/?menu=0&mode=${process.env.MODE ?? 'park'}&tod=bluebird&gear=${process.env.GEAR ?? 'ski'}`, { waitUntil: 'domcontentloaded' });
 await page.waitForFunction(() => window.__ready === true, null, { timeout: 180000 });
+if (process.env.SCORE) await page.evaluate((v) => { window.SCORE0 = v; }, +process.env.SCORE);
 const lip = await page.evaluate((jump) => {
   const g = window.__game, J = window.__jumps.find((j) => j.name === jump), z = J.z - 30;
   for (const o of [...g.skiers]) if (o !== g.player) { o.dispose(); g.skiers.splice(g.skiers.indexOf(o), 1); }
@@ -15,6 +16,7 @@ const lip = await page.evaluate((jump) => {
   g.player.place(window.__cx(z) + J.dx, z, null, J.pspeed ?? J.speed);
   g.rig.snap = true;
   window.__calls = []; window.__tr = [];
+  if (window.SCORE0) g.sc.score = window.SCORE0;
   const orig = g.say.bind(g);
   g.say = (n, p, s2, c, ms, ch) => { window.__calls.push([n, p, s2, ...(ch ?? [])].filter(Boolean).map((x) => String(x).replace(/<[^>]+>/g, '')).join(' · ')); return orig(n, p, s2, c, ms, ch); };
   return J.lip;
@@ -35,7 +37,7 @@ const r = await page.evaluate(async () => {
   const g = window.__game, p = g.player; let air = 0; const t0 = performance.now(); let sp0 = 0;
   while (performance.now() - t0 < 6000) { await new Promise((r) => setTimeout(r, 30)); if (!p.onGround) { air = Math.max(air, p.airTime); sp0 = p.speed; } else if (air > 0.3) break; }
   await new Promise((r) => setTimeout(r, 250));
-  return { calls: window.__calls, air: +air.toFixed(2), crash: p.crash > 0, speedIn: +(sp0 * 3.6).toFixed(0), speedOut: +(p.speed * 3.6).toFixed(0) };
+  return { score: g.sc.score, calls: window.__calls, air: +air.toFixed(2), crash: p.crash > 0, speedIn: +(sp0 * 3.6).toFixed(0), speedOut: +(p.speed * 3.6).toFixed(0) };
 });
 if (SH) await page.screenshot({ path: `${SH}_${si++}.jpg`, quality: 85 });
 console.log(keys, hold, jump, JSON.stringify(r));

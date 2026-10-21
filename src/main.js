@@ -922,6 +922,9 @@ class Game {
       this.burst(p, 90, 5);
       const sc = this.sc;
       // a crash you don't get up from: injuries (unless they're turned off) and the rescue
+      // a bail costs what you had riding: the unbanked line and the trick you were in, taken off
+      // your score (Cork7 only shows it; here it really goes)
+      const lost = sc ? this.bailLoss() : 0;
       if (e.injured) {
         if (sc) { sc.crashes++; sc.pend = 0; sc.n = 0; sc.names = []; }
         const gore = store.get('gore', 'on') !== 'off';
@@ -932,9 +935,8 @@ class Game {
       }
       if (sc) {
         sc.crashes++;
-        const lost = Math.round(sc.pend * this.lineMult());
         sc.pend = 0; sc.n = 0; sc.names = [];
-        this.say('BAIL', lost > 0 ? `LOST ${lost.toLocaleString()}` : '', lost > 0 ? '' : { landing: 'land it straight', tree: 'that tree did not move', skier: 'watch the traffic', rail: 'stay on top of it', net: 'into the nets' }[e.reason] ?? '', 'bad', 1800);
+        this.say('BAIL', lost > 0 ? `−${lost.toLocaleString()}` : '', lost > 0 ? '' : { landing: 'land it straight', tree: 'that tree did not move', skier: 'watch the traffic', rail: 'stay on top of it', net: 'into the nets' }[e.reason] ?? '', 'bad', 1800);
         this.status('BAIL');
       } else this.say('WIPEOUT', '', e.reason === 'landing' ? 'land it straight' : '', 'bad');
     });
@@ -973,6 +975,20 @@ class Game {
   }
 
   lineMult() { return 1 + 0.25 * Math.max(0, this.sc.n - 1); }
+
+  // takes a bail's points off the score (never below zero) and says how many went
+  bailLoss() {
+    const sc = this.sc;
+    // (the trick in the air counts if it was on screen a moment ago)
+    const air = this.time - (this.liveAt ?? -9) < 0.3 ? this.livePts ?? 0 : 0;
+    this.livePts = 0;
+    const lost = Math.min(sc.score, Math.round((sc.pend + air) * this.lineMult()));
+    if (lost <= 0) return 0;
+    sc.score -= lost;
+    const el = $('score');
+    el.classList.remove('drop'); void el.offsetWidth; el.classList.add('drop');
+    return lost;
+  }
 
   // (Cork7: only your last three airs count against a repeat; the other way round, switch or
   // another flip is a different trick)
@@ -1128,6 +1144,7 @@ class Game {
   }
 
   onPlayerLand(t) {
+    this.livePts = 0;
     const p = this.player;
     this.audio.thump(Math.min(1, t.vn / 8));
     this.rig.bump(Math.min(0.6, t.vn / 20));
@@ -2002,7 +2019,8 @@ class Game {
             const n = el.querySelector('.n'), n2 = n.cloneNode(); n2.textContent = name; n.replaceWith(n2);
             this.liveName = name;
           }
-          el.querySelector('.p b').textContent = '+' + Math.round(pts * rep).toLocaleString();
+          this.livePts = Math.round(pts * rep); this.liveAt = this.time;
+          el.querySelector('.p b').textContent = '+' + this.livePts.toLocaleString();
           const f = chips.map((c) => `<i>${c}</i>`).join('');
           const fe = el.querySelector('.p .f');
           if (fe.innerHTML !== f) fe.innerHTML = f;
