@@ -1,2 +1,3 @@
 out/
 __pycache__/
+data/bake_*.bin

@@ -56,13 +56,13 @@ const placer = (K, q, at) => (key, geo, tint, opts = {}) => { geo.applyQuaternio
 // a line tower, H to the cable; num is its number on the line. Every tower is the same steel,
 // so it's built once and stamped where each one stands (only the number plates differ)
 const towerCache = new Map();
-export function tower(K, H, q, at, num) {
-  if (!towerCache.has(H)) {
+export function tower(K, H, q, at, num, platesOnly = false) {
+  if (platesOnly) {} else if (!towerCache.has(H)) {
     const T = new Kit();
     towerParts(T, H, new THREE.Quaternion(), new THREE.Vector3());
     towerCache.set(H, T.merged());
   }
-  for (const [key, g] of Object.entries(towerCache.get(H))) K.addRaw(key, g.clone().applyQuaternion(q).translate(at.x, at.y, at.z));
+  if (!platesOnly) for (const [key, g] of Object.entries(towerCache.get(H))) K.addRaw(key, g.clone().applyQuaternion(q).translate(at.x, at.y, at.z));
   const put = placer(K, q, at);
   // its number, both ways
   for (const s of [-1, 1]) {

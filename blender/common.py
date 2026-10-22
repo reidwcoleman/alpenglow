@@ -218,11 +218,16 @@ def pack(name):
     dst = os.path.join(dst_dir, name + '.glb')
     subprocess.run(['npx', 'gltfpack', '-i', src, '-o', dst, '-cc', '-kn', '-km', '-kv', '-vtf'], cwd=ROOT, check=True)
     print('packed', dst, os.path.getsize(dst))
-    # the list the game checks before asking for a file
+    write_manifest()
+
+
+def write_manifest():
+    """the list the game checks before asking for a file: every model, every baked light file"""
     import json
-    files = sorted(f[:-4] for f in os.listdir(dst_dir) if f.endswith('.glb'))
-    with open(os.path.join(dst_dir, 'manifest.json'), 'w') as fh:
-        json.dump({f: os.path.getsize(os.path.join(dst_dir, f + '.glb')) for f in files}, fh)
+    d = os.path.join(ROOT, 'public', 'models')
+    files = sorted(f for f in os.listdir(d) if f.endswith('.glb') or (f.startswith('ao_') and f.endswith('.bin')))
+    with open(os.path.join(d, 'manifest.json'), 'w') as fh:
+        json.dump({f[:-4]: os.path.getsize(os.path.join(d, f)) for f in files}, fh)
 
 
 def export(objs, name, skins=False):

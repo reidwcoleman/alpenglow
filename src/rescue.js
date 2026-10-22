@@ -241,7 +241,7 @@ export class Rescue {
     // the chair, with you on it
     const p = this.p;
     if (!this.chair) {
-      this.chair = new THREE.Mesh(props.chairGeo, props.vc);
+      this.chair = new THREE.Mesh(props.chairGeo, props.chairMat);
       this.chair.castShadow = true;
       // its bubble, up
       this.chair.add(new THREE.Mesh(props.bubbleMesh.geometry, props.bubbleMesh.material));

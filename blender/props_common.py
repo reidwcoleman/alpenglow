@@ -150,11 +150,17 @@ class Builder:
                 x, z = rx * math.cos(ph) * math.cos(th), rz * math.cos(ph) * math.sin(th)
                 row.append((c[0] + x * cy + z * sy, c[1] + ry * math.sin(ph), c[2] - x * sy + z * cy))
             rows.append(row)
-        rs = self.loft(rows, m, cap0=False, cap1=False)
+        # (wound so the faces look out: rows go round with the angle, and up)
+        rs = [[self.v(p) for p in r] for r in rows]
+        n = len(rs[0])
+        for i in range(len(rs) - 1):
+            A, B = rs[i], rs[i + 1]
+            for k in range(n):
+                k1 = (k + 1) % n
+                self.face((A[k], B[k], B[k1], A[k1]), m)
         top = self.v((c[0], c[1] + ry, c[2]))
-        n = len(rs[-1])
         for k in range(n):
-            self.face((rs[-1][k], rs[-1][(k + 1) % n], top), m)
+            self.face((rs[-1][k], top, rs[-1][(k + 1) % n]), m)
         self.fresh = []
 
     def finish(self, o, grid=3.0):
@@ -222,6 +228,13 @@ def bake_colors(objs, distance=0.4, samples=32, ao=True, floor=None):
                 ca.data[vi].color = (rgb[0] * a, rgb[1] * a, rgb[2] * a, kind / 8)
     for h in helpers:
         bpy.data.objects.remove(h)
+
+
+def apart(objs, gap=80.0):
+    """space pieces built at the same origin apart (so they don't shade each other in a bake);
+    call it again with gap=0 to put them back"""
+    for i, o in enumerate(objs):
+        o.location = G(i * gap, 0, 0)
 
 
 def hexrgb(h):

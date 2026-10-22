@@ -5,6 +5,7 @@
 // Same interface as SpruceForest: a group, and update(camera, elapsed) choosing what to draw.
 import * as THREE from 'three';
 import { AG } from './atmos.js';
+import { bakeable } from './bake.js';
 
 const SPRUCE_H = 16; // (the placed trees' sizes are in src/spruce.js's units)
 
@@ -131,6 +132,8 @@ export async function loadToonTree() {
     const col = new Uint8Array(buf, o, n * 4); o += n * 4;
     geos.push(lodGeometry(n, pos, nrm, col));
   }
+  // (Blender's occlusion on the modelled levels: the tiers shade the ones under them)
+  bakeable('tree', geos.slice(), { apart: true });
   geos.push(coneStack());
   return geos;
 }

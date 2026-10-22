@@ -8,8 +8,9 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from './rbox.js';
-import { heightAt, HOSPITAL } from './course.js';
+import { heightAt, HOSPITAL, PARK_ID } from './course.js';
 import { mulberry32 } from './noise.js';
+import { bakeable } from './bake.js';
 import { stone, larch, plaster, roofMetal, concrete, pavers, surface, boxUV } from './proctex.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -478,6 +479,8 @@ export function buildClinic(scene, forest, ambulance) {
   scene.add(pg);
 
   forest.addCollider(x, z, Math.max(W, D) * 0.58, 'chalet');
+  // (its terrace follows each park's ground, so each park has its own bake)
+  bakeable('clinic_' + PARK_ID, [grp, pg], { ground: [x, z, 70] });
   const out = new THREE.Vector3(0, 0, 1).applyAxisAngle(UP, yaw);
   return {
     info: { at: new THREE.Vector3(x, floor, z), door: new THREE.Vector3(0, floor, D / 2 + 5.4).applyAxisAngle(UP, yaw).add(new THREE.Vector3(x, 0, z)), out, pad: pad.clone().setY(pad.y + 0.02), yaw },

@@ -441,7 +441,8 @@ export class Props {
     C(new THREE.BoxGeometry(4.4, 0.12, 0.6), red, 0, 1.0, -3.7);
     C(new THREE.BoxGeometry(4.4, 0.05, 1.0).rotateX(0.12), 0x2a2c30, 0, 0.1, -4.4);
     C(new RoundedBoxGeometry(4.2, 0.1, 0.5, 2, 0.04), snow, 0, 1.1, -3.7);
-    const geo = merge(P);
+    const blend = this.blend.props?.propCat;
+    const geo = blend ?? merge(P);
     const spots = [];
     // how it would sit there: nose down / side up from the ground under its tracks
     const sit = (x, z, yaw) => {
@@ -471,7 +472,7 @@ export class Props {
     { const z = START_Z + 4, x = centerX(z) + halfWidth(z) + 12; spots.push([x, z, Math.PI * 0.8]); }
     const ok = spots.filter(([x, z, yaw]) => flat(x, z, yaw));
     if (!ok.length) return;
-    const im = new THREE.InstancedMesh(geo, this.vc, ok.length);
+    const im = new THREE.InstancedMesh(geo, blend ? propMaterial() : this.vc, ok.length);
     const e = new THREE.Euler();
     ok.forEach(([x, z, yaw], i) => {
       const [pitch, roll, gy] = sit(x, z, yaw);
@@ -501,7 +502,8 @@ export class Props {
     const base = colorize(new THREE.BoxGeometry(1.1, 0.25, 0.9).translate(0, 0.12, 0), grey);
     const box = colorize(new THREE.BoxGeometry(0.4, 0.55, 0.3).translate(0.45, 0.6, 0), 0xc7c9cc);
     const hydrant = colorize(new THREE.CylinderGeometry(0.1, 0.1, 0.9, 8).translate(-0.9, 0.45, 0.4), 0xd23a2a);
-    const geo = merge([head, tower, yoke, base, box, hydrant]);
+    const blend = this.blend.props?.propGun;
+    const geo = blend ?? merge([head, tower, yoke, base, box, hydrant]);
     const list = [];
     let side = 1;
     for (let z = START_Z + 40; z < FINISH_Z - 140; z += 150) {
@@ -517,7 +519,7 @@ export class Props {
       list.push([x, z, Math.atan2(-Math.sign(dx) * 0.9, 0.45)]);
     }
     if (!list.length) return;
-    const im = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.25 }), list.length);
+    const im = new THREE.InstancedMesh(geo, blend ? propMaterial() : new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.25 }), list.length);
     list.forEach((p, i) => {
       tmpM.compose(tmpP.set(p[0], heightAt(p[0], p[1]) - 0.1, p[1]), tmpQ.setFromAxisAngle(new THREE.Vector3(0, 1, 0), p[2]), tmpS.set(1, 1, 1));
       im.setMatrixAt(i, tmpM);
@@ -593,9 +595,10 @@ export class Props {
   buildSigns() {
     const diff = trailDiff;
     const post = colorize(new THREE.CylinderGeometry(0.06, 0.07, 2.4, 8).translate(0, 1.2, 0), 0x5b3d24);
-    const postM = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 });
+    const blend = this.blend.props?.propSign;
+    const postM = blend ? propMaterial() : new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 });
     // the post, the board's timber and its cap of snow in one; the painted face on the front
-    const frame = merge([post, colorize(new THREE.BoxGeometry(2.6, 0.81, 0.06), 0x5b3d24).translate(0, 2.0, 0.06), colorize(new THREE.BoxGeometry(2.62, 0.05, 0.1), 0xf4f6fb).translate(0, 2.43, 0.06)]);
+    const frame = blend ?? merge([post, colorize(new THREE.BoxGeometry(2.6, 0.81, 0.06), 0x5b3d24).translate(0, 2.0, 0.06), colorize(new THREE.BoxGeometry(2.62, 0.05, 0.1), 0xf4f6fb).translate(0, 2.43, 0.06)]);
     const face = new THREE.PlaneGeometry(2.6, 0.81).translate(0, 2.0, 0.092);
     for (const sec of SECTIONS) {
       const z = Math.max(sec.z0 + 6, START_Z + 12);
@@ -671,6 +674,9 @@ export class Props {
     const side = new THREE.Vector3().crossVectors(UP, dir).normalize();
     // the steelwork and both terminals (liftworks.js), one mesh per material
     const LK = new Kit();
+    // (the Blender-built steelwork, when it's here: one tower stamped along the line, a terminal
+    // at each end turned to face its bullwheel)
+    const BL = this.blend.lift, ONE = new THREE.Vector3(1, 1, 1), towerAt = [], termAt = [];
     const lq = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir);
     this.liftPoints = [];
     let towerNo = 0;
@@ -678,7 +684,8 @@ export class Props {
       const [x, z] = at(t);
       const gy = heightAt(x, z);
       if (t !== 0 && t !== 1) {
-        tower(LK, H, lq, new THREE.Vector3(x, gy, z), ++towerNo);
+        tower(LK, H, lq, new THREE.Vector3(x, gy, z), ++towerNo, !!BL);
+        if (BL) towerAt.push(new THREE.Matrix4().compose(new THREE.Vector3(x, gy, z), lq, ONE));
         this.forest.addCollider(x, z, 0.6, 'tower');
       }
       this.liftPoints.push(new THREE.Vector3(x, gy + H + 0.3, z));
@@ -688,7 +695,8 @@ export class Props {
       const [x, z] = at(t);
       const gy = heightAt(x, z);
       const back = t === 0 ? -1 : 1; // the bullwheel end
-      terminal(LK, H, lq, new THREE.Vector3(x, gy, z), back);
+      if (BL) termAt.push(new THREE.Matrix4().compose(new THREE.Vector3(x, gy, z), back > 0 ? lq : lq.clone().multiply(new THREE.Quaternion().setFromAxisAngle(UP, Math.PI)), ONE));
+      else terminal(LK, H, lq, new THREE.Vector3(x, gy, z), back);
       this.forest.addCollider(x, z, 7, 'station');
       // the lift's name along the canopy
       signs.push({ x, y: gy + H + 2.25, z, back });
@@ -706,7 +714,19 @@ export class Props {
       m.quaternion.copy(lq).multiply(new THREE.Quaternion().setFromAxisAngle(UP, s * Math.PI / 2));
       this.scene.add(m);
     }
-    LK.build(liftMaterials(), this.scene);
+    const LM = liftMaterials();
+    LK.build(LM, this.scene);
+    if (BL) {
+      const glassM = LM.glass;
+      for (const [g, list, mat] of [[BL.liftTower, towerAt, propMaterial()], [BL.liftTerminal, termAt, propMaterial()], [BL.liftGlass, termAt, glassM]]) {
+        if (!g || !list.length) continue;
+        const m = new THREE.InstancedMesh(g, mat, list.length);
+        list.forEach((M, i) => m.setMatrixAt(i, M));
+        m.computeBoundingSphere();
+        m.castShadow = m.receiveShadow = mat !== glassM;
+        this.scene.add(m);
+      }
+    }
 
     // cables (up and down lines)
     const cableMat = new THREE.MeshStandardMaterial({ color: 0x222428, roughness: 0.5, metalness: 0.8 });
@@ -763,8 +783,9 @@ export class Props {
     for (let i = 0; i < 4; i++) { const sn = colorize(new RoundedBoxGeometry(0.58, 0.07, 0.15, 2, 0.03), snowC); sn.translate(-1.0 + i * 0.667, -1.67, -0.31); cp.push(sn); }
     { const sn = colorize(new RoundedBoxGeometry(0.36, 0.06, 0.44, 2, 0.025), snowC); sn.translate(0, 0.18, 0); cp.push(sn); }
     { const sn = colorize(new RoundedBoxGeometry(2.3, 0.04, 0.18, 2, 0.015), snowC); sn.translate(0, -0.96, 0.72); cp.push(sn); }
-    const chairGeo = merge(cp);
+    const chairGeo = BL?.liftChair ?? merge(cp);
     this.chairGeo = chairGeo;
+    this.chairMat = BL?.liftChair ? propMaterial() : this.vc;
     const riders = [];
     for (const dx of [-0.55, 0.55]) {
       const body = new THREE.CapsuleGeometry(0.17, 0.32, 4, 8); body.translate(dx, -2.0, 0.02);
@@ -785,7 +806,7 @@ export class Props {
     const spacing = 34;
     this.chairs = [];
     for (const li of [0, 1]) for (let d = 0; d < totalLen[li]; d += spacing) this.chairs.push({ li, d, ride: this.rnd() < 0.55 });
-    this.chairMesh = new THREE.InstancedMesh(chairGeo, this.vc, this.chairs.length);
+    this.chairMesh = new THREE.InstancedMesh(chairGeo, this.chairMat, this.chairs.length);
     // off in the distance a chair is a few boxes: the whole line of them in one cheap draw
     const fp = [];
     const fb = (w, h, d, c, x, y, z, rx = 0) => { const g = colorize(new THREE.BoxGeometry(w, h, d).rotateX(rx), c); g.translate(x, y, z); fp.push(g); };
@@ -939,9 +960,10 @@ export class Props {
     const postL = colorize(new THREE.BoxGeometry(0.4, 3.4, 0.4), wood); postL.translate(-5.6, 1.7, 0.6);
     const postR = postL.clone(); postR.translate(11.2, 0, 0);
     const wand = colorize(new THREE.BoxGeometry(10.5, 0.08, 0.08), 0xd42a2a); wand.translate(0, 0.6, 0.8);
-    const g = merge([postL, postR, wand]);
+    const blend = this.blend.props?.propStart;
+    const g = blend ? blend.clone() : merge([postL, postR, wand]);
     g.translate(x, gy, z);
-    const m = new THREE.Mesh(g, this.vc); m.castShadow = m.receiveShadow = true;
+    const m = new THREE.Mesh(g, blend ? propMaterial() : this.vc); m.castShadow = m.receiveShadow = true;
     this.scene.add(m);
     const banner = new THREE.Mesh(new THREE.PlaneGeometry(11, 1.1), new THREE.MeshStandardMaterial({
       map: canvasTex(1024, 104, (c, w, h) => {
@@ -1241,8 +1263,9 @@ export class Props {
       const x = centerX(z) + s * (halfWidth(z) + 1.5);
       list.push([x, z, diff(z)]);
     }
-    const geo = merge([pole, colorize(cap, 0xffffff)]);
-    const im = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5 }), list.length);
+    const blend = this.blend.props?.propMarker;
+    const geo = blend ?? merge([pole, colorize(cap, 0xffffff)]);
+    const im = new THREE.InstancedMesh(geo, blend ? propMaterial() : new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5 }), list.length);
     list.forEach((p, i) => {
       tmpM.compose(tmpP.set(p[0], heightAt(p[0], p[1]) - 0.2, p[1]), tmpQ.identity(), tmpS.set(1, 1, 1));
       im.setMatrixAt(i, tmpM);
@@ -1501,7 +1524,8 @@ export class Props {
     const cane = [];
     cane.push(colorize(new THREE.CylinderGeometry(0.022, 0.028, 1.6, 6).translate(0, 0.65, 0), 0xc9a964));
     for (const y of [0.2, 0.6, 1.0, 1.35]) cane.push(colorize(new THREE.CylinderGeometry(0.03, 0.03, 0.035, 6).translate(0, y, 0), 0x7a6232));
-    const im = new THREE.InstancedMesh(merge(cane), this.vc, poles.length);
+    const blend = this.blend.props?.propCane;
+    const im = new THREE.InstancedMesh(blend ?? merge(cane), blend ? propMaterial() : this.vc, poles.length);
     const e = new THREE.Euler();
     poles.forEach((p, i) => {
       tmpM.compose(tmpP.set(p[0], p[1] - 0.15, p[2]), tmpQ.setFromEuler(e.set((this.rnd() - 0.5) * 0.08, 0, (this.rnd() - 0.5) * 0.08)), tmpS.set(1, 1, 1));

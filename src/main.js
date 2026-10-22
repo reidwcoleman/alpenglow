@@ -42,6 +42,7 @@ import { preloadAvatars, preloadRiders } from './avatar.js';
 import { mulberry32, clamp, smoothstep } from './noise.js';
 import { START_Z, FINISH_Z, GATES, centerX, halfWidth, sectionName, heightAt, PARK, JUMPS, RAILS, PARK_JUMPS, PARK_RAILS, PIPE, ROLLERS, zoneAt, PARK_ID, MAP } from './course.js';
 import { modelParts, models } from './models.js';
+import { startBakes } from './bake.js';
 
 const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -139,7 +140,10 @@ class Game {
     const pool = new Pool();
     // which Blender sets there are for this park (blender/*.py): the scenery ones stream in once
     // the game is up, and what they replace isn't built here meanwhile
-    const blendP = models().then((M) => ({ village: !!M['village_' + PARK_ID] }));
+    const blendP = models().then(async (M) => ({
+      village: !!M['village_' + PARK_ID],
+      ...Object.fromEntries(await Promise.all(['lift', 'props'].map(async (k) => [k, M[k] ? await modelParts(k).catch(() => null) : null]))),
+    }));
     const treesP = pool.job({ kind: 'trees' });
     const shadeP = pool.job({ kind: 'grid', args: ShadeField.grid() });
     const avatarsP = preloadRiders();
@@ -248,6 +252,7 @@ class Game {
       }
       // the Blender scenery for this park, as it comes down
       if (this.props.blend.village) modelParts('village_' + PARK_ID).then((B) => { const m = this.props.addVillage(B); if (m) patchMaterial(m.material); }).catch((e) => console.warn('village', e));
+      startBakes();
       // and the other skies, for when the weather turns
       setTimeout(() => { for (const p of Object.values(PRESETS)) this.env.ensure(p.hdri); }, 2500);
     };

@@ -4,6 +4,7 @@
 // a beacon that flashes and a searchlight. A hoist on a boom over the right-hand door lets an
 // orange basket stretcher down on its cable. The rescue (rescue.js) flies it.
 import * as THREE from 'three';
+import { bakeable } from './bake.js';
 import { posedOne } from './people.js';
 import { avatarKits } from './avatar.js';
 
@@ -303,6 +304,9 @@ export class Helicopter {
     this.setCable(1);
     this.spin = 0; this.t = 0;
     root.visible = false;
+    sx.userData.noBake = true;
+    if (this.cable) this.cable.userData.noBake = true;
+    bakeable('heli', [root]);
     scene.add(root);
   }
 
