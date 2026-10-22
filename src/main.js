@@ -423,6 +423,22 @@ class Game {
       b.onclick = () => { store.set('look', k); AG.uToon.value = k === 'cartoon' ? 1 : 0; this.forest?.setLook(k === 'cartoon'); [...look.children].forEach((c) => c.classList.toggle('on', c === b)); };
       look.appendChild(b);
     }
+    // Cork7's camera and stats settings
+    const segOpt = (id, key, def, opts, apply) => {
+      const el = $(id);
+      apply(store.get(key, def));
+      for (const [k, label] of opts) {
+        const b = document.createElement('button');
+        b.textContent = label; b.className = k === store.get(key, def) ? 'on' : '';
+        b.onclick = () => { store.set(key, k); apply(k); [...el.children].forEach((c) => c.classList.toggle('on', c === b)); };
+        el.appendChild(b);
+      }
+    };
+    segOpt('camd', 'camDist', 'normal', [['close', 'Close'], ['normal', 'Normal'], ['far', 'Far']], (k) => { this.rig.opt.dist = { close: 0.8, normal: 1, far: 1.25 }[k] ?? 1; });
+    segOpt('camfov', 'speedFov', 'on', [['on', 'On'], ['off', 'Off']], (k) => { this.rig.opt.speedFov = k === 'on'; });
+    segOpt('camm', 'camMode', 'chase', [['chase', 'Chase'], ['helmet', 'First person'], ['drone', 'Drone']], (k) => { this.rig.mode = k; this.rig.snap = true; });
+    segOpt('fpsc', 'fpsCap', 'max', [['max', 'Max'], ['30', '30']], (k) => { this.cap30 = k === '30'; });
+    segOpt('statsc', 'stats', 'off', [['off', 'Off'], ['on', 'FPS']], (k) => { this.showStats = k === 'on'; $('stats').classList.toggle('hidden', k !== 'on'); });
     const wx = $('wx');
     for (const [k, label] of [['change', 'New every run'], ['fixed', 'Keep what I pick']]) {
       const b = document.createElement('button');
@@ -808,7 +824,7 @@ class Game {
 
   cycleCam() {
     const m = this.rig.cycle();
-    const names = { chase: 'Chase cam', action: 'Action cam', helmet: 'Helmet cam', tv: 'TV cam' };
+    const names = { chase: 'Chase cam', action: 'Action cam', helmet: 'First person', drone: 'Drone', tv: 'TV cam' };
     const l = $('camlbl');
     l.textContent = names[m] + ' · C';
     l.classList.add('show');
@@ -963,7 +979,7 @@ class Game {
       if (sc) {
         sc.crashes++;
         sc.pend = 0; sc.n = 0; sc.names = [];
-        this.say('BAIL', lost > 0 ? `−${lost.toLocaleString()}` : '', lost > 0 ? '' : { landing: 'land it straight', tree: 'that tree did not move', skier: 'watch the traffic', rail: 'stay on top of it', net: 'into the nets' }[e.reason] ?? '', 'bad', 1800);
+        this.say('BAIL', lost > 0 ? `−${lost.toLocaleString()}` : '', lost > 0 ? '' : { landing: 'land it straight', tree: 'that tree did not move', skier: 'watch the traffic', rail: 'stay on top of it', net: 'into the nets', faceplant: 'too big to butter' }[e.reason] ?? '', 'bad', 1800);
         this.status('BAIL');
       } else this.say('WIPEOUT', '', e.reason === 'landing' ? 'land it straight' : '', 'bad');
     });
@@ -989,6 +1005,7 @@ class Game {
     p.on('grindStart', () => this.audio.thump(0.35));
     p.on('grindEnd', (g) => this.onPlayerGrind(g));
     p.on('railSwap', () => this.audio.beep(880, 0.05, 0.08));
+    p.on('railHopLand', () => this.audio.thump(0.3));
     p.on('butter', (b) => this.onPlayerButter(b));
     p.on('pop', (e) => { if (e.perfect) { this.status(e.late ? 'LATE POP' : 'PERFECT POP'); this.audio.beep(1500, 0.05, 0.1); } });
   }
@@ -1117,7 +1134,7 @@ class Game {
     const sc = this.sc;
     if (!sc || g.fell || g.t < 0.25) return;
     // a press (skis crossed, Space held) pays a quarter more while it's held
-    let pts = 750 * g.t + 450 * g.swaps + (g.spinIn >= 180 ? 300 : g.spinIn >= 90 ? 150 : 0) + 190 * Math.min(g.press, g.t);
+    let pts = 750 * g.t + 450 * (g.swaps + (g.hops ?? 0)) + (g.spinIn >= 180 ? 300 : g.spinIn >= 90 ? 150 : 0) + 190 * Math.min(g.press, g.t);
     if (g.switchIn) pts *= 1.25;
     // held a nose or tail press for a good part of it
     const press = g.nose >= g.t * 0.4 ? 'Nose Press' : g.tail >= g.t * 0.4 ? 'Tail Press' : '';
@@ -1134,11 +1151,13 @@ class Game {
     const sc = this.sc;
     if (!sc) return;
     const name = `${b.tail ? 'Tail' : 'Nose'} Butter${b.spin ? ' ' + b.spin : ''}`;
-    const pts = Math.round((b.spin >= 360 ? 600 : b.spin >= 180 ? 300 : 150) * this.repeat(name));
+    // (Cork7: only your first four butters in a run score)
+    sc.butters = (sc.butters ?? 0) + 1;
+    const pts = sc.butters > 4 ? 0 : Math.round((b.spin >= 360 ? 600 : b.spin >= 180 ? 300 : 150) * this.repeat(name));
     this.checkLessons([name]);
     if (!this.book.has(name)) { this.book.add(name); this.saveBook(); sc.fresh = (sc.fresh ?? 0) + 1; this.status('NEW TRICK'); }
     sc.score += pts;
-    this.say(name, `+${pts}`, '', '', 1500);
+    this.say(name, pts ? `+${pts}` : '', pts ? (b.landed ? 'LANDED IN A BUTTER' : '') : 'four butters a run score', '', 1500);
   }
 
   // Cork7: 1,500 x turns^2 (a 720 is four 360s); flips count as turns, but an off-axis one's
@@ -1172,15 +1191,17 @@ class Game {
   onPlayerLand(t) {
     this.livePts = 0;
     const p = this.player;
-    this.audio.thump(Math.min(1, t.vn / 8));
+    // (a flat landing smacks; a landing down the slope is a soft thud)
+    if (t.vn > 6.5 && t.air > 0.4) this.audio.smack(Math.min(1, t.vn / 12)); else this.audio.thump(Math.min(1, t.vn / 8));
     this.rig.bump(Math.min(0.6, t.vn / 20));
     this.burst(p, 20 + t.vn * 4, 2);
     const sc = this.sc;
     if (!sc) return;
     sc.air += t.air;
     const trick = t.spin >= 180 || t.flips > 0 || t.grabs.length > 0 || t.shifty || t.daffy || (t.fromRail && t.spin90 >= 90);
-    // little hops on the flat don't count
-    if (t.air < 0.5 && !trick) { if (sc.pend > 0) this.bank(sc.names[sc.names.length - 1] ?? '', t.sketchy, 0); return; }
+    // little hops on the flat don't count (Cork7: a pop off plain snow with no trick in it is
+    // nothing, however long the slope lets it hang)
+    if ((t.air < 0.5 || (t.hop && t.height < 1.6)) && !trick) { if (sc.pend > 0) this.bank(sc.names[sc.names.length - 1] ?? '', t.sketchy, 0); return; }
     let { pts } = this.trickPoints(t);
     const name = this.trickName(t);
     // riding off the end of a rail is part of the rail, not a feature of its own
@@ -1752,6 +1773,12 @@ class Game {
 
   // ---------------- frame ----------------
   frame() {
+    // Settings > Frame rate: 30 (an even frame rate, a cooler laptop)
+    if (this.cap30) {
+      const now = performance.now();
+      if (now - (this.lastF ?? 0) < 1000 / 30 - 3) return;
+      this.lastF = now;
+    }
     if (this.unveil && --this.unveil === 0) {
       window.__loadProgress?.(1);
       setTimeout(() => { $('loading').classList.add('out'); setTimeout(() => $('loading').classList.add('hidden'), 460); }, 120);
@@ -1921,6 +1948,9 @@ class Game {
     }
     const focus = this.player && this.state !== 'menu' ? this.player.pos : cam.position;
     this.terrain.update(cam.position.x, cam.position.z, 4);
+    // (trees between the camera and the rider turn see-through; not from inside the helmet)
+    const seen = replaying ? this.replay.ghost?.pos : this.player && this.state !== 'menu' && this.rig.mode !== 'helmet' && !this.rescue.active ? this.player.pos : null;
+    AG.uSee.value.copy(seen ?? cam.position);
     this.forest.update(cam, this.time, this.env.sunDir);
     this.props.updateLift(this.time, cam.position);
     this.props.updatePeople(cam.position);
@@ -1945,9 +1975,13 @@ class Game {
 
   trackFps(dt) {
     this.fpsAcc += dt; this.fpsN++;
+    this.fpsWorst = Math.max(this.fpsWorst ?? 0, dt);
     if (this.fpsAcc < 1) return;
     this.fps = this.fpsN / this.fpsAcc;
     window.__fps = this.fps;
+    // Settings > Stats: the frame rate (and the slowest frame of the last second) up top
+    if (this.showStats) $('stats').textContent = `${Math.round(this.fps)} FPS · ${(this.fpsWorst * 1000).toFixed(0)} MS MAX`;
+    this.fpsWorst = 0;
     this.fpsAcc = 0; this.fpsN = 0;
     // adaptive resolution, slow and steady: every change of size is a hitch of its own, so it
     // drops only after two slow seconds, comes back up only after five smooth ones, and if a
@@ -2049,7 +2083,7 @@ class Game {
       // on a rail: the slide and its points tick up live
       if (p.grind && p.grind.t > 0.12) {
         const g = p.grind;
-        const pts = Math.round((750 * g.t + 450 * g.swaps) * (g.switchIn ? 1.25 : 1));
+        const pts = Math.round((750 * g.t + 450 * (g.swaps + (g.hops ?? 0))) * (g.switchIn ? 1.25 : 1));
         const el = $('callout');
         if (!this.liveCall) { el.innerHTML = `<div class="c"><div class="n"></div><div class="p"></div></div>`; this.liveCall = true; clearTimeout(this.sayT); }
         el.querySelector('.n').textContent = g.kind;

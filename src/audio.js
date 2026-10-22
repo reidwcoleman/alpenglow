@@ -43,6 +43,8 @@ export class Audio {
     this.scrape = loop('bandpass', 3400, 3.5); // edges chattering on ice
     this.powder = loop('lowpass', 420, 0.8); // soft roar of deep snow
     this.ambient = loop('lowpass', 300, 0.5);
+    // steel under the skis: a few narrow rings over a scrape, higher the faster you slide
+    this.rail = [loop('bandpass', 1300, 14), loop('bandpass', 2900, 18), loop('bandpass', 4600, 10), loop('highpass', 5200, 0.7)];
   }
 
   setMuted(m) {
@@ -73,6 +75,13 @@ export class Audio {
     ramp(this.powder.g.gain, grounded * powder * Math.min(1, sp / 14) * 0.6);
     ramp(this.crowd.g.gain, crowdK * 0.5);
     ramp(this.ambient.g.gain, 0.06);
+    // on a rail (not mid-hop): steel (a box is plastic: duller, lower)
+    const g = s?.grind, on = g && !g.hop ? Math.min(1, sp / 5) : 0, box = g?.R?.kind === 'box';
+    const pitch = (box ? 0.55 : 1) * (0.75 + Math.min(sp, 25) / 32);
+    this.rail.forEach((r, i) => {
+      ramp(r.g.gain, on * [0.5, 0.32, 0.18, 0.1][i] * (box ? (i ? 0.4 : 1.2) : 1));
+      ramp(r.filt.frequency, [1300, 2900, 4600, 5200][i] * pitch);
+    });
     void air;
   }
 
@@ -87,6 +96,18 @@ export class Audio {
     const o = ctx.createOscillator(); o.frequency.setValueAtTime(90, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.25);
     const og = ctx.createGain(); og.gain.setValueAtTime(0.5 * k, t); og.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
     o.connect(og).connect(this.master); o.start(t); o.stop(t + 0.32);
+  }
+
+  // a flat landing: the skis slap the snow (a bright clap over the thud)
+  smack(k = 1) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const src = ctx.createBufferSource(); src.buffer = this.noise;
+    const f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 1400;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(1.1 * k, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+    src.connect(f).connect(g).connect(this.master); src.start(t, Math.random()); src.stop(t + 0.12);
+    this.thump(k);
   }
 
   // bones going: a dry snap and a crunch under the thud

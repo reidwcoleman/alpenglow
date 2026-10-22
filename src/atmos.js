@@ -25,6 +25,8 @@ export const AG = {
   // the cartoon look (Cork7's): 1 = soft two-tone light, flatter surfaces, little gloss; 0 = the
   // photographic look
   uToon: { value: 1 },
+  // the rider the camera is on (toontrees.js: trees in between turn see-through)
+  uSee: { value: new THREE.Vector3() },
 };
 
 // (the sun's light on a surface: a soft cel ramp, nearly full light as soon as it faces the sun

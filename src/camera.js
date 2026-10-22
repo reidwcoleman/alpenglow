@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { heightAt, centerX, halfWidth } from './course.js';
 import { clamp, smoothstep } from './noise.js';
 
-export const CAM_MODES = ['chase', 'action', 'helmet', 'tv'];
+export const CAM_MODES = ['chase', 'action', 'helmet', 'drone', 'tv'];
 
 export class CameraRig {
   constructor(camera) {
@@ -16,6 +16,9 @@ export class CameraRig {
     this.t = 0;
     this.tvSpot = null;
     this.snap = true;
+    // Settings > Camera: how far back the chase rides (0.8 close, 1 Cork7's, 1.25 far) and the
+    // speed lens (the view widening as you go faster)
+    this.opt = { dist: 1, speedFov: true };
   }
 
   cycle() {
@@ -70,7 +73,7 @@ export class CameraRig {
       const gr = clamp((heightAt(x0 + this.dir.x * 8, z0 + this.dir.z * 8) - g0) / 8, -1.1, 1.1);
       this.grade = (this.grade ?? gr) + (gr - (this.grade ?? gr)) * Math.min(1, dt * (s.onGround || s.grind ? 4 : 0.8));
       const portrait = clamp(1.2 - cam.aspect, 0, 0.7);
-      const b = (4.3 + portrait * 1.6) * (1 + 0.5 * pull), hh = 1.3 + 1.6 * pull;
+      const od = this.opt.dist, b = (4.3 * od + portrait * 1.6) * (1 + 0.5 * pull), hh = 1.3 * (0.6 + 0.4 * od) + 1.6 * pull;
       // (the rider's height on a spring: rollers and bumps don't jolt the view)
       const ry = s.onGround ? s.pos.y : s.pos.y + (this.airOff ?? 0);
       if (this.snap || this.ry == null) { this.ry = ry; this.ryV = 0; }
@@ -91,7 +94,7 @@ export class CameraRig {
       let floor = heightAt(tgt.x, tgt.z);
       for (let k = 1; k <= 8; k++) floor = Math.max(floor, heightAt(tgt.x + this.dir.x * E * k / 8, tgt.z + this.dir.z * E * k / 8));
       tgt.y = Math.max(this.ry + D, floor + 0.6);
-      fov = 58 + 8 * (clamp(sp, 0, 38) / 38) ** 2 + 18 * portrait + 6 * pull;
+      fov = 58 + (this.opt.speedFov ? 8 * (clamp(sp, 0, 38) / 38) ** 2 : 0) + 18 * portrait + 6 * pull;
       const hd = Math.max(0.5, Math.hypot(x0 - tgt.x, z0 - tgt.z)), tv = Math.tan((fov * Math.PI) / 360);
       const riderA = Math.atan2(s.pos.y + 1 - tgt.y, hd);
       const slopeA = Math.atan(clamp(Math.min(0, this.grade), -0.9, 0) + clamp(Math.max(0, this.grade), 0, 0.8) * 0.6);
@@ -136,6 +139,13 @@ export class CameraRig {
         look.copy(tgt).addScaledVector(f, 10).addScaledVector(up, -2.5);
         this.helmUp = up;
       }
+    } else if (this.mode === 'drone') {
+      // Cork7's drone: flies high behind the rider, looking down the line
+      tgt.copy(s.pos).addScaledVector(this.dir, -10.5);
+      tgt.y = Math.max(s.pos.y + 6.5, heightAt(tgt.x, tgt.z) + 4);
+      look.copy(s.pos).addScaledVector(this.dir, 7);
+      look.y = s.pos.y + 0.3;
+      fov = 54;
     } else {
       // trackside TV camera: pick a spot ahead at the piste edge, hold until passed
       if (!this.tvSpot || s.pos.z > this.tvSpot.z + 25 || s.pos.distanceTo(this.tvSpot) > 140) {
@@ -154,7 +164,7 @@ export class CameraRig {
       tgt.copy(s.pos).addScaledVector(this.dir, -4); tgt.y += 2.2; look.copy(s.pos);
     }
     if (this.snap) { this.pos.copy(tgt); this.look.copy(look); this.snap = false; }
-    const k = this.mode === 'helmet' ? 1 : this.mode === 'tv' ? 1 : Math.min(1, dt * (this.mode === 'chase' ? 9 : 7));
+    const k = this.mode === 'helmet' ? 1 : this.mode === 'tv' ? 1 : Math.min(1, dt * (this.mode === 'chase' ? 9 : this.mode === 'drone' ? 2.6 : 7));
     this.pos.lerp(tgt, k);
     this.look.lerp(look, Math.min(1, dt * 12));
     cam.position.copy(this.pos);

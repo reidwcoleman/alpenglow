@@ -250,7 +250,13 @@ export class Meta {
     for (const it of ITEMS) if ((it.r === 'pass' || (it.r === 'gold' && this.gold)) && it.level <= this.level) this.owned.add(it.id);
     for (const [k, v] of Object.entries(this.kit)) if (!ITEM[v] || !this.owned.has(v) || ITEM[v].cat !== k) delete this.kit[k];
     this.kit = { ...KIT0, ...this.kit };
-    if (this.day.d !== today()) this.day = { d: today(), xp: 0, done: false };
+    if (this.day.d !== today()) {
+      // (Cork7: a day you miss waits for you: its three full-rate levels carry over, a week's worth at most)
+      const D = LEVEL_XP * 3, last = this.day.d ? new Date(this.day.d.replace(/-/g, '/')) : null;
+      const gap = last ? Math.max(0, Math.round((new Date(today().replace(/-/g, '/')) - last) / 864e5) - 1) : 0;
+      const left = last ? Math.max(0, D + (this.day.carry ?? 0) - this.day.xp) : 0;
+      this.day = { d: today(), xp: 0, done: false, carry: Math.min(D * 7, left + gap * D) };
+    }
   }
 
   onChange(fn) { this.listeners.push(fn); }
@@ -336,12 +342,13 @@ export class Meta {
     return { gifts, flakes: back };
   }
 
-  // a run is over: XP (three levels a day at full rate, a quarter after that) and flakes
+  // a run is over: XP (three levels a day at full rate, plus any days missed; a fifth after
+  // that, so there's never a wall) and flakes
   payout(score, extraXp = 0) {
     const before = this.level;
     let xp = Math.round(Math.min(1400, 60 + score / 30)) + extraXp;
-    const full = Math.max(0, LEVEL_XP * 3 - this.day.xp);
-    const got = Math.min(xp, full) + Math.round(Math.max(0, xp - full) * 0.25);
+    const full = Math.max(0, LEVEL_XP * 3 + (this.day.carry ?? 0) - this.day.xp);
+    const got = Math.min(xp, full) + Math.round(Math.max(0, xp - full) * 0.2);
     this.day.xp += got;
     this.xp = Math.min(this.xp + got, LEVEL_XP * (LEVELS - 1));
     let flakes = 20 + Math.round(score / 400);

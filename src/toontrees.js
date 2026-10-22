@@ -4,6 +4,7 @@
 // thick white snow caps on each, a brown trunk. Far off it's a little stack of cones built here.
 // Same interface as SpruceForest: a group, and update(camera, elapsed) choosing what to draw.
 import * as THREE from 'three';
+import { AG } from './atmos.js';
 
 const SPRUCE_H = 16; // (the placed trees' sizes are in src/spruce.js's units)
 
@@ -67,10 +68,12 @@ function coneStack(seg = 6) {
 function toonMaterial(U) {
   const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0 });
   m.onBeforeCompile = (sh) => {
-    Object.assign(sh.uniforms, U);
+    // (AG.uSee, the rider: a tree standing between the camera and the rider dithers away so you
+    // never lose sight of yourself)
+    Object.assign(sh.uniforms, U, { uSee: AG.uSee });
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>
-attribute float aKind; varying float vKind; uniform float uTime; uniform vec3 uWind;`)
+attribute float aKind; varying float vKind; varying float vSee; uniform float uTime; uniform vec3 uWind; uniform vec3 uSee;`)
       .replace('#include <color_vertex>', `#include <color_vertex>
 #ifdef USE_INSTANCING_COLOR
   // (the tree's tint is for the green only: the snow and bark keep their own colour)
@@ -84,10 +87,24 @@ vKind = aKind;
   float ph = uTime * 1.3 + ip.x * 0.37 + ip.z * 0.23;
   float k = position.y * position.y * 0.035;
   transformed.xz += uWind.xz * ( sin( ph ) * 0.7 + sin( ph * 2.3 ) * 0.3 ) * k;
+  // between the camera and the rider (and tall enough to be in the way): see-through
+  float th = length( instanceMatrix[1].xyz );
+  vec2 sa = cameraPosition.xz, sd = uSee.xz - sa;
+  float st = clamp( dot( ip.xz - sa, sd ) / max( dot( sd, sd ), 1e-3 ), 0.0, 1.0 );
+  float sdist = length( ip.xz - ( sa + sd * st ) ), sr = th * 0.27 + 0.6;
+  float sy = mix( cameraPosition.y, uSee.y + 1.0, st );
+  vSee = ( 1.0 - smoothstep( sr * 0.75, sr * 1.2, sdist ) ) * step( 0.005, st ) * ( 1.0 - smoothstep( 0.92, 0.995, st ) ) * step( sy, ip.y + th );
 }`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
-varying float vKind; uniform float uTreeSnow;`)
+varying float vKind; varying float vSee; uniform float uTreeSnow;`)
+      .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
+if ( vSee > 0.01 ) {
+  // (an ordered 4x4 dither: an even screen of holes, three quarters open at the most)
+  vec2 q = floor( gl_FragCoord.xy ), h = floor( q * 0.5 );
+  float bay = fract( dot( h, vec2( 0.5, h.y * 0.75 ) ) ) * 0.25 + fract( dot( q, vec2( 0.5, q.y * 0.75 ) ) );
+  if ( bay < vSee * 0.78 ) discard;
+}`)
       .replace('#include <color_fragment>', `
 #if defined( USE_COLOR ) || defined( USE_INSTANCING_COLOR )
 {

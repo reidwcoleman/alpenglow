@@ -953,29 +953,41 @@ export class Props {
   buildFinish() {
     const z = FINISH_Z, cx = centerX(z), hw = halfWidth(z);
     const gy = heightAt(cx, z);
-    // inflatable arch
-    const archW = 26;
-    const arch = new THREE.TorusGeometry(archW / 2, 0.9, 12, 40, Math.PI);
-    const archMesh = new THREE.Mesh(arch, new THREE.MeshStandardMaterial({ color: 0xe8432e, roughness: 0.55 }));
-    archMesh.position.set(cx, gy - 1, z);
-    archMesh.castShadow = true;
-    this.scene.add(archMesh);
-    const sign = new THREE.Mesh(new THREE.BoxGeometry(12, 2.2, 0.4), [
-      ...Array(4).fill(new THREE.MeshStandardMaterial({ color: 0xe8432e })),
-      new THREE.MeshStandardMaterial({ map: canvasTex(512, 96, (c, w, h) => {
-        c.fillStyle = '#111'; c.fillRect(0, 0, w, h);
-        c.fillStyle = '#fff'; c.font = 'bold 70px Helvetica'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('FINISH', w / 2, h / 2 + 4);
-      }) }),
-      new THREE.MeshStandardMaterial({ map: canvasTex(512, 96, (c, w, h) => {
-        c.fillStyle = '#111'; c.fillRect(0, 0, w, h);
-        c.fillStyle = '#ffb347'; c.font = 'bold 60px Helvetica'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('SHREDLINE CUP', w / 2, h / 2 + 4);
-      }) }),
-    ]);
-    sign.position.set(cx, gy + archW / 2 - 2.2, z);
-    sign.rotation.y = Math.PI;
-    this.scene.add(sign);
-    this.forest.addCollider(cx - archW / 2, z, 1.0, 'arch');
-    this.forest.addCollider(cx + archW / 2, z, 1.0, 'arch');
+    // Cork7's finish: a blue line painted across the snow and a tall marker either side (no
+    // overhead gate)
+    const lp = [], li = [], N = 28;
+    for (let i = 0; i <= N; i++) {
+      const x = cx - hw - 1 + ((hw + 1) * 2 * i) / N;
+      for (const dz of [-0.8, 0.8]) lp.push(x, heightAt(x, z + dz) + 0.04, z + dz);
+      if (i < N) { const v = i * 2; li.push(v, v + 2, v + 1, v + 1, v + 2, v + 3); }
+    }
+    const lg = new THREE.BufferGeometry();
+    lg.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3));
+    lg.setIndex(li); lg.computeVertexNormals();
+    const line = new THREE.Mesh(lg, new THREE.MeshStandardMaterial({ color: 0x2a6fe0, roughness: 0.8, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+    line.receiveShadow = true;
+    this.scene.add(line);
+    const face = canvasTex(128, 768, (c, w, h) => {
+      c.fillStyle = '#1f5fd6'; c.fillRect(0, 0, w, h);
+      c.fillStyle = '#fff'; c.fillRect(10, 10, w - 20, 6); c.fillRect(10, h - 16, w - 20, 6);
+      c.save(); c.translate(w / 2, h / 2); c.rotate(-Math.PI / 2);
+      c.font = 'bold 84px Helvetica'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('FINISH', 0, 4);
+      c.restore();
+    });
+    const blue = new THREE.MeshStandardMaterial({ color: 0x1f5fd6, roughness: 0.55 }), fm = new THREE.MeshStandardMaterial({ map: face, roughness: 0.55 });
+    // (the markers frame the line down the middle, where everyone crosses: the finish arena is wide)
+    const mw = Math.min(hw + 1.4, 16);
+    for (const sd of [-1, 1]) {
+      const x = cx + sd * mw, y = heightAt(x, z);
+      const m = new THREE.Mesh(new THREE.BoxGeometry(1.1, 7, 1.1), [blue, blue, blue, blue, fm, fm]);
+      m.position.set(x, y + 3.5, z);
+      m.castShadow = true;
+      this.scene.add(m);
+      const cap = new THREE.Mesh(new THREE.ConeGeometry(0.78, 0.9, 4), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 }));
+      cap.position.set(x, y + 7.45, z); cap.rotation.y = Math.PI / 4;
+      this.scene.add(cap);
+      this.forest.addCollider(x, z, 0.8, 'arch');
+    }
 
     // A-board fences + banners on both sides of the last 260 m, then the finish corral
     const boardTex = canvasTex(1024, 128, (c, w, h) => {

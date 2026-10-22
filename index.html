@@ -576,6 +576,7 @@
   #count { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); font-family: var(--disp); font-size: clamp(90px, 16vw, 190px); text-shadow: 0 6px 0 rgba(0,0,0,.2), 0 8px 60px rgba(0,0,0,.3); }
   #camlbl { position: absolute; left: 50%; top: max(18px, env(safe-area-inset-top)); transform: translateX(-50%); font: 600 11px Inter; letter-spacing: .14em; text-transform: uppercase; opacity: 0; transition: opacity .3s; }
   #camlbl.show { opacity: .8; }
+  #stats { position: absolute; left: 50%; top: max(6px, env(safe-area-inset-top)); transform: translateX(-50%); font: 700 10px Inter; letter-spacing: .12em; color: #fff; background: rgba(10,16,28,.42); padding: 3px 9px; border-radius: 99px; pointer-events: none; }
 
   /* ---------- panels ---------- */
   .panel { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; background: rgba(8,12,22,.42); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); padding: 16px; }
@@ -1121,6 +1122,11 @@
   <div class="opt"><label>Injuries</label><div class="seg" id="gore"></div></div>
   <div class="opt"><label>Look</label><div class="seg" id="look"></div></div>
   <div class="opt"><label>Graphics</label><div class="seg" id="qual"></div></div>
+  <div class="opt"><label>Camera</label><div class="seg" id="camm"></div></div>
+  <div class="opt"><label>Distance</label><div class="seg" id="camd"></div></div>
+  <div class="opt"><label>Speed lens</label><div class="seg" id="camfov"></div></div>
+  <div class="opt"><label>Frame rate</label><div class="seg" id="fpsc"></div></div>
+  <div class="opt"><label>Stats</label><div class="seg" id="statsc"></div></div>
   <div class="opt"><label>Music</label><div class="seg" id="mus"></div></div>
   <div class="opt"><label>Sound</label><div class="seg" id="snd"><button data-m="0">On</button><button data-m="1">Off</button></div></div>
   <div class="row"><button class="btn" id="s-how">How to play</button><button class="btn p" id="s-close">Done</button></div>
@@ -1136,8 +1142,8 @@
     <span><kbd>.</kbd> <kbd>G</kbd></span><span>Hop round to ride backwards (keypad . or G); again to turn forwards</span>
     <span><kbd>SPACE</kbd></span><span>Hold to load, release to pop (no trick)</span>
     <span><kbd>SHIFT</kbd><kbd>Q</kbd><kbd>E</kbd><kbd>F</kbd><kbd>X</kbd><kbd>Z</kbd></span><span>Six grabs by hand. Switch keys mid-air to chain them, hold one a second to tweak it</span>
-    <span><kbd>B</kbd></span><span>Butter (add ↓ for the tail) · hold ← → to pivot 180, 360, 540</span>
-    <span><kbd>↑</kbd> <kbd>↓</kbd> on a rail</span><span>Nose / tail press · ← → swap the slide</span>
+    <span><kbd>B</kbd></span><span>Butter (add ↓ for the tail) · hold ← → to pivot 180, 360, 540. A press lasts 1.5 s, then rest a second. Hold B in the air to land into a butter off a bump or a small hop (off a big jump you faceplant). Your first four butters in a run score</span>
+    <span><kbd>↑</kbd> <kbd>↓</kbd> on a rail</span><span>Nose / tail press · ← → swap the slide (two swaps a bar) · <kbd>SPACE</kbd> mid-rail hops and lands back on it, near the end it pops you off</span>
     <span><kbd>R</kbd></span><span>Hold to restart · <kbd>C</kbd> camera · <kbd>ESC</kbd> pause · <kbd>L</kbd> next park line</span>
     <span><kbd>V</kbd></span><span>Replay the last trick</span>
     <span><kbd>TAB</kbd> <kbd>T</kbd></span><span>Multiplayer: riders in the room · chat</span>
@@ -1207,6 +1213,7 @@
   <div id="np"><div class="tray"><button id="np-open" title="Music"><span class="art"><i></i></span><span class="tx"><b id="np-t">First Chair</b><small id="np-a">Shredline FM</small><span class="pr"><i id="np-p"></i></span></span></button><div class="ctl"><button id="np-prev" aria-label="Previous">&#9664;&#9664;</button><button id="np-play" aria-label="Pause"><span></span></button><button id="np-next" aria-label="Next">&#9654;&#9654;</button></div></div></div>
   <div id="botbar"><i></i></div>
   <div id="camlbl"></div>
+  <div id="stats" class="hidden"></div>
 </div>
 
 <div id="touch">
