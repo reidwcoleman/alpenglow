@@ -3,6 +3,7 @@
 // meshes, then instanced, with a different jacket colour on every copy.
 import * as THREE from 'three';
 import { avatarKits, AvatarRig, kitMaterial } from './avatar.js';
+import { toyMaterial } from './toyrider.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const _m = new THREE.Matrix4(), _t = new THREE.Matrix4(), _n = new THREE.Matrix3();
@@ -139,7 +140,7 @@ export function posedOne(kit, outfit, kind) {
   const rig = new AvatarRig(kit, outfit);
   rig.pose(frame(kit, kind, Math.random));
   const geo = bake(rig);
-  const mat = kitMaterial(kit, { ...outfit, jacket: 0xffffff }, true);
+  const mat = (kit.toy ? toyMaterial : kitMaterial)(kit, { ...outfit, jacket: 0xffffff }, true);
   const im = new THREE.InstancedMesh(geo, mat, 1);
   im.setMatrixAt(0, new THREE.Matrix4());
   im.setColorAt(0, new THREE.Color(outfit.jacket));

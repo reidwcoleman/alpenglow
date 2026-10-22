@@ -614,8 +614,20 @@ export class Skier {
     // (just down from a jump the edges come back over ~0.2 s)
     this.c7Land = Math.max(0, (this.c7Land ?? 0) - dt * 3.4);
     const settle = smoothstep(0, 1, (1 - this.c7Land) / 0.68);
-    const E = this.c7E = ease(E0, s * settle, s ? (11 + this.c7X * 11) * clamp(13 / Math.max(speed, 1), 0.45, 1) : 9, dt);
-    const w = E * (0.8 + clamp(speed / 85, 0, 0.44)) * (1 + this.c7X * 0.14) * (brake ? 0.7 : 1);
+    // skis and a board ride differently. A board is wide and rolls edge to edge slower, pivots
+    // round easily when slow, and has two different edges: on the toes (regular stance: turning
+    // right) you kneel into a tighter arc, on the heels you sit back into a rounder one.
+    const B = this.board;
+    const E = this.c7E = ease(E0, s * settle, s ? (11 + this.c7X * 11) * clamp(13 / Math.max(speed, 1), 0.45, 1) * (B ? 0.78 : 1) : (B ? 7.5 : 9), dt);
+    const slow = 1 - clamp(speed / 8, 0, 1);
+    const heelToe = B ? (E * (this.boardSwitch ? -1 : 1) > 0 ? 1.08 : 0.93) : 1;
+    // carve or skid: lean hard into it at speed and the edges can't hold the arc, the tails
+    // break loose into a slash, the snow sprays and it scrubs speed (a board lets go sooner and
+    // further than skis, which keep biting)
+    const slashT = !brake && s ? smoothstep(0.78, 1, Math.abs(E)) * smoothstep(B ? 10 : 13, B ? 18 : 22, speed) * (B ? 1 : 0.65) * (1 - ice * 0.4) : 0;
+    this.c7Slash = ease(this.c7Slash ?? 0, slashT * Math.sign(E), slashT > Math.abs(this.c7Slash ?? 0) ? 6 : 4, dt);
+    const slash = Math.abs(this.c7Slash);
+    const w = E * (0.8 + clamp(speed / 85, 0, 0.44)) * (1 + this.c7X * 0.14) * (brake ? 0.7 : 1) * (1 + slow * (B ? 0.6 : 0.3)) * heelToe * (1 + slash * 0.12);
     T -= w * dt; // (steering right turns the heading down)
     // the slope the way you're going (rise per metre)
     const sx = Math.sin(T) * 0.5, sz = Math.cos(T) * 0.5;
@@ -625,33 +637,40 @@ export class Skier {
     // (lined up for a kicker, it lets you carry the speed that kicker is built for)
     const Ja = this.lipAhead(0, 90), vs = Math.max(tucking ? C7.vSoftTuck : C7.vSoft, Ja ? (Ja.pspeed ?? 0) + (tucking ? 2 : 0) : 0);
     const over = Math.max(0, speed - vs);
-    const acc = C7.slopeG * Math.sin(Math.atan(Math.min(-r, C7.gradeMax))) - C7.roll - k * speed * speed - Math.abs(E) * C7.edgeDrag - (brake ? C7.brake * clamp(c.brake, 0, 1) : 0)
-      - Math.min(C7.govMax, C7.gov * over * over);
+    // (a board floats in powder where skis sink; it stops a little slower, sideways on its heels)
+    const deep = powder > 0.5 && B ? 0.72 : 1;
+    const acc = C7.slopeG * Math.sin(Math.atan(Math.min(-r, C7.gradeMax))) - C7.roll - k * deep * speed * speed - Math.abs(E) * C7.edgeDrag - (brake ? C7.brake * (B ? 0.9 : 1) * clamp(c.brake, 0, 1) : 0)
+      - Math.min(C7.govMax, C7.gov * over * over) - slash * (B ? 3.4 : 2.6) * (1 + powder);
     speed = clamp(speed + acc * dt, 0, C7.vmax);
-    // poling: a push every 0.95 s, weaker the faster you're already going
-    const poling = fwd && !tucking;
+    // poling: a push every 0.95 s, weaker the faster you're already going. A board has no poles:
+    // the back foot comes out of its binding and skates, a smaller push, only to get going
+    const poling = fwd && !tucking && (!B || speed < 7);
     if (poling) {
       const p0 = this.c7Pole ?? 0;
-      this.c7Pole = (p0 + dt / 0.95) % 1;
-      if (p0 < 0.34 && this.c7Pole >= 0.34) speed = Math.min(C7.vmax, speed + 1.65 * clamp(1 - speed / 52, 0.25, 1));
+      this.c7Pole = (p0 + dt / (B ? 0.8 : 0.95)) % 1;
+      if (p0 < 0.34 && this.c7Pole >= 0.34) speed = Math.min(C7.vmax, speed + (B ? 1.15 * (1 - speed / 7) + 0.2 : 1.65 * clamp(1 - speed / 52, 0.25, 1)));
     } else this.c7Pole = 0;
     // braking, the skis go across (the way you last steered) and the body slides a touch outward
-    this.c7Skid = ease(this.c7Skid ?? 0, brake ? -(this.skidSide ?? -1) * clamp(speed / 9, 0, 1) : 0, 7, dt);
-    const lat = this.c7Skid * speed * 0.1, u = speed / Math.hypot(1, r);
-    v.set(u * Math.sin(T) + lat * Math.cos(T), r * u, u * Math.cos(T) - lat * Math.sin(T));
+    // (a board goes right across, on its heel edge; skis into a hockey stop)
+    const across = B ? 1.85 : 1.2;
+    this.c7Skid = ease(this.c7Skid ?? 0, brake ? (B ? (this.boardSwitch ? 1 : -1) : -(this.skidSide ?? -1)) * across * clamp(speed / 9, 0, 1) : this.c7Slash * 0.55, B ? 6 : 7, dt);
+    // (the slide sideways bends the way you go, it doesn't add to the speed)
+    const u = speed / Math.hypot(1, r), lat = this.c7Skid * 0.1, hk = 1 / Math.hypot(1, lat);
+    v.set(u * hk * (Math.sin(T) + lat * Math.cos(T)), r * u, u * hk * (Math.cos(T) - lat * Math.sin(T)));
     this.c7T = T; this.c7Hv = Math.atan2(v.x, v.z);
     // the skis follow the line (tails first riding switch), turned across in a skid
     const sw = Math.abs(wrapAngle(this.heading - T)) > Math.PI / 2;
     if (!this.butter) this.heading += wrapAngle(T + (sw ? Math.PI : 0) - this.c7Skid * 0.72 - this.heading) * (1 - Math.exp(-12 * dt));
     this.avgHeading += wrapAngle(this.heading - this.avgHeading) * Math.min(1, dt / 1.1);
     // what the model and the snow see: the edge tipped, the turn's pull, the skid, the poles
-    this.edge = E * EDGE_MAX * 0.85;
+    // (tipped further the faster you go: a slow turn is a flat pivot, a fast one is laid over)
+    this.edge = E * EDGE_MAX * (0.55 + 0.4 * clamp(speed / 16, 0, 1)) * (1 - slash * 0.35);
     this.latAcc = -speed * w * 0.62;
     this.press = ease(this.press ?? 0, brake ? 0 : Math.abs(E) * clamp(speed / 15, 0, 1), 3, dt);
     this.skating = poling ? 1 : 0;
     this.skatePhase = this.c7Pole * Math.PI;
     this.landSkid = Math.max(0, (this.landSkid ?? 0) - dt * 6);
-    this.skid = this.skid * 0.85 + (Math.abs(this.c7Skid) * Math.min(speed, 12) * 0.35 + this.landSkid + Math.abs(E) * speed * 0.012) * 0.15;
+    this.skid = this.skid * 0.85 + (Math.abs(this.c7Skid) * Math.min(speed, 12) * 0.35 + slash * Math.min(speed, 16) * 0.3 + this.landSkid + Math.abs(E) * speed * 0.012) * 0.15;
     this.scrape = this.scrape * 0.9 + ice * Math.min(1, this.skid / 1.5 + Math.abs(this.edge) * speed / 40) * 0.1;
     this.updateDraft(dt);
     return v.dot(this.forward(_f));

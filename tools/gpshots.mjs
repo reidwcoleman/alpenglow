@@ -6,7 +6,7 @@ const b = await chromium.launch({ executablePath: CHROME, headless: true, args: 
 const page = await b.newPage({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 const boot = async (mode, tod) => {
-  await page.goto(`http://127.0.0.1:5260/?menu=0&mode=${mode}&tod=${tod}&fixdpr=1`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`http://127.0.0.1:5260/?menu=0&mode=${mode}&tod=${tod}&fixdpr=1&gear=${process.env.GEAR ?? 'ski'}`, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 180000 });
   await page.waitForTimeout(1200);
 };

@@ -928,7 +928,7 @@ export function skiGeometry() {
       let y = 0.012;
       if (t > 0.82) y += ((t - 0.82) / 0.18) ** 2 * 0.085;
       if (t < 0.12) y += ((0.12 - t) / 0.12) ** 2 * 0.06;
-      return [w, y, 0.007 + 0.013 * Math.sin(t * Math.PI) ** 0.7];
+      return [w, y, 0.009 + 0.015 * Math.sin(t * Math.PI) ** 0.7];
     }, plankLayout(false), (t, z) => {
       // morphs (relative): 0 the ski bent into an arc under the boot (tip and tail up), 1 the
       // forebody flapping (chatter, a hard landing)
@@ -947,7 +947,7 @@ export function boardGeometry() {
       let w = 0.124 + 0.022 * Math.pow(Math.min(u / 0.74, 1), 2);
       if (u > 0.8) w *= 0.3 + 0.7 * Math.sqrt(Math.max(0, 1 - ((u - 0.8) / 0.2) ** 2));
       const y = 0.006 + (u > 0.72 ? ((u - 0.72) / 0.28) ** 2 * 0.075 : 0);
-      return [w, y, 0.008 + 0.01 * (1 - u * u)];
+      return [w, y, 0.011 + 0.011 * (1 - u * u)];
     }, plankLayout(true));
     g.rotateY(Math.PI / 2);
     g.computeVertexNormals();
@@ -1091,6 +1091,6 @@ export function gearMaterials(outfit, board) {
     bootM: kitMaterial(outfit.boots, { rough: board ? 0.8 : 0.26, metal: 0.04, snow: 1 }),
     skiM: board ? plankMaterial(outfit.deckDesign ?? 'logo', outfit.deck ?? 0xffffff, outfit.deck2 ?? 0x15161a, true) : plankMaterial(outfit.skiDesign ?? 'logo', outfit.skis, outfit.skis2 ?? 0xffffff),
     poleM: kitMaterial(outfit.poles ?? 0x9ea5b0, { rough: 0.3, metal: 0.8 }),
-    bindM: kitMaterial(board ? outfit.deck2 ?? 0xffffff : 0xd9dde3, { rough: 0.4, metal: 0.15 }),
+    bindM: kitMaterial(board ? 0x1d2026 : 0xd9dde3, { rough: 0.5, metal: 0.1 }),
   };
 }

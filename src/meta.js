@@ -33,7 +33,7 @@ export const ITEMS = [
   I('g-amber', 'goggles', 'Amber', 'free', 0, 0xff8a1e), I('g-sky', 'goggles', 'Sky', 'free', 0, 0x2aa8ff), I('g-smoke', 'goggles', 'Smoke', 'free', 0, 0x8e9fb8), I('g-silver', 'goggles', 'Park Silver', 'free', 0, 0xc4d0d8, 0xf3f3f1),
   I('s-white', 'skis', 'Whiteout', 'free', 0, 0xffffff, 0x15161a, 0, { design: 'stripe' }), I('s-black', 'skis', 'Blackout', 'free', 0, 0x111111, 0x8a8f99, 0, { design: 'logo' }),
   I('s-red', 'skis', 'Race Red', 'free', 0, 0xea1018, 0xffffff, 0, { design: 'tip' }),
-  I('d-white', 'deck', 'Blank', 'free', 0, 0xffffff, 0x15161a, 0, { design: 'logo' }), I('d-black', 'deck', 'Shadow', 'free', 0, 0x111111, 0x8a8f99, 0, { design: 'stripe' }),
+  I('d-white', 'deck', 'Starter', 'free', 0, 0xea1018, 0xffffff, 0, { design: 'stripe' }), I('d-black', 'deck', 'Shadow', 'free', 0, 0x111111, 0x8a8f99, 0, { design: 'stripe' }),
   I('gl-black', 'gloves', 'Black', 'free', 0, 0x15161a),
   I('po-alu', 'poles', 'Alloy', 'free', 0, 0x9ea5b0),
   I('t-none', 'trail', 'Fresh Powder', 'free', 0, 0xffffff, 0xdfeaff, 0, { fx: 'snow' }),

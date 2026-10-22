@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import { HAIR, KNIT } from './gear.js';
 import { LO, QUALITY_NAME } from './gfx.js';
 import { AG } from './atmos.js';
+import { toyMaterial } from './toyrider.js';
 
 const BASE = (import.meta.env?.BASE_URL ?? '/') + 'people/';
 // the textures at half size on the phone setting (tools/shrink_assets.py)
@@ -626,7 +627,7 @@ export class AvatarRig {
     kit.parents.forEach((p, i) => (p >= 0 ? bones[p].add(bones[i]) : this.root.add(bones[i])));
     this.bones = bones;
     this.skeleton = new THREE.Skeleton(bones, kit.boneInverses);
-    this.mesh = new THREE.SkinnedMesh(kit.geo, kitMaterial(kit, outfit));
+    this.mesh = new THREE.SkinnedMesh(kit.geo, (kit.toy ? toyMaterial : kitMaterial)(kit, outfit));
     this.mesh.bind(this.skeleton, new THREE.Matrix4());
     this.mesh.castShadow = true;
     this.mesh.frustumCulled = false;

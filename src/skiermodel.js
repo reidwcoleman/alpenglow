@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { avatarKits, AvatarRig } from './avatar.js';
+import { toyKit } from './toyrider.js';
 import { ITEMS } from './meta.js';
 import { helmetGeometry, helmetMaterial, beanieGeometry, goggleGeometry, lensGeometry, strapGeometry, skiBootGeometry, boardBootGeometry,
   skiGeometry, boardGeometry, skiBindingGeometry, boardBindingGeometry, poleGeometry, gearMaterials } from './gear.js';
@@ -304,10 +305,8 @@ export class SkierModel {
     this.lod = 0;
     // a real body when the avatars are loaded (browser only); the capsules stay for far away
     if (avatarKits.length) {
-      // the player's rider is one of the lads, picked by index; everyone else is random
-      const lads = avatarKits.filter((k) => !/Female/.test(k.name));
-      const kit = outfit.male ? lads[(outfit.avatar | 0) % lads.length] : avatarKits[Math.floor((outfit.avatar ?? Math.random()) * avatarKits.length) % avatarKits.length];
-      this.rig = new AvatarRig(kit, outfit);
+      // every rider is the drawn park figure (toyrider.js); the scanned people are the crowd
+      this.rig = new AvatarRig(toyKit(), outfit);
       this.frame.add(this.rig.root);
       this.body = ['shinL', 'shinR', 'thighL', 'thighR', 'hips', 'torso', 'collar', 'face', 'upperL', 'upperR', 'foreL', 'foreR', 'handL', 'handR'].map((k) => P[k]);
       this.f = {
@@ -318,6 +317,11 @@ export class SkierModel {
       };
       this.real = true;
       for (const m of this.body) m.visible = false;
+      // (the boots' cuffs stay inside the drawn figure's baggy pants: a board's soft boots bend
+      // further with the knees)
+      for (const k of ['bootL', 'bootR']) P[k].scale.y = this.board ? 0.78 : 0.9;
+      // (and the bindings' highbacks)
+      if (this.board) for (const k of ['bindL', 'bindR']) P[k].scale.y = 0.62;
     }
   }
 

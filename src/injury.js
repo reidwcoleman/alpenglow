@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 import { heightAt, normalAt } from './course.js';
 import { kitMaterial } from './avatar.js';
+import { toyMaterial } from './toyrider.js';
 import { bake, piece } from './people.js';
 
 const _p = new THREE.Vector3(), _q = new THREE.Quaternion(), _s = new THREE.Vector3(), _n = new THREE.Vector3(), _m = new THREE.Matrix4();
@@ -230,7 +231,7 @@ export class Injuries {
     const mid = geo.boundingSphere.center.clone();
     geo.translate(-mid.x, -mid.y, -mid.z);
     const o = M.outfit;
-    const mat = kitMaterial(kit, { jacket: 0xffffff, pants: o.pants, gloves: o.gloves ?? 0x1d1f26, boots: o.boots ?? 0x2a2420 }, true);
+    const mat = (kit.toy ? toyMaterial : kitMaterial)(kit, { jacket: 0xffffff, pants: o.pants, gloves: o.gloves ?? 0x1d1f26, boots: o.boots ?? 0x2a2420, skin: o.skin }, true);
     const cut = kit.bindP[joint];
     mat.userData.u.uCut.value.set(cut.x, cut.y, cut.z, 1);
     mat.userData.u.uStain.value = 1;
