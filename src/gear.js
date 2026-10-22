@@ -413,7 +413,8 @@ export function lensGeometry() {
 // rainbow sheen toward the rim (thin-film), and the standard lighting's sun glint on top
 export function lensMaterial(tint) {
   const c = new THREE.Color(tint);
-  const m = new THREE.MeshStandardMaterial({ color: c.clone().lerp(new THREE.Color(1, 1, 1), 0.25), metalness: 1, roughness: 0.04, envMapIntensity: 1.6 });
+  // (a toned mirror, as Cork7's: it reads grey against the white frame, not white)
+  const m = new THREE.MeshStandardMaterial({ color: c.clone().multiplyScalar(0.5), metalness: 0.9, roughness: 0.08, envMapIntensity: 1.0 });
   const u = { uTint: { value: c } };
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, u);
@@ -428,13 +429,15 @@ export function lensMaterial(tint) {
   // the horizon in the lens: the sky above bright, the snow below darker and bluish
   float sky = smoothstep( -0.04, 0.08, R.y );
   float lum = dot( outgoingLight, vec3( 0.299, 0.587, 0.114 ) );
-  outgoingLight *= mix( 0.75, 1.45, sky );
+  outgoingLight *= mix( 0.6, 1.2, sky );
   outgoingLight += uTint * lum * 0.6 * ( 1.0 - sky * 0.5 );
   // thin-film sheen at grazing angles
   vec3 film = 0.5 + 0.5 * cos( 6.2831 * ( fr * 0.9 + R.y * 0.25 + vec3( 0.0, 0.33, 0.67 ) ) );
   outgoingLight = mix( outgoingLight, film * max( lum, 0.15 ) * 1.4, fr * 0.45 );
   // the coating darkens toward the bottom of the lens a little (a gradient mirror)
   outgoingLight *= 0.85 + 0.15 * smoothstep( -0.6, 0.6, N.y );
+  // (never as bright as the frame round it)
+  outgoingLight = min( outgoingLight, vec3( 0.34, 0.38, 0.43 ) * ( 0.6 + 0.4 * sky ) );
 }
 #include <opaque_fragment>`);
   };

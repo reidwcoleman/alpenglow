@@ -5,7 +5,7 @@ import fs from 'node:fs';
 const [out = 'shots/front', W = '1280', H = '720'] = process.argv.slice(2);
 fs.mkdirSync(out, { recursive: true });
 const b = await chromium.launch({ executablePath: CHROME, headless: true, args: [ANGLE, '--enable-gpu', '--ignore-gpu-blocklist'] });
-const p = await b.newPage({ viewport: { width: Number(W), height: Number(H) } });
+const p = await b.newPage({ viewport: { width: Number(W), height: Number(H) }, deviceScaleFactor: Number(process.env.DSF ?? 1) });
 p.on('pageerror', (e) => console.log('[pageerror]', e.message));
 p.on('console', (m) => { if (m.type() === 'error') console.log('[error]', m.text().slice(0, 300)); });
 await p.goto(`http://127.0.0.1:${process.env.PORT ?? 5260}/?${process.env.Q ?? ''}`, { waitUntil: 'domcontentloaded' });

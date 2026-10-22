@@ -3,11 +3,11 @@
 // plus rocks and terrain-park dressing.
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { buildClinic, waveFlags, Kit } from './clinic.js';
+import { Kit } from './kit.js';
 import { tower, terminal, liftMaterials } from './liftworks.js';
 import { RoundedBoxGeometry } from './rbox.js';
 import { propMaterial } from './models.js';
-import { heightAt, centerX, halfWidth, GATES, KICKERS, LIFT, START_Z, FINISH_Z, SECTIONS, ZONES, slopeAt, MAP, JUMPS, RAILS, HOSPITAL } from './course.js';
+import { heightAt, centerX, halfWidth, GATES, KICKERS, LIFT, START_Z, FINISH_Z, SECTIONS, ZONES, slopeAt, MAP, JUMPS, RAILS } from './course.js';
 import { mulberry32, makeSimplex, smoothstep } from './noise.js';
 import { pbr } from './terrain.js';
 import { crowd, bodies } from './people.js';
@@ -385,7 +385,6 @@ export class Props {
     this.buildGates();
     this.buildStart();
     this.buildFinish();
-    this.buildHospital();
     this.buildVillage();
     this.finishHuts();
     this.buildMarkers();
@@ -832,7 +831,7 @@ export class Props {
     this.chairMesh.castShadow = this.riderMesh.castShadow = true;
     this.chairMesh.frustumCulled = this.riderMesh.frustumCulled = this.chairFar.frustumCulled = false;
     this.scene.add(this.chairMesh, this.chairFar, this.riderMesh);
-    // each chair's pose this frame (the riders on it and the rescue read it)
+    // each chair's pose this frame (the riders on it read it)
     this.chairM = new Float32Array(this.chairs.length * 16);
     // the cable as distances along each line, for finding a point on it quickly
     this.cline = [0, 1].map((li) => {
@@ -844,12 +843,8 @@ export class Props {
     this.totalLen = totalLen;
     this.liftDir = dir;
     this.liftV = 4.6; // m/s along the cable
-    this.mine = -1;
     this.updateLift(0);
   }
-
-  // how far along its line chair i is now
-  chairD(i) { const c = this.chairs[i]; return (c.d + (this.liftT ?? 0) * this.liftV) % this.totalLen[c.li]; }
 
   cablePoint(li, d, out) {
     // line 0 runs bottom -> top, line 1 returns top -> bottom
@@ -880,8 +875,6 @@ export class Props {
       tmpM.toArray(this.chairM, i * 16);
       const d2 = cam ? tmpP.distanceToSquared(cam) : 0;
       c.near = !!(this.seats && cam && d2 < real2);
-      // (the chair you're riding is drawn by the rescue, with you on it)
-      if (i === this.mine) { c.near = false; return; }
       if (d2 < near2) { this.bubbleMesh.setMatrixAt(nN, tmpM); this.chairMesh.setMatrixAt(nN++, tmpM); } else this.chairFar.setMatrixAt(nF++, tmpM);
       if (c.ride && c.li === 0 && !c.near && d2 < far2) { this.riderMesh.setMatrixAt(nR, tmpM); this.riderMesh.setColorAt(nR++, this.jackets[i % 8]); }
     });
@@ -896,7 +889,7 @@ export class Props {
       for (const im of this.seatMeshes) if (im) im.userData.n = 0;
       let nS = 0;
       for (const st of this.seats) {
-        if (!this.chairs[st.ci].near || st.ci === this.mine) continue;
+        if (!this.chairs[st.ci].near) continue;
         tmpM.fromArray(this.chairM, st.ci * 16).multiply(off.makeTranslation(st.dx, 0, 0));
         const k = st.im.userData.n++;
         st.im.setMatrixAt(k, tmpM); st.im.setColorAt(k, st.col);
@@ -1163,36 +1156,6 @@ export class Props {
     this.updateLift(this.liftT ?? 0);
   }
 
-  // ---------------- the hospital ----------------
-  // the slope-side clinic the rescue helicopter flies you to (clinic.js)
-  buildHospital() {
-    const c = buildClinic(this.scene, this.forest, () => this.ambulance());
-    this.hospital = c.info;
-    this.sock = c.sock;
-    this.clinicFlags = c.flags;
-  }
-
-  // an ambulance: a white box van with a red and yellow check down the side and a light bar
-  ambulance() {
-    const g = new THREE.Group();
-    const white = new THREE.MeshStandardMaterial({ color: 0xf3f4f6, roughness: 0.3, metalness: 0.3 });
-    const dark = new THREE.MeshStandardMaterial({ color: 0x1c1f24, roughness: 0.6 });
-    const glass = new THREE.MeshStandardMaterial({ color: 0x1b2633, roughness: 0.05, metalness: 0.9 });
-    const add = (geo, mat, px, py, pz) => { const m = new THREE.Mesh(geo, mat); m.position.set(px, py, pz); m.castShadow = true; g.add(m); return m; };
-    add(new RoundedBoxGeometry(2.3, 2.5, 4.2, 3, 0.12), white, 0, 1.75, -0.7);
-    add(new RoundedBoxGeometry(2.2, 1.5, 1.9, 3, 0.25), white, 0, 1.25, 2.3);
-    add(new THREE.BoxGeometry(2.1, 0.7, 0.05).rotateX(-0.45), glass, 0, 1.72, 3.18);
-    for (const sx of [-1, 1]) add(new THREE.BoxGeometry(0.05, 0.6, 1.1), glass, sx * 1.11, 1.6, 2.3);
-    const chk = canvasTex(512, 64, (c, w, h) => { for (let k = 0; k < 16; k++) for (let r = 0; r < 2; r++) { c.fillStyle = (k + r) % 2 ? '#ffd21e' : '#d3232c'; c.fillRect((k * w) / 16, (r * h) / 2, w / 16 + 1, h / 2 + 1); } });
-    const band = new THREE.MeshStandardMaterial({ map: chk, roughness: 0.4 });
-    for (const sx of [-1, 1]) { const b = add(new THREE.PlaneGeometry(6, 0.42), band, sx * 1.16, 1.15, 0.3); b.rotation.y = sx * Math.PI / 2; }
-    for (const [wx, wz] of [[-1, 2.2], [1, 2.2], [-1, -1.9], [1, -1.9]]) add(new THREE.CylinderGeometry(0.42, 0.42, 0.32, 18).rotateZ(Math.PI / 2), dark, wx * 1.0, 0.42, wz);
-    // the light bar
-    add(new THREE.BoxGeometry(1.6, 0.16, 0.32), new THREE.MeshStandardMaterial({ color: 0x3a6dff, emissive: 0x2b5cff, emissiveIntensity: 2 }), 0, 3.08, 1.1);
-    add(new THREE.BoxGeometry(0.5, 0.17, 0.33), new THREE.MeshStandardMaterial({ color: 0xff2a2a, emissive: 0xff2020, emissiveIntensity: 2 }), 0, 3.09, 1.1);
-    return g;
-  }
-
   // ---------------- village ----------------
   buildVillage() {
     const K = this.hutKit, wins = this.hutWins;
@@ -1209,7 +1172,6 @@ export class Props {
       if (slopeAt(x, z) > 0.35) continue;
       const w = 8 + this.rnd() * 7, d = 9 + this.rnd() * 8, h = 4 + this.rnd() * 4;
       if (placed.some((p) => Math.hypot(p[0] - x, p[1] - z) < Math.max(w, d) + p[2] + 4)) continue;
-      if (this.hospital && Math.hypot(this.hospital.at.x - x, this.hospital.at.z - z) < 48 + Math.max(w, d)) continue;
       placed.push([x, z, Math.max(w, d)]);
       const gy = Math.min(heightAt(x - w / 2, z - d / 2), heightAt(x + w / 2, z + d / 2), heightAt(x, z));
       const yaw = Math.round(this.rnd() * 3) * Math.PI / 2 + (this.rnd() - 0.5) * 0.3;
@@ -1374,9 +1336,6 @@ export class Props {
   }
 
   updateNets(dt, cam) {
-    // the clinic's flags, when anyone's near enough to see them
-    this.flagT = (this.flagT ?? 0) + dt;
-    if (this.clinicFlags && cam && this.hospital && cam.distanceToSquared(this.hospital.at) < 300 * 300) waveFlags(this.clinicFlags, this.flagT);
     if (!this.netHits) return;
     this.netHits.forEach((h, i) => {
       // a damped spring toward however far it's being pushed (then back to flat, wobbling)

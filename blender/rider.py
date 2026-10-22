@@ -1,8 +1,10 @@
-# The rider: a lanky park skier in a long hooded shell, straight baggy pants and mitts, on the
+# The rider, after Cork7's: a chunky park skier with a big round head under the helmet, a boxy
+# puffy shell with a high collar and its hood down on the back, fat quilted sleeves, big mitts and
+# very baggy pants creased down the legs and stacked over the boots, short hair at the nape. On the
 # game's skeleton (the scanned bodies' Bip01 names and rest pose, so the game's rig poses it).
 # Lofted, then smoothed with subdivision; the soft shading of the folds is baked into 'Col'.
 # blender -b --python blender/rider.py  ->  blender/out/rider.glb
-import sys, os
+import sys, os, math
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bpy
 from mathutils import Vector
@@ -24,6 +26,10 @@ BONES = [
 ]
 P = {n: p for n, p, _ in BONES}
 UP, X, Z = (0, 1, 0), (1, 0, 0), (0, 0, 1)
+# the head (and the helmet the game puts on it) is this much bigger than a real one, grown from
+# the head bone: toyrider.js HEAD_SCALE must match
+HS = 1.3
+HEAD = P['Bip01_Head']
 
 
 def spineW(y):
@@ -49,24 +55,35 @@ def hemW(y, k):
     return f
 
 
+def creases(n, amp, ph):
+    """soft folds round a ring: a few lobes of different sizes"""
+    return lambda th: amp * (math.sin(n * th + ph) * 0.6 + math.sin((n + 3) * th - ph * 1.7) * 0.4)
+
+
 parts = []
-# the shell: hem to collar
-SHELL = [(0.725, 0.21, 0.172, 0.026, 2.3), (0.755, 0.209, 0.168, 0.022, 2.4), (0.84, 0.203, 0.16, 0.012, 2.5), (0.93, 0.196, 0.151, 0.004, 2.5),
-         (1.04, 0.188, 0.142, -0.004, 2.5), (1.17, 0.191, 0.141, -0.008, 2.4), (1.28, 0.195, 0.143, -0.012, 2.3), (1.355, 0.192, 0.138, -0.016, 2.2),
-         (1.405, 0.178, 0.128, -0.02, 2.1), (1.445, 0.152, 0.114, -0.022, 2.0), (1.482, 0.118, 0.098, -0.02, 2.0), (1.515, 0.092, 0.088, -0.016, 2.0),
-         (1.55, 0.081, 0.084, -0.01, 2.0), (1.585, 0.077, 0.082, -0.008, 2.0)]
-shell = loft('shell', [dict(c=(0, y, z), t=UP, side=X, a=a, b=b, p=p, part=2,
-                            w=hemW(y, 0.88 * (1 - (y - 0.725) / 0.16)) if y < 0.88 else spineW(y)) for y, a, b, z, p in SHELL], seg=28, cap0=0.05, cap1=0.15)
-parts.append(shell)
-# the hood, down on the back: a fat roll from shoulder to shoulder round behind the neck
-import math
+# the shell: hem to collar, boxy and full, a little bell at the hem, the collar zipped up high
+SHELL = [(0.675, 0.226, 0.196, 0.05, 2.4), (0.705, 0.228, 0.196, 0.046, 2.5), (0.76, 0.223, 0.188, 0.034, 2.6), (0.85, 0.216, 0.171, 0.012, 2.7),
+         (0.95, 0.211, 0.163, 0.004, 2.7), (1.05, 0.213, 0.159, -0.004, 2.7), (1.16, 0.219, 0.161, -0.008, 2.6), (1.26, 0.223, 0.162, -0.012, 2.5),
+         (1.335, 0.219, 0.157, -0.016, 2.4), (1.395, 0.202, 0.146, -0.02, 2.2), (1.438, 0.17, 0.129, -0.022, 2.0), (1.472, 0.13, 0.111, -0.02, 2.0),
+         (1.505, 0.103, 0.099, -0.014, 2.0), (1.535, 0.095, 0.095, -0.01, 2.0), (1.56, 0.093, 0.093, -0.006, 2.0)]
+rings = []
+for i, (y, a, b, z, p) in enumerate(SHELL):
+    r = dict(c=(0, y, z), t=UP, side=X, a=a, b=b, p=p, part=2, w=hemW(y, 0.95 * (1 - (y - 0.675) / 0.25)) if y < 0.925 else spineW(y))
+    # (loose folds down the body, fuller toward the hem; the collar stays smooth)
+    if y < 1.36:
+        r['fold'] = creases(5, 0.018 * (1.4 - y), i * 0.9)
+    rings.append(r)
+parts.append(loft('shell', rings, seg=32, cap0=0.05, cap1=0.15))
+
+# the hood, down on the back: a fat roll from shoulder to shoulder round behind the neck, standing
+# up behind the head
 hood = []
-for i in range(9):
-    a = -1.25 + i / 8 * 2.5
-    c = (math.sin(a) * 0.095, 1.53 - 0.02 * abs(math.sin(a)), -0.035 - math.cos(a) * 0.075)
+for i in range(11):
+    a = -1.3 + i / 10 * 2.6
+    k = 1 - abs(a) / 1.7
+    c = (math.sin(a) * 0.108, 1.548 - 0.03 * abs(math.sin(a)) + 0.012 * k, -0.045 - math.cos(a) * 0.088)
     t = (math.cos(a), 0, math.sin(a))
-    k = 1 - abs(a) / 1.6
-    hood.append(dict(c=c, t=t, side=(0, 1, 0), a=0.045 + 0.02 * k, b=0.03 + 0.02 * k, part=2, w={'Bip01_Spine2': 0.45, 'Bip01_Neck': 0.55}))
+    hood.append(dict(c=c, t=t, side=(0, 1, 0), a=0.05 + 0.03 * k, b=0.034 + 0.026 * k, part=2, w={'Bip01_Spine2': 0.4, 'Bip01_Neck': 0.6}))
 parts.append(loft('hood', hood, seg=16, cap0=0.8, cap1=0.8))
 
 for s in (1, -1):
@@ -74,44 +91,67 @@ for s in (1, -1):
     B = lambda n: f'Bip01_{S}_{n}'
     H, K, A = P[B('Thigh')] + V(0, 0.05, 0), P[B('Calf')], P[B('Foot')]
     leg = []
-    TH = [(0, 0.11, 0.114, {'Bip01_Pelvis': 0.5, B('Thigh'): 0.5}), (0.2, 0.108, 0.112, {'Bip01_Pelvis': 0.15, B('Thigh'): 0.85}), (0.45, 0.105, 0.109, {B('Thigh'): 1}),
-          (0.72, 0.102, 0.106, {B('Thigh'): 1}), (0.9, 0.101, 0.105, {B('Thigh'): 0.75, B('Calf'): 0.25}), (1.0, 0.101, 0.105, {B('Thigh'): 0.5, B('Calf'): 0.5})]
-    for t, a, b, w in TH:
-        leg.append(dict(c=tuple(H.lerp(K, t)), t=tuple(K - H), side=X, a=a, b=b, w=w, part=6))
-    SH = [(0.12, 0.104, 0.112, {B('Thigh'): 0.25, B('Calf'): 0.75}), (0.35, 0.11, 0.124, {B('Calf'): 1}), (0.55, 0.116, 0.132, {B('Calf'): 1}),
-          (0.72, 0.12, 0.136, {B('Calf'): 1}), (0.84, 0.124, 0.138, {B('Calf'): 1}), (0.93, 0.127, 0.139, {B('Calf'): 1}), (0.97, 0.128, 0.139, {B('Calf'): 1})]
-    for t, a, b, w in SH:
-        leg.append(dict(c=tuple(K.lerp(A, t) + V(0, 0, -0.012 * math.sin(t * math.pi))), t=tuple(A - K), side=X, a=a, b=b, w=w, part=7))
-    parts.append(loft('leg' + S, leg, seg=24, cap0=0.3, cap1=-0.25))
+    # pants: loose from the hips (not so full there that they come through the shell when a knee
+    # comes up), wider on down, creased, bunching at the knee
+    TH = [(0, 0.092, 0.094, {'Bip01_Pelvis': 0.5, B('Thigh'): 0.5}), (0.2, 0.094, 0.097, {'Bip01_Pelvis': 0.15, B('Thigh'): 0.85}), (0.45, 0.088, 0.09, {B('Thigh'): 1}),
+          (0.6, 0.1, 0.104, {B('Thigh'): 1}), (0.72, 0.115, 0.119, {B('Thigh'): 1}), (0.88, 0.115, 0.12, {B('Thigh'): 0.8, B('Calf'): 0.2}), (1.0, 0.116, 0.121, {B('Thigh'): 0.5, B('Calf'): 0.5})]
+    for i, (t, a, b, w) in enumerate(TH):
+        leg.append(dict(c=tuple(H.lerp(K, t)), t=tuple(K - H), side=X, a=a, b=b, w=w, part=6, fold=creases(4, 0.03 if t > 0.6 else 0.012, i * 1.3 + s)))
+    # (deep front to back: the boot's cuff leans forward inside and mustn't come through the seat;
+    # the hem stacks in rolls over the boot)
+    SH = [(0.1, 0.118, 0.124, {B('Thigh'): 0.25, B('Calf'): 0.75}), (0.3, 0.121, 0.132, {B('Calf'): 1}), (0.5, 0.126, 0.14, {B('Calf'): 1}),
+          (0.64, 0.13, 0.145, {B('Calf'): 1}), (0.74, 0.137, 0.151, {B('Calf'): 1}), (0.81, 0.133, 0.148, {B('Calf'): 1}), (0.87, 0.142, 0.155, {B('Calf'): 1}),
+          (0.93, 0.141, 0.154, {B('Calf'): 1}), (0.975, 0.143, 0.155, {B('Calf'): 1})]
+    for i, (t, a, b, w) in enumerate(SH):
+        leg.append(dict(c=tuple(K.lerp(A, t) + V(0, 0, -0.012 * math.sin(t * math.pi))), t=tuple(A - K), side=X, a=a, b=b, w=w, part=7,
+                        fold=creases(4, 0.035, i * 1.1 - s)))
+    parts.append(loft('leg' + S, leg, seg=28, cap0=0.3, cap1=-0.25))
 
-    C0, Sh, E, W = V(s * 0.125, 1.425, -0.024), P[B('UpperArm')], P[B('Forearm')], P[B('Hand')]
+    # the sleeve: set deep into the shoulder, fat and quilted, gathered a little at the cuff
+    C0, Sh, E, W = V(s * 0.12, 1.415, -0.024), P[B('UpperArm')], P[B('Forearm')], P[B('Hand')]
     arm = [
-        (C0, Sh - C0, 0.076, 0.079, {'Bip01_Spine2': 0.7, B('UpperArm'): 0.3}, 3),
-        (Sh, E - Sh, 0.074, 0.076, {'Bip01_Spine2': 0.25, B('UpperArm'): 0.75}, 3),
-        (Sh.lerp(E, 0.45), E - Sh, 0.069, 0.071, {B('UpperArm'): 1}, 3),
-        (Sh.lerp(E, 0.85), E - Sh, 0.065, 0.067, {B('UpperArm'): 0.8, B('Forearm'): 0.2}, 3),
-        (E, W - Sh, 0.064, 0.066, {B('UpperArm'): 0.5, B('Forearm'): 0.5}, 4),
-        (E.lerp(W, 0.3), W - E, 0.062, 0.064, {B('Forearm'): 1}, 4),
-        (E.lerp(W, 0.72), W - E, 0.065, 0.067, {B('Forearm'): 1}, 4),
-        (E.lerp(W, 0.9), W - E, 0.068, 0.07, {B('Forearm'): 0.85, B('Hand'): 0.15}, 4),
+        (C0, Sh - C0, 0.084, 0.088, {'Bip01_Spine2': 0.7, B('UpperArm'): 0.3}, 3),
+        (Sh, E - Sh, 0.092, 0.094, {'Bip01_Spine2': 0.25, B('UpperArm'): 0.75}, 3),
+        (Sh.lerp(E, 0.25), E - Sh, 0.088, 0.09, {B('UpperArm'): 1}, 3),
+        (Sh.lerp(E, 0.45), E - Sh, 0.091, 0.093, {B('UpperArm'): 1}, 3),
+        (Sh.lerp(E, 0.65), E - Sh, 0.086, 0.088, {B('UpperArm'): 1}, 3),
+        (Sh.lerp(E, 0.85), E - Sh, 0.087, 0.089, {B('UpperArm'): 0.8, B('Forearm'): 0.2}, 3),
+        (E, W - Sh, 0.084, 0.086, {B('UpperArm'): 0.5, B('Forearm'): 0.5}, 4),
+        (E.lerp(W, 0.25), W - E, 0.082, 0.084, {B('Forearm'): 1}, 4),
+        (E.lerp(W, 0.5), W - E, 0.083, 0.085, {B('Forearm'): 1}, 4),
+        (E.lerp(W, 0.72), W - E, 0.08, 0.082, {B('Forearm'): 1}, 4),
+        (E.lerp(W, 0.86), W - E, 0.074, 0.076, {B('Forearm'): 0.9, B('Hand'): 0.1}, 4),
+        (E.lerp(W, 0.92), W - E, 0.07, 0.072, {B('Forearm'): 0.85, B('Hand'): 0.15}, 4),
     ]
-    parts.append(loft('arm' + S, [dict(c=tuple(c), t=tuple(t), side=Z, a=a, b=b, w=w, part=pt) for c, t, a, b, w, pt in arm], seg=20, cap0=0.3, cap1=-0.35))
+    parts.append(loft('arm' + S, [dict(c=tuple(c), t=tuple(t), side=Z, a=a, b=b, w=w, part=pt, fold=creases(3, 0.025, k * 0.8))
+                                  for k, (c, t, a, b, w, pt) in enumerate(arm)], seg=22, cap0=0.3, cap1=-0.35))
+    # the mitt: a big padded paddle with a gauntlet over the cuff, a thumb on the inside
     d = (W - E).normalized()
     mitt = [dict(c=tuple(W + d * t), t=tuple(d), side=Z, a=a, b=b, w={B('Hand'): wh, B('Forearm'): 1 - wh}, part=5)
-            for t, a, b, wh in [(-0.05, 0.044, 0.04, 0.6), (0.0, 0.046, 0.037, 0.9), (0.045, 0.048, 0.032, 1), (0.085, 0.045, 0.028, 1), (0.115, 0.036, 0.024, 1)]]
-    parts.append(loft('mitt' + S, mitt, seg=16, cap0=0.4, cap1=0.8))
-    thumb = W + d * 0.04 + V(0, 0, 0.035)
-    parts.append(ellipsoid('thumb' + S, tuple(thumb), (0.018, 0.035, 0.018), {B('Hand'): 1}, 5, rings=6, seg=12, axis=tuple(d + V(0, 0, 0.8)), side=tuple(d.cross(V(0, 0, 1)))))
+            for t, a, b, wh in [(-0.075, 0.07, 0.07, 0.3), (-0.05, 0.072, 0.07, 0.5), (-0.02, 0.06, 0.054, 0.8), (0.015, 0.06, 0.048, 1),
+                                (0.06, 0.062, 0.042, 1), (0.105, 0.058, 0.038, 1), (0.14, 0.044, 0.03, 1)]]
+    parts.append(loft('mitt' + S, mitt, seg=18, cap0=0.4, cap1=0.8))
+    thumb = W + d * 0.045 + V(0, 0, 0.045)
+    parts.append(ellipsoid('thumb' + S, tuple(thumb), (0.024, 0.045, 0.024), {B('Hand'): 1}, 5, rings=6, seg=12, axis=tuple(d + V(0, 0, 0.8)), side=tuple(d.cross(V(0, 0, 1)))))
 
-# neck and head: the face under the helmet, a nose, ears
-parts.append(loft('neck', [dict(c=(0, 1.49, -0.012), t=UP, side=X, a=0.056, b=0.058, w={'Bip01_Spine2': 0.4, 'Bip01_Neck': 0.6}, part=1),
-                           dict(c=(0, 1.56, -0.004), t=UP, side=X, a=0.054, b=0.056, w={'Bip01_Neck': 0.7, 'Bip01_Head': 0.3}, part=1),
-                           dict(c=(0, 1.63, 0.004), t=UP, side=X, a=0.055, b=0.058, w={'Bip01_Head': 1}, part=1)], seg=20, cap0=0.2, cap1=0.2))
-HC, HW = V(0, 1.676, 0.014), {'Bip01_Head': 1}
-parts.append(ellipsoid('head', tuple(HC), (0.083, 0.11, 0.098), HW, 0, rings=14, seg=28))
-parts.append(ellipsoid('nose', tuple(HC + V(0, -0.028, 0.094)), (0.014, 0.022, 0.017), HW, 0, rings=6, seg=12, axis=(0, 1, 0.4)))
+# neck, and the big head: the face under the helmet, a nose, ears, short hair at the back
+parts.append(loft('neck', [dict(c=(0, 1.49, -0.012), t=UP, side=X, a=0.058, b=0.06, w={'Bip01_Spine2': 0.4, 'Bip01_Neck': 0.6}, part=1),
+                           dict(c=(0, 1.56, -0.004), t=UP, side=X, a=0.06, b=0.062, w={'Bip01_Neck': 0.7, 'Bip01_Head': 0.3}, part=1),
+                           dict(c=(0, 1.63, 0.004), t=UP, side=X, a=0.062, b=0.064, w={'Bip01_Head': 1}, part=1)], seg=20, cap0=0.2, cap1=0.2))
+head = []
+# (a full round face, filling the helmet out to just behind the goggles)
+HC, HW = V(0, 1.676, 0.022), {'Bip01_Head': 1}
+head.append(ellipsoid('head', tuple(HC), (0.092, 0.108, 0.108), HW, 0, rings=14, seg=28))
+head.append(ellipsoid('nose', tuple(HC + V(0, -0.03, 0.104)), (0.015, 0.022, 0.018), HW, 0, rings=6, seg=12, axis=(0, 1, 0.4)))
 for s in (1, -1):
-    parts.append(ellipsoid('ear', tuple(HC + V(s * 0.082, -0.01, -0.006)), (0.011, 0.024, 0.016), HW, 0, rings=6, seg=12))
+    head.append(ellipsoid('ear', tuple(HC + V(s * 0.093, -0.012, -0.012)), (0.012, 0.025, 0.017), HW, 0, rings=6, seg=12))
+head.append(ellipsoid('hair', tuple(HC + V(0, 0.016, -0.036)), (0.095, 0.102, 0.098), HW, 8, rings=12, seg=28))
+for o in head:
+    # (grown from the head bone)
+    for v in o.data.vertices:
+        p = v.co - Vector(G(*HEAD))
+        v.co = Vector(G(*HEAD)) + p * HS
+parts += head
 
 # smooth every piece (subdivision carries the bone weights and the part along)
 for o in parts:

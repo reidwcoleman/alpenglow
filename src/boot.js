@@ -2,7 +2,7 @@
 // surrounding ranges, the forest's placement, the shade field's heights and the snow's noise
 // texture. Run on loading threads (bootWorker.js) when the browser has them, so it all happens
 // at once on every core; or right here, one after the other, when it doesn't.
-import { heightAt, treeDensity, slopeAt, LIFT, centerX, halfWidth, EXTENT_Z, HOSPITAL, MAP } from './course.js';
+import { heightAt, treeDensity, slopeAt, LIFT, centerX, halfWidth, EXTENT_Z, MAP } from './course.js';
 import { buildChunkArrays } from './chunkbuild.js';
 import { makeSimplex, mulberry32 } from './noise.js';
 
@@ -90,8 +90,6 @@ export function placeTrees() {
       // (beside the piste a few, the slopes above it in clumps, the far hillsides near bare)
       if (grove < (near < 60 ? 0.42 : near < 300 ? 0.18 : 0.4) && rnd() > (near < 300 ? 0.06 : 0.015)) continue;
     }
-    // and the hospital and its helipad
-    if (Math.hypot(px - HOSPITAL.x, pz - HOSPITAL.z) < 56) continue;
     const h = 9 + rnd() * 12 + (d > 0.8 ? 3 : 0);
     const v = Math.floor(rnd() * 4);
     const g = 0.8 + rnd() * 0.35;

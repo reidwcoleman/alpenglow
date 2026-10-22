@@ -53,9 +53,10 @@ def frame(t, side):
 
 def loft(name, rings, seg=24, cap0=0.4, cap1=0.4, part=0):
     """A closed tube through rings: dicts with c (game xyz), t (direction), side, a, b (radii), p
-    (squareness, 2 = ellipse), w (bone weights: dict, or function of the game-frame point), part.
-    Caps dome out by cap * min radius (None: open). Returns the object, with vertex groups for the
-    bones and a '_part' float attribute."""
+    (squareness, 2 = ellipse), w (bone weights: dict, or function of the game-frame point), part,
+    and fold (optional: a function of the angle round the ring, the radius' fraction out or in: the
+    creases). Caps dome out by cap * min radius (None: open). Returns the object, with vertex groups
+    for the bones and a '_part' float attribute."""
     bm = bmesh.new()
     deform = bm.verts.layers.deform.verify()
     part_l = bm.verts.layers.float.new('_part')
@@ -87,7 +88,8 @@ def loft(name, rings, seg=24, cap0=0.4, cap1=0.4, part=0):
             cs, sn = math.cos(th), math.sin(th)
             x = math.copysign(abs(cs) ** e, cs)
             y = math.copysign(abs(sn) ** e, sn)
-            p = c + u * (r['a'] * x) + v * (r['b'] * y)
+            f = 1 + r['fold'](th) if 'fold' in r else 1
+            p = c + u * (r['a'] * x * f) + v * (r['b'] * y * f)
             ring.append(put(tuple(p), r['w'], r.get('part', part)))
         loops.append((ring, r, u, v, c))
     for i in range(len(loops) - 1):

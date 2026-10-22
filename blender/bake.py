@@ -12,7 +12,7 @@ from common import reset, ROOT, write_manifest
 HERE = os.path.dirname(os.path.abspath(__file__))
 want = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else None
 # how far a ray looks for something shading it (metres), per thing
-DIST = {'clinic': 1.6, 'heli': 0.45, 'tree': None}
+DIST = {'tree': None}
 
 
 def mesh_obj(name, P, I, shift=(0, 0, 0)):

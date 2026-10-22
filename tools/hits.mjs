@@ -52,7 +52,7 @@ await page.screenshot({ path: `${out}/4_up.jpg`, quality: 78 });
 await ev();
 
 // 4. hop turn -> riding backwards, looking over the shoulder
-await page.evaluate(() => { const g = window.__game, C = window.__course, p = g.player; g.rescue.abort(); g.injuries.clear(); g.state = 'free'; const z = 1500; p.place(C.centerX(z), z, null, 10); });
+await page.evaluate(() => { const g = window.__game, C = window.__course, p = g.player; g.state = 'free'; const z = 1500; p.place(C.centerX(z), z, null, 10); });
 await page.waitForTimeout(400);
 await page.keyboard.press('NumpadDecimal');
 await page.waitForTimeout(1600);

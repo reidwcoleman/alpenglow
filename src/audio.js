@@ -122,20 +122,6 @@ export class Audio {
     this.thump(k);
   }
 
-  // bones going: a dry snap and a crunch under the thud
-  crack(k = 1) {
-    if (!this.ctx) return;
-    const ctx = this.ctx, t = ctx.currentTime;
-    for (const [dt, f, v, d] of [[0, 2600, 1, 0.05], [0.035, 1700, 0.8, 0.09], [0.09, 1100, 0.6, 0.14]]) {
-      const src = ctx.createBufferSource(); src.buffer = this.noise;
-      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f; bp.Q.value = 1.4;
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.0001, t + dt); g.gain.exponentialRampToValueAtTime(v * k, t + dt + 0.003); g.gain.exponentialRampToValueAtTime(0.0001, t + dt + d);
-      src.connect(bp).connect(g).connect(this.master); src.start(t + dt, Math.random()); src.stop(t + dt + d + 0.02);
-    }
-    this.thump(k);
-  }
-
   // a pole or a sign whacked: a hollow knock with a rattle (wood: lower and duller)
   clack(k = 1, wood = false) {
     if (!this.ctx) return;
@@ -149,25 +135,6 @@ export class Audio {
     o.frequency.setValueAtTime(wood ? 210 : 520, t); o.frequency.exponentialRampToValueAtTime(wood ? 120 : 330, t + 0.12);
     const og = ctx.createGain(); og.gain.setValueAtTime(0.35 * k, t); og.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
     o.connect(og).connect(this.master); o.start(t); o.stop(t + 0.18);
-  }
-
-  // the helicopter: blade slap on a low roar, level 0 (gone) to 1 (overhead)
-  rotor(k) {
-    if (!this.ctx) return;
-    const ctx = this.ctx, t = ctx.currentTime;
-    if (!this.rot) {
-      const src = ctx.createBufferSource(); src.buffer = this.noise; src.loop = true;
-      const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 260;
-      const am = ctx.createGain(); am.gain.value = 0.5;
-      const lfo = ctx.createOscillator(); lfo.type = 'square'; lfo.frequency.value = 19;
-      const lg = ctx.createGain(); lg.gain.value = 0.5;
-      lfo.connect(lg).connect(am.gain);
-      const g = ctx.createGain(); g.gain.value = 0;
-      src.connect(f).connect(am).connect(g).connect(this.master);
-      src.start(); lfo.start();
-      this.rot = g;
-    }
-    this.rot.gain.setTargetAtTime(Math.max(0, Math.min(1, k)) * 0.9, t, 0.2);
   }
 
   // pushed through a tree's branches: a rustle and snow coming down

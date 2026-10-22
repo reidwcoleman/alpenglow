@@ -1,9 +1,12 @@
-// The riders' own figure: a lanky park skier built in code, one smooth skinned mesh in flat
-// colour. A long, loose hooded shell hanging to the top of the thighs, straight baggy pants
-// stacked over the boots, slim loose sleeves, mitts, a plain face under the helmet. It comes out
-// as a "kit" in the same shape the scanned bodies load as (avatar.js): the same bone names, rest
-// pose and limb lengths, so AvatarRig poses it, the gear sits on it and the injuries cut it the
-// same way.
+// The riders' own figure, after Cork7's: a chunky park skier, one smooth skinned mesh in flat
+// colour. A boxy puffy hooded shell to the top of the thighs, very baggy pants stacked over the
+// boots, fat sleeves, big mitts, a big head under the helmet. It comes out as a "kit" in the same
+// shape the scanned bodies load as (avatar.js): the same bone names, rest pose and limb lengths,
+// so AvatarRig poses it and the gear sits on it. The figure itself is modelled in Blender
+// (blender/rider.py); the loft here is only what's drawn if that file doesn't arrive.
+
+// the head (and the helmet on it) grown from the head bone: blender/rider.py HS must match
+export const HEAD_SCALE = 1.3;
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { loadGLB, plainGeometry } from './models.js';
@@ -201,9 +204,10 @@ export function toyKit() {
     ring(V(0, 1.63, 0.004), UP, X, 0.055, 0.058, { Bip01_Head: 1 }, 1),
   ], I, 0.2, 0.2));
   const HC = V(0, 1.676, 0.014), HW = { Bip01_Head: 1 };
-  geos.push(blob(HC, 0.083, 0.11, 0.098, HW, 0, 12, UP, X, I));
-  geos.push(blob(HC.clone().add(V(0, -0.028, 0.094)), 0.014, 0.022, 0.017, HW, 0, 6, V(0, 1, 0.4), X, I));
-  for (const s of [1, -1]) geos.push(blob(HC.clone().add(V(s * 0.082, -0.01, -0.006)), 0.011, 0.024, 0.016, HW, 0, 6, UP, X, I));
+  const head = [blob(HC, 0.083, 0.11, 0.098, HW, 0, 12, UP, X, I), blob(HC.clone().add(V(0, -0.028, 0.094)), 0.014, 0.022, 0.017, HW, 0, 6, V(0, 1, 0.4), X, I)];
+  for (const s of [1, -1]) head.push(blob(HC.clone().add(V(s * 0.082, -0.01, -0.006)), 0.011, 0.024, 0.016, HW, 0, 6, UP, X, I));
+  const hb = P('Bip01_Head');
+  for (const g of head) geos.push(g.translate(-hb.x, -hb.y, -hb.z).scale(HEAD_SCALE, HEAD_SCALE, HEAD_SCALE).translate(hb.x, hb.y, hb.z));
 
   const geo = mergeGeometries(geos);
   geo.computeBoundingSphere();
@@ -217,14 +221,16 @@ export function toyKit() {
     body: new THREE.Vector4((sh[0].z + sh[1].z) / 2, (th[0].z + th[1].z) / 2, (sh[0].y + sh[1].y) / 2, (Math.abs(th[0].x) + Math.abs(th[1].x)) / 2),
     neckP: P('Bip01_Neck').clone(),
     waistY: P('Bip01_Pelvis').y + 0.07,
-    skull: P('Bip01_Head').clone().add(V(0, 0.083, -0.008)),
+    // (the gear goes round the skull: on the bigger head, further out and bigger)
+    headScale: HEAD_SCALE, skullOff: V(0, 0.083, -0.008).multiplyScalar(HEAD_SCALE),
+    skull: P('Bip01_Head').clone().add(V(0, 0.083, -0.008).multiplyScalar(HEAD_SCALE)),
     feet: [P('Bip01_L_Foot').clone(), P('Bip01_R_Foot').clone()],
     hands: [P('Bip01_L_Hand').clone(), P('Bip01_R_Hand').clone()],
     neckY: P('Bip01_Neck').y,
     leg: [len('Bip01_L_Thigh', 'Bip01_L_Calf'), len('Bip01_L_Calf', 'Bip01_L_Foot')],
     arm: [len('Bip01_L_UpperArm', 'Bip01_L_Forearm'), len('Bip01_L_Forearm', 'Bip01_L_Hand')],
-    // the chest band's rest heights (Cork7's starter shell)
-    band: new THREE.Vector2(1.165, 1.285),
+    // the chest band's rest heights (Cork7's starter shell; it runs round the sleeves too)
+    band: new THREE.Vector2(1.06, 1.215),
   };
   return KIT;
 }
@@ -253,8 +259,8 @@ export async function loadRiderModel() {
   return kit;
 }
 
-// flat colour by body part: the shell (and its band or panels), pants, mitts, skin. In a crowd
-// copy the jacket colour comes per instance. Blood and the torn ends as the scanned kit has them.
+// flat colour by body part: the shell (and its band or panels), pants, mitts, skin, hair. In a
+// crowd copy the jacket colour comes per instance.
 export function toyMaterial(kit, outfit, crowd = false) {
   const m = new THREE.MeshStandardMaterial({ roughness: 0.86, metalness: 0, vertexColors: !!kit.baked });
   m.defines = { ...(crowd ? { CROWD: '' } : {}), ...(kit.baked ? { TOY_AO: '' } : {}) };
@@ -262,11 +268,9 @@ export function toyMaterial(kit, outfit, crowd = false) {
   const u = {
     uJacket: { value: c(outfit.jacket) }, uJacket2: { value: c(outfit.jacket2 ?? outfit.jacket) },
     uPants: { value: c(outfit.pants) }, uPants2: { value: c(outfit.pants2 ?? outfit.pants) },
-    uGloves: { value: c(outfit.gloves, 0x15171b) }, uSkin: { value: c(outfit.skin, 0xc99a7e) },
+    uGloves: { value: c(outfit.gloves, 0x15171b) }, uSkin: { value: c(outfit.skin, 0xc99a7e) }, uHair: { value: c(outfit.hair, 0x9c907e) },
     uPat: { value: new THREE.Vector2(outfit.jpat ?? 0, outfit.ppat ?? 0) }, uBand: { value: kit.band },
     uFlap: { value: new THREE.Vector2() },
-    uBlood: { value: 0 }, uStain: { value: 0 },
-    uCut: { value: new THREE.Vector4() }, uCut2: { value: new THREE.Vector4() }, uCut3: { value: new THREE.Vector4() }, uCut4: { value: new THREE.Vector4() },
   };
   m.userData.u = u;
   m.onBeforeCompile = (sh) => {
@@ -285,8 +289,7 @@ vPart = aPart; vRest = position;
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
 varying float vPart; varying vec3 vRest;
-uniform vec3 uJacket, uJacket2, uPants, uPants2, uGloves, uSkin; uniform vec2 uPat, uBand;
-uniform float uBlood, uStain; uniform vec4 uCut, uCut2, uCut3, uCut4;
+uniform vec3 uJacket, uJacket2, uPants, uPants2, uGloves, uSkin, uHair; uniform vec2 uPat, uBand;
 float tyH(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }`)
       .replace('#include <color_fragment>', `#include <color_fragment>
 {
@@ -297,24 +300,29 @@ float tyH(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x 
   vec3 jk = uJacket;
 #endif
   vec3 col;
-  if ( part < 1.5 ) col = uSkin;
+  if ( part > 7.5 ) col = uHair;
+  else if ( part < 1.5 ) col = uSkin;
   else if ( part < 4.5 ) {
     col = jk;
     float pat = uPat.x;
-    // 1 a dark band round the chest, 4 the sleeves in the second colour, 8 two halves, 5 a fade
-    if ( pat > 0.5 && pat < 1.5 && part < 2.5 && vRest.y > uBand.x && vRest.y < uBand.y ) col = uJacket2;
+    // 1 a dark band round the chest and the sleeves, 4 the sleeves in the second colour, 8 two
+    // halves, 5 a fade
+    // (on a sleeve the band goes by the distance down the arm from the shoulder, so with the arms
+    // hanging it lines up with the chest's)
+    float bh = part < 2.5 ? vRest.y : 1.43 - distance( vRest, vec3( sign( vRest.x ) * 0.205, 1.43, -0.025 ) );
+    if ( pat > 0.5 && pat < 1.5 && bh > uBand.x && bh < uBand.y ) col = uJacket2;
     else if ( pat > 3.5 && pat < 4.5 && part > 2.5 ) col = uJacket2;
     else if ( pat > 7.5 && pat < 8.5 && vRest.x < 0.0 ) col = uJacket2;
     else if ( pat > 4.5 && pat < 5.5 ) col = mix( uJacket2, jk, smoothstep( 0.7, 1.45, vRest.y ) );
     else if ( pat > 1.5 && pat != 4.0 && pat != 5.0 && pat != 8.0 ) { float n = tyH( floor( vRest * 14.0 ) ); col = n > 0.66 ? uJacket2 : col; }
     // a darker hem band and cuffs
-    if ( part < 2.5 && vRest.y < 0.75 ) col *= 0.8;
+    if ( part < 2.5 && vRest.y < 0.72 ) col *= 0.8;
+    // the zip up the front, and a little white tab on the chest
+    if ( part < 2.5 && vRest.z > 0.0 && abs( vRest.x ) < 0.0045 && vRest.y > 0.69 && vRest.y < 1.56 ) col = vec3( 0.05, 0.06, 0.07 );
+    if ( part < 2.5 && vRest.z > 0.05 && vRest.x > 0.085 && vRest.x < 0.13 && vRest.y > 1.3 && vRest.y < 1.33 ) col = vec3( 0.92 );
   }
   else if ( part < 5.5 ) col = uGloves;
   else col = uPants;
-  // the head after a bad one, and the torn ends of a cut limb
-  if ( part < 0.5 && uBlood > 0.0 ) { float n = tyH( floor( vRest * 60.0 ) ); col = mix( col, vec3( 0.22, 0.01, 0.01 ), uBlood * step( 0.45, n ) * smoothstep( 1.64, 1.72, vRest.y ) ); }
-  if ( uStain > 0.0 && uCut.w > 0.5 ) col = mix( col, vec3( 0.3, 0.02, 0.02 ), uStain * ( 1.0 - smoothstep( 0.02, 0.09, distance( vRest, uCut.xyz ) ) ) );
 #ifdef TOY_AO
   // the folds' shading, baked in Blender (soft: the sun does the rest)
   col *= mix( 1.0, vColor.r, 0.75 );

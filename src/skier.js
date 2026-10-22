@@ -170,7 +170,6 @@ export class Skier {
   }
 
   step(dt) {
-    // (carried off by the rescue: the rescue moves him)
     if (this.frozen) return;
     this.time += dt;
     const c = this.controls;
@@ -1280,16 +1279,10 @@ export class Skier {
   }
 
   // ---- crashes: tumble and slide, lie there a moment, get up where you stopped ----
-  // hit: how hard it was (m/s into the thing, or into the snow). Hard enough and it's not a
-  // wipeout you get up from: you're hurt, and the rescue comes (main.js / rescue.js)
+  // hit: how hard it was (m/s into the thing, or into the snow)
   startCrash(reason, hit = 0) {
     if (this.crash > 0) return;
     const sp = this.speed;
-    // (it takes a lot: a crash is usually just a crash)
-    const hard = { tree: 17, rock: 17, tower: 17, station: 16, chalet: 16, arch: 17, pole: 23, sign: 22, snowgun: 18, skier: 22, net: 23, boards: 19, landing: 24, rail: 22 }[reason] ?? 99;
-    this.injured = this.isPlayer && !this.ai && !this.world.noRescue && hit >= hard;
-    // how bad, 0 (just over) .. 1 (catastrophic)
-    this.severity = this.injured ? Math.min(1, (hit - hard) / (hard * 0.6)) : 0;
     this.crash = 1; this.crashPhase = 'tumble'; this.crashT = 0; this.crashSpeed = sp;
     this.ragSeed = Math.random() * 6; this.halfTurns = 0;
     // tumble around the horizontal axis across the direction of travel
@@ -1302,7 +1295,7 @@ export class Skier {
     this.lie = 0;
     this.onGround = true;
     if (this.trackSlot) this.trackSlot.break();
-    this.emit('crash', { reason, speed: sp, hit, injured: this.injured, severity: this.severity });
+    this.emit('crash', { reason, speed: sp, hit });
     if (sp > 10) this.emit('yardsale', { speed: sp });
   }
 
@@ -1351,15 +1344,14 @@ export class Skier {
       }
       this.lie = Math.min(1, this.lie + dt * 2);
       // a short tumble, then straight back up (a big one tumbles a little longer)
-      const tMax = this.injured ? 7 : 0.75 + Math.min(0.55, (this.crashSpeed ?? 0) * 0.02);
+      const tMax = 0.75 + Math.min(0.55, (this.crashSpeed ?? 0) * 0.02);
       if ((sp < 1.2 && this.crashT > 0.6) || this.crashT > tMax) { this.crashPhase = 'down'; this.crashT = 0; }
     } else if (this.crashPhase === 'down') {
       // a beat on the snow
       const lying = Math.round((this.tumble - Math.PI / 2) / Math.PI) * Math.PI + Math.PI / 2;
       this.tumble += (lying - this.tumble) * Math.min(1, dt * 8);
       this.cartAngle += (Math.round(this.cartAngle / Math.PI) * Math.PI - this.cartAngle) * Math.min(1, dt * 8);
-      // (hurt: he stays down until he's carried off)
-      if (this.crashT > 0.18 && !this.injured) { this.crashPhase = 'up'; this.crashT = 0; }
+      if (this.crashT > 0.18) { this.crashPhase = 'up'; this.crashT = 0; }
     } else {
       // springing up while still sliding
       v.multiplyScalar(Math.exp(-dt * 0.8));
@@ -1390,7 +1382,6 @@ export class Skier {
   }
 
   endCrash() {
-    this.injured = false;
     this.crash = 0; this.crashPhase = null; this.tumble = 0; this.lie = 0; this.cartAngle = 0;
     this.pitch = 0; this.spin = 0; this.flipAcc = 0;
     this.emit('gear');

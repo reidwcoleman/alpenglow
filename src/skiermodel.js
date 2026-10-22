@@ -128,7 +128,7 @@ const SKI_GRAB = {
   critical: { hand: 'R', ski: 'L', along: -0.26, edge: -1, lift: 0.2, knee: 0.1, cross: -0.22, tip: -0.2, curl: 0.25, tw: { cross: -0.14, out: 0.06 } },
   nose: { hand: 'L', ski: 'L', along: 0.62, edge: 1, lift: 0.2, knee: 0.16, cross: 0, tip: -0.5, curl: 0.45, tw: { tip: -0.18, poke: 0.6 } },
 };
-// what a body not doing a trick does (the menu preview, the rescue): nothing
+// what a body not doing a trick does (the menu preview): nothing
 const NO_TRK = { lead: 0, look: 0, lookW: 0, tuck: 0, pop: 0, land: 0, wob: 0, rail: 0, bal: 0, tweak: 0, sr: 0, sa: 0, fr: 0 };
 const _gp = new THREE.Vector3(), _sh = new THREE.Vector3(), _gd = new THREE.Vector3(), _ge = new THREE.Euler();
 const BOARD_GRAB = {
@@ -345,7 +345,7 @@ export class SkierModel {
     const lod = near ? 0 : 1;
     if (lod === this.lod) return;
     this.lod = lod;
-    for (const k of this.small) if (!(this.gearOff && /sbind/.test(k)) && !(this.real && this.body?.includes(this.parts[k])) && !(this.headHidden && this.headGear.includes(k)) && !this.cut?.has(k)) this.parts[k].visible = near;
+    for (const k of this.small) if (!(this.gearOff && /sbind/.test(k)) && !(this.real && this.body?.includes(this.parts[k])) && !(this.headHidden && this.headGear.includes(k))) this.parts[k].visible = near;
     for (const k in this.parts) this.parts[k].castShadow = near && !this.small.includes(k);
   }
 
@@ -783,8 +783,9 @@ export class SkierModel {
         P.hood.quaternion.copy(bq);
       }
     }
-    // (all the head gear is built round the skull point, in the head's frame)
-    for (const k of this.headGear) P[k].position.copy(skull);
+    // (all the head gear is built round the skull point, in the head's frame, as big as the head)
+    const hs = this.rig && this.real ? this.rig.kit.headScale ?? 1 : 1;
+    for (const k of this.headGear) { P[k].position.copy(skull); P[k].scale.setScalar(hs); }
     if (this.board) return;
     // poles: tip trails behind near the snow; planted tip is ahead
     const air = this.airS;

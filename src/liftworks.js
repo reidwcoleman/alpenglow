@@ -6,11 +6,11 @@
 //   Terminals: a long rounded canopy over the bullwheel on raked steel legs, the line's name
 //   along both sides, the loading conveyor with its gates and the yellow load line, a rope maze,
 //   the operator's glass cabin, lamps, and snow banked against the concrete.
-// Everything goes into one Kit per material (clinic.js), so the whole lift is a few draws.
+// Everything goes into one Kit per material (kit.js), so the whole lift is a few draws.
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from './rbox.js';
 import { concrete, surface } from './proctex.js';
-import { Kit } from './clinic.js';
+import { Kit } from './kit.js';
 
 const B = (w, h, d, x, y, z) => new THREE.BoxGeometry(w, h, d).translate(x, y, z);
 const RB = (w, h, d, r, x, y, z) => new RoundedBoxGeometry(w, h, d, 2, r).translate(x, y, z);

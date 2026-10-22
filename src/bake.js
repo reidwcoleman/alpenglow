@@ -1,5 +1,5 @@
-// Light baked in Blender onto geometry the game builds itself (the clinic and its helipad, the
-// ambulance, the helicopter, the cartoon pine): each is registered here by name;
+// Light baked in Blender onto geometry the game builds itself (the cartoon pine), registered
+// here by name;
 // tools/dumpbake.mjs writes what's registered out for blender/bake.py, which renders its
 // occlusion in Cycles to public/models/ao_<name>.bin (a byte per vertex, mesh by mesh in this
 // order). When that file arrives it darkens the vertex colours. A file that doesn't match the
@@ -22,7 +22,7 @@ export function bakeable(name, items, opts = {}) {
   for (const it of items) {
     if (it.isBufferGeometry) { list.push({ geo: it, m: new THREE.Matrix4() }); continue; }
     it.updateMatrixWorld(true);
-    // (not what moves on its own: flags in the wind, a stretcher on its cable)
+    // (not what moves on its own)
     const walk = (o) => {
       if (o.userData.base || o.userData.noBake) { o.traverse((c) => c.isMesh && rest.push(c)); return; }
       if (o.isMesh && !o.isInstancedMesh && !seen.has(o.geometry)) { seen.add(o.geometry); list.push({ geo: o.geometry, m: o.matrixWorld.clone(), mesh: o }); }

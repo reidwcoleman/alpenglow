@@ -15,7 +15,7 @@ console.log(await page.evaluate(() => new Promise((res) => {
   wrap(g.particles, 'update', 'particles'); wrap(g.terrain, 'update', 'terrain'); wrap(g.forest, 'update', 'forest');
   wrap(g.props, 'updateLift', 'lift'); wrap(g.props, 'updatePeople', 'people'); wrap(g.props, 'updateNets', 'nets'); wrap(g, 'hud', 'hud');
   wrap(g.post, 'render', 'post.render'); wrap(g.renderer, 'render', 'renderer.render'); wrap(g.snowfall, 'update', 'snowfall'); wrap(g.lights, 'update', 'lights');
-  wrap(g.env, 'follow', 'env.follow'); wrap(g.audio, 'update', 'audio'); wrap(g.trail, 'update', 'trail'); wrap(g.injuries, 'update', 'injuries'); wrap(g.smash, 'update', 'smash');
+  wrap(g.env, 'follow', 'env.follow'); wrap(g.audio, 'update', 'audio'); wrap(g.trail, 'update', 'trail'); wrap(g.smash, 'update', 'smash');
   wrap(g.rig, 'update', 'camera'); wrap(g.replay, 'record', 'replay');
   for (const s of g.skiers) wrap(s, 'updateVisual', 'skier visuals');
   wrap(g.scene, 'updateMatrixWorld', 'scene.updateMatrixWorld');

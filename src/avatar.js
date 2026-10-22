@@ -177,7 +177,7 @@ export async function preloadRiders() {
   ridersReady = true;
 }
 
-// the scanned people: only the crowd, the chairlift and the helicopter crew are them now, so they
+// the scanned people: only the crowd and the chairlift riders are them now, so they
 // come down once the game is up
 export async function preloadAvatars(onEach) {
   const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
@@ -230,8 +230,6 @@ export function kitMaterial(kit, outfit, crowd = false) {
     // relative to the neck bone; w a two-tone stripe
     uGait: { value: new THREE.Vector4(gaiter == null ? 0 : 1, 0.09, 0.11, (hj >>> 13) % 3 === 0 ? 1 : 0) },
     uGaitC: { value: c(gaiter ?? 0) },
-    // injuries (injury.js): blood on the head, and where a limb came off (rest-pose point, w on)
-    uBlood: { value: 0 }, uCut: { value: new THREE.Vector4(0, 0, 0, 0) }, uCut2: { value: new THREE.Vector4(0, 0, 0, 0) }, uCut3: { value: new THREE.Vector4(0, 0, 0, 0) }, uCut4: { value: new THREE.Vector4(0, 0, 0, 0) }, uStain: { value: 0 },
   };
   m.userData.u = u;
   m.onBeforeCompile = (sh) => {
@@ -312,7 +310,6 @@ vRest = position;
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
 uniform sampler2D uMask; uniform vec3 uJacket, uPants, uGloves, uBoots, uJacket2, uPants2, uHandL, uHandR; uniform vec2 uLm, uPat; uniform float uPuff; uniform float uToonK;
-uniform float uBlood, uStain; uniform vec4 uCut, uCut2, uCut3, uCut4;
 #ifdef CROWD
 #define JK vColor.rgb
 #else
@@ -546,32 +543,6 @@ vec3 agPat(vec3 a, vec3 b, float pat, float part, vec3 p, vec2 lm) {
     gSheen = vec3( 0.05, 0.035, 0.03 );
     col *= 1.0 - 0.35 * skinShade;
   }
-  // hurt: blood from the crown of the head, running down the face and neck
-  if ( uBlood > 0.0 && part < 1.5 ) {
-    float hy = vRest.y - uLm.y;
-    float streak = agN( vec3( vRest.x * 46.0, vRest.y * 6.0, vRest.z * 46.0 ) );
-    float bm = clamp( smoothstep( 0.15, 0.22, hy ) + step( 0.56, streak ) * smoothstep( -0.02, 0.07, hy ), 0.0, 1.0 ) * uBlood;
-    col = mix( col, vec3( 0.34, 0.012, 0.018 ), bm );
-    gRough = mix( gRough, 0.2, bm );
-  }
-  // where a limb came away: raw and red round the break, soaked further up the sleeve or leg
-  for ( int ci = 0; ci < 4; ci++ ) {
-    vec4 cut = ci == 0 ? uCut : ci == 1 ? uCut2 : ci == 2 ? uCut3 : uCut4;
-    if ( cut.w <= 0.0 ) continue;
-    float d = distance( vRest, cut.xyz );
-    float cm = 1.0 - smoothstep( 0.05, 0.11, d );
-    float soak = ( 1.0 - smoothstep( 0.1, 0.32, d ) ) * step( 0.45, agN( vRest * 31.0 ) + 0.25 );
-    col = mix( col, vec3( 0.42, 0.02, 0.03 ), cm );
-    col = mix( col, vec3( 0.26, 0.01, 0.015 ), soak * 0.85 * ( 1.0 - cm ) );
-    gRough = mix( gRough, 0.22, max( cm, soak ) );
-  }
-  // blood soaked into the clothes in patches, and spattered
-  if ( uStain > 0.0 && part > 1.5 && part != 5.0 ) {
-    float bn = agN( vRest * vec3( 16.0, 12.0, 16.0 ) ) * 0.7 + agN( vRest * 70.0 ) * 0.3;
-    float st = smoothstep( 0.6, 0.66, bn ) * uStain;
-    col = mix( col, vec3( 0.24, 0.01, 0.015 ), st * 0.9 );
-    gRough = mix( gRough, 0.25, st );
-  }
   diffuseColor.rgb *= col;
 }`)
       .replace('#include <color_fragment>', '#ifndef CROWD\n#include <color_fragment>\n#endif')
@@ -753,7 +724,7 @@ export class AvatarRig {
       const h = ix.hand[s];
       this.palm[s].copy(this.wp[h]).addScaledVector(_v.set(1, 0, 0).applyQuaternion(this.wq[h]), 0.075);
     }
-    this.skull.set(0, 0.083, -0.008).applyQuaternion(q.head).add(this.wp[ix.head]);
+    this.skull.copy(k.skullOff ?? _v.set(0, 0.083, -0.008)).applyQuaternion(q.head).add(this.wp[ix.head]);
     this.chestP.copy(this.wp[ix.spine2]);
     this.neckP.copy(this.wp[ix.neck]);
     this.chestQ.copy(q.chest);

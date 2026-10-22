@@ -5,9 +5,7 @@ import { Terrain, CLOUDS } from './terrain.js';
 import { Forest } from './trees.js';
 import { Props } from './props.js';
 import { Smash } from './smash.js';
-import { Injuries } from './injury.js';
 import { Trail } from './trail.js';
-import { Rescue } from './rescue.js';
 import { DropPicker } from './drop.js';
 import { Music } from './music.js';
 import { Tracks } from './tracks.js';
@@ -176,10 +174,8 @@ class Game {
     this.world = { scene, forest: this.forest, tracks: this.tracks, myTracks: this.myTracks, particles: this.particles, race: false, raceStarted: false, skiers: this.skiers, arcade: true, glades: !!MAP.glades,
       smash: this.smash, netHit: (s, z, pen) => this.props.netHit(s, z, pen) };
     // a pole or a sign goes down: a knock, a puff of snow (and a jolt if it was you)
-    this.injuries = new Injuries(scene);
     this.trail = new Trail(scene);
     this.farRiders = new FarRiders(scene);
-    this.rescue = new Rescue(this);
     this.smash.onHit = (o, sp) => {
       const d = this.camera.position.distanceTo(_v.set(o.x, heightAt(o.x, o.z), o.z));
       if (d < 60) this.audio.clack(Math.min(1, 0.4 + sp / 25) * (1 - d / 60), o.kind === 'sign');
@@ -448,13 +444,6 @@ class Game {
       b.textContent = label; b.className = k === store.get('music', 'on') ? 'on' : '';
       b.onclick = () => { store.set('music', k); this.music.setOn(k === 'on'); this.audio.start(); [...mus.children].forEach((c) => c.classList.toggle('on', c === b)); $('np').classList.toggle('off', k !== 'on'); };
       mus.appendChild(b);
-    }
-    const gore = $('gore');
-    for (const [k, label] of [['on', 'Realistic'], ['off', 'Off']]) {
-      const b = document.createElement('button');
-      b.textContent = label; b.className = k === store.get('gore', 'on') ? 'on' : '';
-      b.onclick = () => { store.set('gore', k); [...gore.children].forEach((c) => c.classList.toggle('on', c === b)); };
-      gore.appendChild(b);
     }
     // the look: Cork7's cartoon shading (default) or the photographic one
     const look = $('look');
@@ -842,7 +831,6 @@ class Game {
   showMenu() {
     // a park session pays when you leave it
     if (this.mode === 'park' && this.sc) { const pay = this.reward('park'); if (pay) this.toast(`Park session ${pay}`, 3800); }
-    this.rescue?.abort(); this.injuries?.clear();
     this.state = 'menu';
     this.mode = null;
     this.event = null; this.online = null; this.coach = null;
@@ -1069,18 +1057,9 @@ class Game {
       this.audio.thump(1.2); this.rig.bump(1);
       this.burst(p, 90, 5);
       const sc = this.sc;
-      // a crash you don't get up from: injuries (unless they're turned off) and the rescue
       // a bail costs what you had riding: the unbanked line and the trick you were in, taken off
       // your score (Cork7 only shows it; here it really goes)
       const lost = sc ? this.bailLoss() : 0;
-      if (e.injured) {
-        if (sc) { sc.crashes++; sc.pend = 0; sc.n = 0; sc.names = []; }
-        const gore = store.get('gore', 'on') !== 'off';
-        this.injuries.hurt(p, gore);
-        if (gore) this.audio.crack(0.6 + (e.severity ?? 0.5) * 0.4);
-        this.rescue.start(p);
-        return;
-      }
       if (sc) {
         sc.crashes++;
         sc.pend = 0; sc.n = 0; sc.names = [];
@@ -1093,12 +1072,11 @@ class Game {
       if (e.kind === 'net') { this.audio.netHit(Math.min(1, e.speed / 10)); this.rig.bump(Math.min(0.6, e.speed / 18)); this.burst(p, 20 + e.speed * 3, 3); }
       else if (e.kind === 'boards') { this.audio.thump(Math.min(1, e.speed / 10)); this.rig.bump(0.5); }
     });
-    // tumbling over: each slam into the snow throws it up (and, hurt, blood)
+    // tumbling over: each slam into the snow throws it up
     p.on('tumbleHit', (e) => {
       this.burst(p, 30 + e.speed * 2, 3);
       this.audio.thump(Math.min(1, 0.3 + e.speed / 30));
       this.rig.bump(Math.min(0.7, e.speed / 25));
-      this.injuries.slam(p);
     });
     p.on('branches', (e) => {
       // shoved through a tree: its snow comes down on you
@@ -1352,7 +1330,6 @@ class Game {
   start(mode, opts = {}) {
     // (still finishing the mountain behind the front page: in a moment)
     if (this.warming) { this.warming.then(() => this.start(mode, opts)); return; }
-    this.rescue?.abort(); this.injuries?.clear();
     if (mode === 'free') mode = 'run';
     if (mode === 'trial' || mode === 'contest') mode = mode === 'trial' ? 'race' : 'run';
     if (mode !== 'run' && PARK_ID !== 'yard') mode = 'run';
@@ -1943,13 +1920,11 @@ class Game {
       else if (this.state === 'results' && !$('results').classList.contains('hidden')) this.start(this.mode);
     }
 
-    if (!this.paused && this.rescue.active) { this.rescue.keys(inp); this.rescue.update(dt); }
     // the soundtrack: once there's sound at all, in the mood of what's happening
     if (this.audio.ctx && !this.music.timer) this.music.start();
-    this.music.setMood(this.rescue.active ? (this.rescue.phase === 'lift' || this.rescue.phase === 'hospital' ? 'chill' : 'calm') : this.state === 'menu' || this.state === 'loading' ? 'chill' : 'ride');
-    if (!this.paused) this.injuries.update(dt);
+    this.music.setMood(this.state === 'menu' || this.state === 'loading' ? 'chill' : 'ride');
     // your trail (a Shop item) in the air behind you
-    if (!this.paused) { const P = this.player; this.trail.update(dt, P && this.state !== 'menu' && !this.rescue.active ? P : null, P?.model?.outfit?.trail); }
+    if (!this.paused) { const P = this.player; this.trail.update(dt, P && this.state !== 'menu' ? P : null, P?.model?.outfit?.trail); }
     // breath in the cold air, every couple of seconds
     const BP = this.player;
     if (BP && !this.paused && BP.crash <= 0 && !BP.held && this.state !== 'menu' && BP.model.rig && BP.model.real && ((this.breathT = (this.breathT ?? 1) - dt) <= 0)) {
@@ -1961,7 +1936,7 @@ class Game {
       this.particles.emit(m.x + fx * 0.14, m.y - 0.1, m.z + fz * 0.14, BP.vel.x * 0.85 + fx * 0.5, 0.25, BP.vel.z * 0.85 + fz * 0.5, 0.2, 0.1, 0.8, 5);
     }
     if (!this.paused) {
-      if (this.player && !this.player.ai && !this.rescue.active) {
+      if (this.player && !this.player.ai) {
         // (on a rail a quick tap of A/D is a whole swap: the steer is on at once, as in the air)
         const c = inp.read(dt, !this.player.onGround && !this.player.grind, !!this.player.grind);
         // in the air the arrows spin and flip by hand only once held: a quick tap is a combo
@@ -2025,7 +2000,7 @@ class Game {
     }
 
     // the replay records what you ride
-    if (this.player && !this.paused && this.state !== 'menu' && this.state !== 'countdown' && !this.rescue.active) this.replay.record(dt, this.player);
+    if (this.player && !this.paused && this.state !== 'menu' && this.state !== 'countdown') this.replay.record(dt, this.player);
     // the front page is art over a still world: only the rider sticker draws
     if (this.state === 'menu' && !$('menu').classList.contains('hidden') && $('parks').classList.contains('hidden')) {
       this.room?.update(dt, null, this.camera.position);
@@ -2038,7 +2013,6 @@ class Game {
     const cam = this.camera;
     if (replaying) { /* the replay placed the camera */ }
     else if (this.state === 'menu') { this.menuT = (this.menuT ?? 0) + dt; this.rig.menu(dt, this.menuT, this.skiers); }
-    else if (this.rescue.active) this.rescue.camera(cam, dt);
     else if (this.player) this.rig.update(dt, this.player);
     if (window.__freeCam) { const f = window.__freeCam; cam.position.set(...f.pos); cam.lookAt(...f.look); cam.fov = f.fov ?? 55; cam.updateProjectionMatrix(); }
     if (!replaying) for (const s of this.skiers) if (!s.held) s.updateVisual(dt, cam.position);
@@ -2073,7 +2047,7 @@ class Game {
     const focus = this.player && this.state !== 'menu' ? this.player.pos : cam.position;
     this.terrain.update(cam.position.x, cam.position.z, 4);
     // (trees between the camera and the rider turn see-through; not from inside the helmet)
-    const seen = replaying ? this.replay.ghost?.pos : this.player && this.state !== 'menu' && this.rig.mode !== 'helmet' && !this.rescue.active ? this.player.pos : null;
+    const seen = replaying ? this.replay.ghost?.pos : this.player && this.state !== 'menu' && this.rig.mode !== 'helmet' ? this.player.pos : null;
     AG.uSee.value.copy(seen ?? cam.position);
     this.forest.update(cam, this.time, this.env.sunDir);
     this.props.updateLift(this.time, cam.position);
