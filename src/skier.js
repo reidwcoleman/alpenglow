@@ -897,7 +897,7 @@ export class Skier {
       rise: this.maxY - this.takeoffY, pipe: this.pipeAir, switchIn: this.takeoffSwitch, switchOut, fromRail: !!this.fromRail,
       board: this.board, shifty: this.shiftyT >= 0.22, daffy: this.daffyT >= 0.22,
       // (off plain snow: no kicker, rail or pipe under the takeoff)
-      hop: !this.offKicker && !this.fromRail && !this.pipeAir,
+      hop: !this.offKicker && !this.fromRail && !this.pipeAir, vz: v.z,
     };
     if (sketchy) { this.flailT = 0.7; this.wobT = 0; this.wobS = Math.sign(wrapAngle(this.heading + this.skidYaw - hor) || Math.random() - 0.5); }
     this.landSpin = this.spinVel;
@@ -1235,9 +1235,11 @@ export class Skier {
     // (landed into it with a spin on: the spin carries the pivot on round)
     if (!b.dir && b.carry) b.dir = b.carry;
     if (!b.dir && Math.abs(c.steer) > 0.5) b.dir = -Math.sign(c.steer);
-    // keep holding the turn to carry the pivot on round: 180, 360, 540
-    const more = b.dir && Math.abs(c.steer) > 0.5 && b.turn < 3 * Math.PI - 0.05;
-    const goal = more ? 3 * Math.PI : Math.max(Math.PI, Math.ceil((b.turn - 0.4) / Math.PI) * Math.PI);
+    // keep holding the turn to carry the pivot on round (Cork7: A/D drives one half turn; a spin
+    // you landed into it with carries it on to a 360)
+    const cap = (this.strict ? (b.carry ? 2 : 1) : 3) * Math.PI;
+    const more = b.dir && Math.abs(c.steer) > 0.5 && b.turn < cap - 0.05;
+    const goal = more ? cap : Math.min(cap, Math.max(Math.PI, Math.ceil((b.turn - 0.4) / Math.PI) * Math.PI));
     if (b.dir && b.turn < goal) {
       const d = Math.min(goal - b.turn, dt * 5.6);
       b.turn += d; this.heading += b.dir * d;
@@ -1252,7 +1254,7 @@ export class Skier {
       this.butter = null; this.butterHeld = c.butter; this.butterCool = this.strict ? 1 : 0.6;
       // let go early and the skis spring back
       this.butterPop = b.t < 1.4 ? 2.2 : 0;
-      if (b.t >= 0.25 && speed > 1.5) this.emit('butter', { tail: b.tail, spin: Math.round((b.turn - 0.3) / Math.PI) * 180, t: b.t, board: this.board, landed: !!b.landed });
+      if (b.t >= 0.25 && speed > (this.strict ? 3 : 1.5)) this.emit('butter', { tail: b.tail, spin: Math.round((b.turn - 0.3) / Math.PI) * 180, t: b.t, board: this.board, landed: !!b.landed });
       if (b.turn > Math.PI / 2) this.heading = Math.atan2(this.vel.x, this.vel.z) + (Math.abs(wrapAngle(this.heading - Math.atan2(this.vel.x, this.vel.z))) > Math.PI / 2 ? Math.PI : 0);
       if (this.board && Math.round(b.turn / Math.PI) % 2 === 1) this.boardSwitch = !this.boardSwitch;
     }
@@ -1425,13 +1427,15 @@ export class Skier {
     if (arc) {
       // A/D turn the slide a quarter at a time: every turn is a swap
       const st = c.steer > 0.5 ? 1 : c.steer < -0.5 ? -1 : 0;
-      // (Cork7: two swaps a bar, and they lock in)
-      if (st && st !== g.lastSt && (!this.strict || g.swaps < 2)) {
+      // (Cork7: two swaps a bar, and they lock in; a turn in a hop is the hop's own, up to 180)
+      if (st && st !== g.lastSt && g.hop && this.strict) {
+        if (g.hop.q < 2) { g.hop.q++; g.sideT -= st * Math.PI / 2; this.emit('railSwap', g); }
+      } else if (st && st !== g.lastSt && (!this.strict || g.swaps < 2)) {
         g.sideT -= st * Math.PI / 2; g.swaps++;
-        const q = Math.round(wrapAngle(g.sideT) / (Math.PI / 2));
-        g.kind = q === 0 ? '50-50' : Math.abs(q) === 2 ? 'Switch 50-50' : R.kind === 'box' ? 'Boardslide' : 'Lipslide';
         this.emit('railSwap', g);
       }
+      const q = Math.round(wrapAngle(g.sideT) / (Math.PI / 2));
+      g.kind = q === 0 ? '50-50' : Math.abs(q) === 2 ? 'Switch 50-50' : R.kind === 'box' ? 'Boardslide' : 'Lipslide';
       g.lastSt = st;
       g.side += clamp(g.sideT - g.side, -dt * 11, dt * 11);
       g.bal = Math.sin(this.time * 5.1 + R.z) * 0.12;
@@ -1446,7 +1450,11 @@ export class Skier {
     // a hop on the rail: up off the bar and back down onto it, still the same slide
     if (g.hop) {
       g.hop.vy -= this.airG * dt; g.hop.y += g.hop.vy * dt;
-      if (g.hop.y <= 0) { g.hop = null; this.emit('railHopLand', g); }
+      if (g.hop.y <= 0) {
+        // (Cork7: a hop pays 450 a quarter turn turned in it, for the first two hops of a bar)
+        if (g.hop.q > 0 && (g.hopTurns ??= []).length < 2) g.hopTurns.push(g.hop.q * 90);
+        g.hop = null; this.emit('railHopLand', g);
+      }
     }
     const hy = g.hop ? g.hop.y : 0;
     this.pos.set(R.a.x + R.dir.x * g.s + R.dir.z * g.lat, _r.y + hy, R.a.z + R.dir.z * g.s - R.dir.x * g.lat);
@@ -1460,7 +1468,7 @@ export class Skier {
     // (Cork7: a pop with rail still to go is a small hop that comes back down on the same rail;
     // only from the last few metres does it take you off)
     if (pop && this.strict && !g.hop && R.L - g.s > Math.max(4, g.v * 0.5)) {
-      g.hop = { y: 0, vy: 2.6 + this.jumpCharge * 1.2 };
+      g.hop = { y: 0, vy: 2.6 + this.jumpCharge * 1.2, q: 0 };
       g.hops = (g.hops ?? 0) + 1;
       this.jumpCharge = 0; pop = false;
       this.emit('railHop', g);
@@ -1504,7 +1512,7 @@ export class Skier {
       this.vel.x += Math.sign(g.bal) * 1.5;
       if (g.v > 3) this.startCrash('rail', g.v);
     }
-    this.emit('grindEnd', { kind: g.kind, rail: g.R.name, dist, t: g.t, fell, spinIn: g.spinIn, swaps: g.swaps, hops: g.hops ?? 0, switchIn: g.switchIn, pop, press: g.press ?? 0, nose: g.nose ?? 0, tail: g.tail ?? 0, board: this.board });
+    this.emit('grindEnd', { kind: g.kind, rail: g.R.name, dist, t: g.t, fell, spinIn: g.spinIn, swaps: g.swaps, hops: g.hops ?? 0, hopTurns: g.hopTurns ?? [], switchIn: g.switchIn, pop, press: g.press ?? 0, nose: g.nose ?? 0, tail: g.tail ?? 0, board: this.board });
   }
 
   collide() {

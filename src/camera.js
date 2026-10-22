@@ -4,6 +4,11 @@ import { heightAt, centerX, halfWidth } from './course.js';
 import { clamp, smoothstep } from './noise.js';
 
 export const CAM_MODES = ['chase', 'action', 'helmet', 'drone', 'tv'];
+// (Cork7's ranges and defaults, as its Settings sliders have them)
+export const CAM_RANGE = { height: [0.8, 3.2, 0.1], angle: [-10, 50, 1], distance: [1.5, 8, 0.1], fov: [50, 100, 1], stiffness: [0, 100, 5], slopeTilt: [0, 100, 5] };
+export const CAM_DEFAULTS = { height: 1.3, angle: 0, distance: 4.3, fov: 58, speedFov: true, stiffness: 50, slopeTilt: 100, trickCam: true };
+
+const _rl = new THREE.Vector3();
 
 export class CameraRig {
   constructor(camera) {
@@ -16,9 +21,22 @@ export class CameraRig {
     this.t = 0;
     this.tvSpot = null;
     this.snap = true;
-    // Settings > Camera: how far back the chase rides (0.8 close, 1 Cork7's, 1.25 far) and the
-    // speed lens (the view widening as you go faster)
-    this.opt = { dist: 1, speedFov: true };
+    // Settings > Camera, Cork7's rig: height and distance of the arm, how far the view tips down
+    // (angle), the lens and whether it widens with speed, how tightly it follows (stiffness), how
+    // far it tips with the slope (tilt) and the trick cam
+    this.opt = { ...CAM_DEFAULTS };
+    // hold the right mouse button to look around
+    this.free = { on: false, yaw: 0, pitch: 0 };
+    addEventListener('pointerdown', (e) => { if (e.button === 2 && e.target?.tagName === 'CANVAS') { this.free.on = true; e.preventDefault(); } });
+    addEventListener('pointermove', (e) => {
+      if (!this.free.on) return;
+      if (!(e.buttons & 2)) { this.free.on = false; return; }
+      this.free.yaw = clamp(this.free.yaw - e.movementX * 0.005, -Math.PI, Math.PI);
+      this.free.pitch = clamp(this.free.pitch + e.movementY * 0.004, -0.35, 0.7);
+    });
+    addEventListener('pointerup', (e) => { if (e.button === 2) this.free.on = false; });
+    addEventListener('blur', () => { this.free.on = false; });
+    addEventListener('contextmenu', (e) => { if (e.target?.tagName === 'CANVAS') e.preventDefault(); });
   }
 
   cycle() {
@@ -47,7 +65,8 @@ export class CameraRig {
     const hv = new THREE.Vector3(s.vel.x, 0, s.vel.z);
     const want = hv.lengthSq() > 4 ? hv.normalize() : new THREE.Vector3(Math.sin(s.heading), 0, Math.cos(s.heading));
     // (Cork7's chase turns with you quickly, a little lazier through a hard carve)
-    const turnK = this.mode === 'chase' ? 6 - 2.5 * Math.min(1, Math.abs(s.lean ?? 0)) : 3.2;
+    const O = this.opt, stiff = 0.5 + O.stiffness / 100;
+    const turnK = this.mode === 'chase' ? (6 - 2.5 * Math.min(1, Math.abs(s.lean ?? 0))) * stiff : 3.2;
     this.dir.lerp(want, this.snap ? 1 : Math.min(1, dt * (s.onGround || s.grind ? turnK : 1.2))).normalize();
     const cam = this.cam;
     let fov = 62 + clamp(sp - 8, 0, 30) * 0.55;
@@ -61,7 +80,7 @@ export class CameraRig {
     if (inAir) {
       this.predictLand(s);
       const tot = s.airTime + this.tdIn;
-      big = clamp((tot - 1.3) / 0.7, 0, 1) * clamp(this.tdIn / 0.35, 0, 1);
+      big = O.trickCam ? clamp((tot - 1.3) / 0.7, 0, 1) * clamp(this.tdIn / 0.35, 0, 1) : 0;
     }
     this.pull = (this.pull ?? 0) + (big - (this.pull ?? 0)) * (1 - Math.exp(-(big > (this.pull ?? 0) ? 3 : 5) * dt));
     if (this.mode === 'chase') {
@@ -73,39 +92,48 @@ export class CameraRig {
       const gr = clamp((heightAt(x0 + this.dir.x * 8, z0 + this.dir.z * 8) - g0) / 8, -1.1, 1.1);
       this.grade = (this.grade ?? gr) + (gr - (this.grade ?? gr)) * Math.min(1, dt * (s.onGround || s.grind ? 4 : 0.8));
       const portrait = clamp(1.2 - cam.aspect, 0, 0.7);
-      const od = this.opt.dist, b = (4.3 * od + portrait * 1.6) * (1 + 0.5 * pull), hh = 1.3 * (0.6 + 0.4 * od) + 1.6 * pull;
+      const b = (O.distance + portrait * 1.6) * (1 + 0.5 * pull), hh = O.height + 1.6 * pull;
       // (the rider's height on a spring: rollers and bumps don't jolt the view)
       const ry = s.onGround ? s.pos.y : s.pos.y + (this.airOff ?? 0);
       if (this.snap || this.ry == null) { this.ry = ry; this.ryV = 0; }
       else if (inAir) { this.ry = s.pos.y; this.ryV = s.vel.y; }
       else {
-        const T = 0.12, w = 2 / T, x = w * dt, e = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
+        const T = 0.12 / stiff, w = 2 / T, x = w * dt, e = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
         const ch = this.ry - ry, tmp = (this.ryV + w * ch) * dt;
         this.ryV = (this.ryV - w * tmp) * e;
         this.ry = clamp(ry + (ch + tmp) * e, s.pos.y - 0.5, s.pos.y + 0.5);
       }
-      const C = Math.atan(clamp(Math.min(0, this.grade), -0.9, 0));
-      const E = b * Math.cos(C) + hh * Math.sin(C), D = hh * Math.cos(C) - b * Math.sin(C);
+      // (free look swings the arm round the rider and up or down)
+      const fr = this.free;
+      if (!fr.on) { const k = 1 - Math.exp(-4 * dt); fr.yaw -= fr.yaw * k; fr.pitch -= fr.pitch * k; }
+      const C = Math.atan(clamp(Math.min(0, this.grade), -0.9, 0)) * O.slopeTilt / 100;
+      let E = b * Math.cos(C) + hh * Math.sin(C), D = hh * Math.cos(C) - b * Math.sin(C);
+      if (fr.pitch) { const r = Math.hypot(E, D), a = clamp(Math.atan2(D, E) + fr.pitch, -0.1, 1.3); E = r * Math.cos(a); D = r * Math.sin(a); }
+      const adir = this.dir.clone();
+      if (fr.yaw) adir.applyAxisAngle(new THREE.Vector3(0, 1, 0), fr.yaw);
       // through a carve the camera swings out to the side of the turn
       this.swing = (this.swing ?? 0) + ((s.onGround ? -s.lean * 0.8 : 0) - (this.swing ?? 0)) * Math.min(1, dt * 2.5);
-      const side = new THREE.Vector3(this.dir.z, 0, -this.dir.x);
-      tgt.copy(s.pos).addScaledVector(this.dir, -E).addScaledVector(side, 0.42 + this.swing + 1.4 * pull);
+      const side = new THREE.Vector3(adir.z, 0, -adir.x);
+      tgt.copy(s.pos).addScaledVector(adir, -E).addScaledVector(side, 0.42 + this.swing + 1.4 * pull);
       // (kept 0.6 m over the snow all along the arm)
       let floor = heightAt(tgt.x, tgt.z);
-      for (let k = 1; k <= 8; k++) floor = Math.max(floor, heightAt(tgt.x + this.dir.x * E * k / 8, tgt.z + this.dir.z * E * k / 8));
+      for (let k = 1; k <= 8; k++) floor = Math.max(floor, heightAt(tgt.x + adir.x * E * k / 8, tgt.z + adir.z * E * k / 8));
       tgt.y = Math.max(this.ry + D, floor + 0.6);
-      fov = 58 + (this.opt.speedFov ? 8 * (clamp(sp, 0, 38) / 38) ** 2 : 0) + 18 * portrait + 6 * pull;
+      fov = O.fov + (O.speedFov ? 8 * (clamp(sp, 0, 38) / 38) ** 2 : 0) + 18 * portrait + 6 * pull;
       const hd = Math.max(0.5, Math.hypot(x0 - tgt.x, z0 - tgt.z)), tv = Math.tan((fov * Math.PI) / 360);
       const riderA = Math.atan2(s.pos.y + 1 - tgt.y, hd);
-      const slopeA = Math.atan(clamp(Math.min(0, this.grade), -0.9, 0) + clamp(Math.max(0, this.grade), 0, 0.8) * 0.6);
+      const slopeA = Math.atan(clamp(Math.min(0, this.grade), -0.9, 0) + clamp(Math.max(0, this.grade), 0, 0.8) * 0.6) * O.slopeTilt / 100;
       let aim = slopeA;
       if (pull > 0) {
         // (aimed a third of the way to the landing)
         const T = this.td, ax = x0 + (T.x - x0) * 0.35, az = z0 + (T.z - z0) * 0.35, ay = s.pos.y + 1 + (T.y - s.pos.y - 1) * 0.35;
         aim += (Math.atan2(ay - tgt.y, Math.max(0.5, Math.hypot(ax - tgt.x, az - tgt.z))) - aim) * pull;
       }
-      const tilt = clamp(aim, riderA - Math.atan(tv * 0.33), riderA + Math.atan(tv * 0.47));
-      look.copy(tgt).addScaledVector(this.dir, 12);
+      const tilt = clamp(aim - (O.angle * Math.PI) / 180, riderA - Math.atan(tv * 0.33), riderA + Math.atan(tv * 0.47));
+      // (looking round: at the rider, not down the hill)
+      const fl = Math.min(1, (Math.abs(fr.yaw) + Math.abs(fr.pitch)) * 2);
+      look.copy(tgt).addScaledVector(adir, 12);
+      if (fl > 0) { look.lerp(_rl.copy(s.pos).setY(s.pos.y + 1), fl); }
       look.y = tgt.y + Math.tan(tilt) * 12;
     } else if (this.mode === 'action') {
       const close = true;
@@ -160,7 +188,8 @@ export class CameraRig {
       const d = this.tvSpot.distanceTo(s.pos);
       fov = clamp(1400 / Math.max(d, 8), 12, 55);
     }
-    if (s.crash > 0 && this.mode === 'helmet') {
+    // (Cork7 keeps you in the helmet through a slam; only if the goggles are gone does it step out)
+    if (s.crash > 0 && this.mode === 'helmet' && tgt.distanceTo(s.pos) > 2.5) {
       tgt.copy(s.pos).addScaledVector(this.dir, -4); tgt.y += 2.2; look.copy(s.pos);
     }
     if (this.snap) { this.pos.copy(tgt); this.look.copy(look); this.snap = false; }
@@ -169,7 +198,7 @@ export class CameraRig {
     this.look.lerp(look, Math.min(1, dt * 12));
     cam.position.copy(this.pos);
     // our own helmet would fill the view
-    s.model.hideHead?.(this.mode === 'helmet' && s.crash <= 0);
+    s.model.hideHead?.(this.mode === 'helmet');
     // speed buzz + impact shake
     this.shake = Math.max(0, this.shake - dt * 2.2);
     // (Cork7 never rattles the view at speed: it stays calm however fast you go)

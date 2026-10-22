@@ -1,4 +1,19 @@
 // Keyboard, gamepad and touch merged into one control state.
+
+// Settings > Controls (Cork7: change any key): every action's own key. A rebound key stands in for
+// the default one, so the rest of the game keeps reading the default codes
+export const ACTIONS = [
+  ['steerL', 'Carve / spin left', 'KeyA'], ['steerR', 'Carve / spin right', 'KeyD'],
+  ['front', 'Tuck · frontflip', 'KeyW'], ['back', 'Brake · backflip', 'KeyS'],
+  ['pop', 'Load / pop', 'Space'], ['mute', 'Mute grab', 'ShiftLeft'], ['tail', 'Tail grab', 'KeyQ'],
+  ['japan', 'Japan grab', 'KeyE'], ['butter', 'Butter', 'KeyB'], ['rodeo', 'Rodeo / misty', 'ArrowUp'],
+  ['rollL', 'Air roll left', 'ArrowLeft'], ['rollR', 'Air roll right', 'ArrowRight'],
+  ['restart', 'Restart (hold)', 'KeyR'], ['cam', 'Camera', 'KeyC'],
+];
+
+export const keyLabel = (c) => !c ? '—' : c.startsWith('Key') ? c.slice(3) : c.startsWith('Digit') ? c.slice(5)
+  : c.startsWith('Numpad') ? 'NUM ' + c.slice(6) : ({ ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', ShiftLeft: 'SHIFT', ShiftRight: 'R SHIFT', ControlLeft: 'CTRL', ControlRight: 'R CTRL', AltLeft: 'ALT', AltRight: 'R ALT', Space: 'SPACE' }[c] ?? c.toUpperCase());
+
 export class Input {
   constructor() {
     this.keys = new Set();
@@ -8,14 +23,20 @@ export class Input {
     // brake / backflip) and the number keys do the tricks; 'classic': WASD rides, arrows roll
     try { this.scheme = localStorage.getItem('alpenglow.scheme') || 'arrows'; } catch { this.scheme = 'arrows'; }
     this.touch = { left: false, right: false, tuck: false, brake: false, jump: false, grab: false };
+    try { this.binds = JSON.parse(localStorage.getItem('alpenglow.binds') || '{}') || {}; } catch { this.binds = {}; }
+    this.remapKeys();
     addEventListener('keydown', (e) => {
       // typing in a text field (chat, name, room) isn't riding
       if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
-      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Tab'].includes(e.code) || /^Numpad/.test(e.code)) e.preventDefault();
-      if (!this.keys.has(e.code)) this.pressed.add(e.code);
-      this.keys.add(e.code);
-    });
-    addEventListener('keyup', (e) => this.keys.delete(e.code));
+      // (Settings is listening for a new key)
+      if (this.listen) { e.preventDefault(); e.stopPropagation(); const f = this.listen; this.listen = null; f(e.code); return; }
+      const code = this.mapKey(e.code);
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Tab'].includes(e.code) || /^Numpad/.test(e.code) || code !== e.code) e.preventDefault();
+      if (!code) return;
+      if (!this.keys.has(code)) this.pressed.add(code);
+      this.keys.add(code);
+    }, true);
+    addEventListener('keyup', (e) => { const code = this.mapKey(e.code); if (code) this.keys.delete(code); });
     addEventListener('blur', () => this.keys.clear());
     this.padPrev = [];
     this.bindTouch();
@@ -37,6 +58,37 @@ export class Input {
     }
   }
 
+  // the key that stands for each default one, and the defaults that something else took
+  remapKeys() {
+    this.remap = new Map(); this.off = new Set();
+    const bound = new Set(ACTIONS.map(([id, , def]) => this.binds[id] ?? def));
+    for (const [id, , def] of ACTIONS) {
+      const k = this.binds[id];
+      if (!k || k === def) continue;
+      this.remap.set(k, def);
+      if (!bound.has(def)) this.off.add(def);
+    }
+  }
+
+  mapKey(code) { return this.remap.get(code) ?? (this.off.has(code) ? null : code); }
+
+  setBind(id, code) {
+    // (a key can only do one thing: whatever had it goes back to its own default)
+    for (const [o, , def] of ACTIONS) if (o !== id && (this.binds[o] ?? def) === code) this.binds[o] = '';
+    const def = ACTIONS.find(([a]) => a === id)?.[2];
+    if (code === def) delete this.binds[id]; else this.binds[id] = code;
+    this.saveBinds();
+  }
+
+  resetBinds() { this.binds = {}; this.saveBinds(); }
+
+  saveBinds() {
+    this.remapKeys(); this.keys.clear();
+    try { localStorage.setItem('alpenglow.binds', JSON.stringify(this.binds)); } catch { /* */ }
+  }
+
+  bindOf(id) { return this.binds[id] ?? ACTIONS.find(([a]) => a === id)?.[2]; }
+
   down(...codes) { return codes.some((c) => this.keys.has(c)); }
   hit(code) { return this.pressed.has(code); }
 
@@ -50,14 +102,14 @@ export class Input {
   // A/D carve (spin in the air), W tuck (front flip), S brake (backflip), arrows roll in the air,
   // Space load and pop, grabs on Shift / Q / E / F / X / Z, B butter, up arrow for rodeos and
   // mistys (alone: a shifty), down arrow alone: a daffy
-  read(dt, airborne) {
+  read(dt, airborne, rail = false) {
     const t = this.touch;
     let target = 0;
     const A = this.scheme === 'arrows';
     if (this.down('KeyA') || t.left || ((A || !airborne) && this.down('ArrowLeft'))) target -= 1;
     if (this.down('KeyD') || t.right || ((A || !airborne) && this.down('ArrowRight'))) target += 1;
     // keyboard steering ramps like a real edge roll (in the air it's straight on/off)
-    const rate = airborne ? 30 : target === 0 ? 7 : Math.sign(target) !== Math.sign(this.steer) ? 9 : 4.5;
+    const rate = airborne || rail ? 30 : target === 0 ? 7 : Math.sign(target) !== Math.sign(this.steer) ? 9 : 4.5;
     this.steer += Math.max(-rate * dt, Math.min(rate * dt, target - this.steer));
     let steer = this.steer;
     let tuck = this.down('KeyW') || ((A || !airborne) && this.down('ArrowUp')) || t.tuck ? 1 : 0;

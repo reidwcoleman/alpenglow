@@ -20,8 +20,8 @@ import { Pool } from './pool.js';
 import { paintTextures } from './proctex.js';
 import { AIController } from './ai.js';
 import { randomOutfit } from './skiermodel.js';
-import { Input } from './input.js';
-import { CameraRig } from './camera.js';
+import { Input, ACTIONS, keyLabel } from './input.js';
+import { CameraRig, CAM_DEFAULTS, CAM_RANGE } from './camera.js';
 import { Audio } from './audio.js';
 import { Post } from './post.js';
 import { AG, ShadeField, patchTree, patchMaterial } from './atmos.js';
@@ -400,6 +400,17 @@ class Game {
       b.onclick = () => { this.input.setScheme(k); [...sc.children].forEach((c) => c.classList.toggle('on', c === b)); };
       sc.appendChild(b);
     }
+    this.buildKeys();
+    // Cork7's sound sliders: music, wind, effects
+    for (const [k, label] of [['music', 'MUSIC'], ['wind', 'WIND'], ['fx', 'EFFECTS']]) {
+      const v = clamp(+store.get('vol_' + k, 100) || 0, 0, 100);
+      this.audio.setVol(k, v / 100);
+      const row = document.createElement('div'); row.className = 'rig-sl';
+      row.innerHTML = `<label>${label}</label><input type="range" min="0" max="100" step="5" value="${v}"><b>${v}%</b>`;
+      const inp = row.querySelector('input'), out = row.querySelector('b');
+      inp.oninput = () => { out.textContent = inp.value + '%'; store.set('vol_' + k, +inp.value); this.audio.setVol(k, inp.value / 100); };
+      $('vols').appendChild(row);
+    }
     const mus = $('mus');
     for (const [k, label] of [['on', 'On'], ['off', 'Off']]) {
       const b = document.createElement('button');
@@ -434,8 +445,7 @@ class Game {
         el.appendChild(b);
       }
     };
-    segOpt('camd', 'camDist', 'normal', [['close', 'Close'], ['normal', 'Normal'], ['far', 'Far']], (k) => { this.rig.opt.dist = { close: 0.8, normal: 1, far: 1.25 }[k] ?? 1; });
-    segOpt('camfov', 'speedFov', 'on', [['on', 'On'], ['off', 'Off']], (k) => { this.rig.opt.speedFov = k === 'on'; });
+    this.buildCamRig();
     segOpt('camm', 'camMode', 'chase', [['chase', 'Chase'], ['helmet', 'First person'], ['drone', 'Drone']], (k) => { this.rig.mode = k; this.rig.snap = true; });
     segOpt('fpsc', 'fpsCap', 'max', [['max', 'Max'], ['30', '30']], (k) => { this.cap30 = k === '30'; });
     segOpt('statsc', 'stats', 'off', [['off', 'Off'], ['on', 'FPS']], (k) => { this.showStats = k === 'on'; $('stats').classList.toggle('hidden', k !== 'on'); });
@@ -822,6 +832,69 @@ class Game {
     $('pause').classList.toggle('hidden', !p);
   }
 
+  // Settings > Controls: click a key, press the new one (Esc cancels)
+  buildKeys() {
+    const el = $('keys'), inp = this.input;
+    const draw = () => {
+      el.innerHTML = '';
+      for (const [id, label] of ACTIONS) {
+        const row = document.createElement('div'); row.className = 'kb';
+        row.innerHTML = `<span>${label}</span><button>${keyLabel(inp.bindOf(id))}</button>`;
+        const b = row.querySelector('button');
+        b.onclick = () => {
+          b.textContent = 'PRESS A KEY'; b.classList.add('wait');
+          inp.listen = (code) => { if (code !== 'Escape') inp.setBind(id, code); draw(); };
+        };
+        el.appendChild(row);
+      }
+      const rs = document.createElement('button'); rs.className = 'kreset'; rs.textContent = 'Reset keys';
+      rs.onclick = () => { inp.resetBinds(); draw(); };
+      el.appendChild(rs);
+    };
+    draw();
+  }
+
+  // Settings > Camera: Cork7's sliders (height, angle, distance, FOV, stiffness, tilt) and its
+  // speed lens and trick cam switches, saved together
+  buildCamRig() {
+    const el = $('camrig'), O = this.rig.opt;
+    let saved = {};
+    try { saved = JSON.parse(store.get('camRig', '{}')) || {}; } catch { /* */ }
+    if (store.get('speedFov', '') === 'off' && saved.speedFov === undefined) saved.speedFov = false;
+    for (const k of Object.keys(CAM_DEFAULTS)) {
+      const v = saved[k];
+      if (typeof CAM_DEFAULTS[k] === 'boolean') O[k] = typeof v === 'boolean' ? v : CAM_DEFAULTS[k];
+      else { const [lo, hi] = CAM_RANGE[k]; O[k] = Number.isFinite(v) ? clamp(v, lo, hi) : CAM_DEFAULTS[k]; }
+    }
+    const save = () => store.set('camRig', JSON.stringify(O));
+    const fmt = { height: (v) => v.toFixed(1) + ' M', distance: (v) => v.toFixed(1) + ' M', angle: (v) => v + '°', fov: (v) => v + '°', stiffness: (v) => v + '%', slopeTilt: (v) => v + '%' };
+    const draw = () => {
+      el.innerHTML = '';
+      const rows = [['height', 'HEIGHT'], ['angle', 'ANGLE'], ['distance', 'DISTANCE'], ['fov', 'FOV'], ['stiffness', 'STIFFNESS'], ['slopeTilt', 'TILT']];
+      for (const [k, label] of rows) {
+        const [lo, hi, st] = CAM_RANGE[k];
+        const row = document.createElement('div'); row.className = 'rig-sl';
+        row.innerHTML = `<label>${label}</label><input type="range" min="${lo}" max="${hi}" step="${st}" value="${O[k]}"><b>${fmt[k](O[k])}</b>`;
+        const inp = row.querySelector('input'), out = row.querySelector('b');
+        inp.oninput = () => { O[k] = +(+inp.value).toFixed(1); out.textContent = fmt[k](O[k]); save(); };
+        el.appendChild(row);
+      }
+      for (const [k, label] of [['speedFov', 'Speed lens'], ['trickCam', 'Trick cam']]) {
+        const row = document.createElement('div'); row.className = 'opt';
+        row.innerHTML = `<label>${label}</label><div class="seg"><button>On</button><button>Off</button></div>`;
+        const [on, off] = row.querySelectorAll('button');
+        const set = (v) => { O[k] = v; on.className = v ? 'on' : ''; off.className = v ? '' : 'on'; save(); };
+        on.onclick = () => set(true); off.onclick = () => set(false);
+        on.className = O[k] ? 'on' : ''; off.className = O[k] ? '' : 'on';
+        el.appendChild(row);
+      }
+      const rs = document.createElement('button'); rs.className = 'rig-reset'; rs.textContent = 'Reset camera';
+      rs.onclick = () => { Object.assign(O, CAM_DEFAULTS); save(); draw(); };
+      el.appendChild(rs);
+    };
+    draw();
+  }
+
   cycleCam() {
     const m = this.rig.cycle();
     const names = { chase: 'Chase cam', action: 'Action cam', helmet: 'First person', drone: 'Drone', tv: 'TV cam' };
@@ -1034,22 +1107,31 @@ class Game {
     return lost;
   }
 
-  // (Cork7: only your last three airs count against a repeat; the other way round, switch or
-  // another flip is a different trick)
-  repeat(key) {
+  // Cork7: the same trick again pays 75%, 55%, then 40%, counted over the whole run (in the pipe,
+  // only against your last three airs); the other way round, switch or another flip is a
+  // different trick
+  repeat(key, pipe = false) {
+    const n = this.repeatCount(key, pipe);
     const sc = this.sc;
-    sc.recent ??= [];
-    const n = sc.recent.filter((k) => k === key).length;
-    sc.recent.push(key);
+    (sc.recent ??= []).push(key);
     if (sc.recent.length > 3) sc.recent.shift();
     sc.reps.set(key, (sc.reps.get(key) ?? 0) + 1);
     return [1, 0.75, 0.55, 0.4][Math.min(n, 3)];
   }
 
+  repeatCount(key, pipe = false) {
+    return pipe ? (this.sc.recent ?? []).filter((k) => k === key).length : this.sc.reps.get(key) ?? 0;
+  }
+
   // (what repeat() would give, without counting it)
-  peekRepeat(key) {
-    const n = (this.sc.recent ?? []).filter((k) => k === key).length;
-    return [1, 0.75, 0.55, 0.4][Math.min(n, 3)];
+  peekRepeat(key, pipe = false) {
+    return [1, 0.75, 0.55, 0.4][Math.min(this.repeatCount(key, pipe), 3)];
+  }
+
+  // what a repeat is judged on: the rotation (and which way, and switch), not the grabs
+  airKey(t) {
+    const core = this.trickName({ ...t, grabs: [], shifty: false, daffy: false, pipe: false });
+    return (core || 'STRAIGHT AIR') + (t.spin >= 180 ? (t.spinDir > 0 ? ' L' : ' R') : '') + (t.fromRail ? ' OFF' : '');
   }
 
   status(txt) { this.statusTxt = txt; this.statusT = 2.2; }
@@ -1133,27 +1215,34 @@ class Game {
   onPlayerGrind(g) {
     const sc = this.sc;
     if (!sc || g.fell || g.t < 0.25) return;
-    // a press (skis crossed, Space held) pays a quarter more while it's held
-    let pts = 750 * g.t + 450 * (g.swaps + (g.hops ?? 0)) + (g.spinIn >= 180 ? 300 : g.spinIn >= 90 ? 150 : 0) + 190 * Math.min(g.press, g.t);
-    if (g.switchIn) pts *= 1.25;
-    // held a nose or tail press for a good part of it
+    // Cork7: 750 a second on the bar and 450 a swap; a hop pays 450 for every quarter turned in
+    // it; a spin onto the bar is scored as the air it was (1,500 x turns^2)
+    let pts = this.railPts(g);
+    for (const h of g.hopTurns ?? []) pts += (h / 90) * 450 * this.repeat(`HOP ${h}`);
+    // held a nose or tail press for a good part of it (named, Cork7 pays no more for it)
     const press = g.nose >= g.t * 0.4 ? 'Nose Press' : g.tail >= g.t * 0.4 ? 'Tail Press' : '';
-    if (press) pts *= 1.3;
     let kind = g.switchIn && g.kind === '50-50' ? 'Switch 50-50' : g.kind;
     if (press) kind = g.kind === '50-50' ? (g.switchIn ? 'Switch ' : '') + press : `${kind} ${press}`;
-    const name = `${g.spinIn >= 90 ? g.spinIn + ' on ' : ''}${kind}`;
-    pts *= this.repeat(name + g.rail);
+    const hops = (g.hopTurns ?? []).map((h) => ` + Hop ${h}`).join('');
+    const name = `${g.spinIn >= 90 ? g.spinIn + ' on ' : ''}${kind}${hops}`;
     this.addFeature(pts, name);
     this.liveCall = false;
+  }
+
+  railPts(g) {
+    const on = g.spinIn >= 90 ? Math.round(1500 * (g.spinIn / 360) ** 2 * (g.switchIn ? 1.25 : 1)) : 0;
+    return Math.round(750 * g.t) + 450 * g.swaps + on;
   }
 
   onPlayerButter(b) {
     const sc = this.sc;
     if (!sc) return;
     const name = `${b.tail ? 'Tail' : 'Nose'} Butter${b.spin ? ' ' + b.spin : ''}`;
-    // (Cork7: only your first four butters in a run score)
-    sc.butters = (sc.butters ?? 0) + 1;
-    const pts = sc.butters > 4 ? 0 : Math.round((b.spin >= 360 ? 600 : b.spin >= 180 ? 300 : 150) * this.repeat(name));
+    // (Cork7: each butter pays less than the one before, 100/75/55/40%, and only the first four
+    // in a run score)
+    const nb = sc.butters ?? 0;
+    sc.butters = nb + 1;
+    const pts = nb >= 4 ? 0 : Math.round((b.spin >= 360 ? 600 : b.spin >= 180 ? 300 : 150) * [1, 0.75, 0.55, 0.4][nb]);
     this.checkLessons([name]);
     if (!this.book.has(name)) { this.book.add(name); this.saveBook(); sc.fresh = (sc.fresh ?? 0) + 1; this.status('NEW TRICK'); }
     sc.score += pts;
@@ -1163,20 +1252,22 @@ class Game {
   // Cork7: 1,500 x turns^2 (a 720 is four 360s); flips count as turns, but an off-axis one's
   // inversion is already in its spin; +15% for every time upside down, x1.25 switch. Returns the
   // points and the bonuses that made them (for the call-out's chips)
-  trickPoints(t) {
+  trickPoints(t, rep = 1) {
     const spinT = (t.fromRail ? t.spin90 : t.spin) / 360;
     const offAxis = ['cork', 'bio', 'rodeo', 'misty', 'flatspin'].includes(t.type);
     const inv = offAxis ? Math.min(t.flips, Math.max(1, Math.floor((spinT * 360) / 450))) : t.flips;
     const turns = spinT + (offAxis ? 0 : t.flips);
     const rot = turns > 0 ? Math.round(1500 * turns * turns * (1 + 0.15 * inv) * (t.switchIn ? 1.25 : 1)) : 0;
-    let pts = rot + 135 * t.air + 36 * Math.max(0, t.height);
-    // grabs: 840 a second held (to a second each), 300 a grab, and on a spin a tail or japan
-    // held a second adds 25% of the rotation, every other grab 5%
+    let pts = (rot + 135 * t.air + 36 * Math.max(0, t.height)) * rep;
+    // grabs: 840 a second held, and (paid less on a repeat) 300 a grab, up to three, with the
+    // rotation x(1 + 25% for the longest grab held to a second + 5% for each other grab)
+    let gm = 1;
     if (t.grabs.length) {
-      const QE = t.board ? ['tail', 'melon'] : ['tail', 'japan'];
+      const n = Math.min(3, t.grabs.length);
       const hold = t.grabs.reduce((a, [, s]) => a + Math.min(1, s), 0);
-      const qe = Math.min(1, Math.max(0, ...t.grabs.filter(([k]) => QE.includes(k)).map(([, s]) => s)));
-      pts += hold * 840 + t.grabs.length * 300 + rot * (0.25 * qe + 0.05 * (t.grabs.length - 1));
+      const longest = Math.min(1, Math.max(...t.grabs.map(([, s]) => s)));
+      gm = 1 + 0.25 * longest + 0.05 * (n - 1);
+      pts += hold * 840 + (n * 300 + rot * (gm - 1)) * rep;
     }
     if (t.pipe) pts += Math.max(0, t.rise) * 90;
     if (t.shifty) pts += 350;
@@ -1184,7 +1275,7 @@ class Game {
     const chips = [];
     if (inv && rot) chips.push(`INVERTED ×${(1 + 0.15 * inv).toFixed(2).replace(/0$/, '')}`);
     if (t.switchIn && rot) chips.push('SWITCH ×1.25');
-    if (t.grabs.length > 1) chips.push(`${t.grabs.length} GRABS`);
+    if (t.grabs.length) chips.push(`${Math.min(3, t.grabs.length)} ${t.grabs.length > 1 ? 'GRABS' : 'GRAB'} ${rot ? '×' + gm.toFixed(2).replace(/0$/, '') : '+' + Math.min(3, t.grabs.length) * 300}`);
     return { pts, chips };
   }
 
@@ -1199,17 +1290,17 @@ class Game {
     if (!sc) return;
     sc.air += t.air;
     const trick = t.spin >= 180 || t.flips > 0 || t.grabs.length > 0 || t.shifty || t.daffy || (t.fromRail && t.spin90 >= 90);
-    // little hops on the flat don't count (Cork7: a pop off plain snow with no trick in it is
-    // nothing, however long the slope lets it hang)
-    if ((t.air < 0.5 || (t.hop && t.height < 1.6)) && !trick) { if (sc.pend > 0) this.bank(sc.names[sc.names.length - 1] ?? '', t.sketchy, 0); return; }
-    let { pts } = this.trickPoints(t);
+    // Cork7 only judges an air going down the hill, and off plain snow only one of over 1.05 s
+    // and 1.3 m: small hops on the flat and quick taps don't count, trick or no trick
+    const counts = (t.pipe || (t.vz ?? 1) > 0.5) && (!t.hop || t.pipe || (t.air >= 1.05 && t.height >= 1.3));
+    if (!counts || (t.air < 0.5 && !trick)) { if (sc.pend > 0) this.bank(sc.names[sc.names.length - 1] ?? '', t.sketchy, 0); return; }
     const name = this.trickName(t);
     // riding off the end of a rail is part of the rail, not a feature of its own
-    if (t.fromRail && !trick) { sc.pend += pts; this.bank(sc.names[sc.names.length - 1] ?? '', t.sketchy, t.air, t.stomp, t.side); return; }
-    const rep = this.repeat((name || 'air') + (t.spin >= 180 ? (t.spinDir > 0 ? ' L' : ' R') : ''));
-    pts *= rep;
+    if (t.fromRail && !trick) { sc.pend += this.trickPoints(t).pts; this.bank(sc.names[sc.names.length - 1] ?? '', t.sketchy, t.air, t.stomp, t.side); return; }
+    const rep = this.repeat(this.airKey(t), t.pipe);
+    const { pts, chips } = this.trickPoints(t, rep);
     this.addFeature(pts, name);
-    this.chips = [...this.trickPoints(t).chips, ...(rep < 1 ? [`REPEAT ×${rep}`] : [])];
+    this.chips = [...chips, ...(rep < 1 ? [`REPEAT ×${rep}`] : [])];
     this.bank(name, t.sketchy, t.air, t.stomp, t.side);
     // Cork7: a stomp onto a downslope sends you (the skier gives the 2.6 m/s)
     if (p.strict) {
@@ -1839,7 +1930,8 @@ class Game {
     }
     if (!this.paused) {
       if (this.player && !this.player.ai && !this.rescue.active) {
-        const c = inp.read(dt, !this.player.onGround && !this.player.grind);
+        // (on a rail a quick tap of A/D is a whole swap: the steer is on at once, as in the air)
+        const c = inp.read(dt, !this.player.onGround && !this.player.grind, !!this.player.grind);
         // in the air the arrows spin and flip by hand only once held: a quick tap is a combo
         if (!this.player.onGround && !this.player.grind && this.world.arcade) {
           this.holdS = Math.abs(c.steer) > 0.15 ? (this.holdS ?? 0) + dt : 0;
@@ -1855,7 +1947,7 @@ class Game {
           // hold R (or View) to restart
           const held = inp.down('KeyR') || !!inp.pad()?.buttons[8]?.pressed;
           this.holdR = held ? (this.holdR ?? 0) + dt : 0;
-          const need = this.mode === 'park' ? 0.7 : 2;
+          const need = 2;
           if (this.holdR >= need) { this.holdR = -99; this.restart(); }
         }
         // L: the next park line; arrow taps in the air: combos
@@ -2083,7 +2175,7 @@ class Game {
       // on a rail: the slide and its points tick up live
       if (p.grind && p.grind.t > 0.12) {
         const g = p.grind;
-        const pts = Math.round((750 * g.t + 450 * (g.swaps + (g.hops ?? 0))) * (g.switchIn ? 1.25 : 1));
+        const pts = this.railPts(g) + (g.hopTurns ?? []).reduce((a, h) => a + Math.round((h / 90) * 450 * this.peekRepeat(`HOP ${h}`)), 0);
         const el = $('callout');
         if (!this.liveCall) { el.innerHTML = `<div class="c"><div class="n"></div><div class="p"></div></div>`; this.liveCall = true; clearTimeout(this.sayT); }
         el.querySelector('.n').textContent = g.kind;
@@ -2093,8 +2185,8 @@ class Game {
         const t = p.airTrick();
         const name = this.trickName(t);
         if (name) {
-          const { pts, chips } = this.trickPoints(t);
-          const rep = this.peekRepeat((name || 'air') + (t.spin >= 180 ? (t.spinDir > 0 ? ' L' : ' R') : ''));
+          const rep = this.peekRepeat(this.airKey(t), t.pipe);
+          const { pts, chips } = this.trickPoints(t, rep);
           if (rep < 1) chips.push(`REPEAT ×${rep}`);
           const el = $('callout');
           if (!this.liveCall || !el.querySelector('.live')) { el.innerHTML = `<div class="c live"><div class="n"></div><div class="p"><b></b><span class="f"></span></div></div>`; this.liveCall = true; this.liveName = ''; clearTimeout(this.sayT); }
@@ -2103,7 +2195,7 @@ class Game {
             const n = el.querySelector('.n'), n2 = n.cloneNode(); n2.textContent = name; n.replaceWith(n2);
             this.liveName = name;
           }
-          this.livePts = Math.round(pts * rep); this.liveAt = this.time;
+          this.livePts = Math.round(pts); this.liveAt = this.time;
           el.querySelector('.p b').textContent = '+' + this.livePts.toLocaleString();
           const f = chips.map((c) => `<i>${c}</i>`).join('');
           const fe = el.querySelector('.p .f');
@@ -2140,7 +2232,7 @@ class Game {
     const tp = $('tip');
     if (tip !== this.tipTxt) { this.tipTxt = tip; tp.textContent = tip; tp.classList.toggle('hidden', !tip); }
     // hold-to-restart ring
-    const need = this.mode === 'park' ? 0.7 : 2;
+    const need = 2;
     const hk = this.holdR > 0.15 ? Math.min(1, this.holdR / need) : 0;
     $('hold').classList.toggle('hidden', !hk);
     if (hk) { $('holdring').setAttribute('stroke-dashoffset', (94.25 * (1 - hk)).toFixed(1)); $('holdlbl').textContent = this.mode === 'park' ? 'Top of the line' : 'Restart run'; }

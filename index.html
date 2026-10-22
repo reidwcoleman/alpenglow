@@ -380,6 +380,17 @@
   .seg { display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: rgba(255,255,255,.08); flex-wrap: wrap; }
   .seg button { border: 0; background: transparent; color: rgba(255,255,255,.8); font: 600 13px Inter; padding: 8px 12px; border-radius: 9px; cursor: pointer; }
   .seg button.on { background: var(--cream); color: var(--ink); }
+  #keys { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; }
+  #keys .kb { display: flex; justify-content: space-between; align-items: center; gap: 8px; font: 500 12px Inter; color: rgba(255,255,255,.75); }
+  #keys .kb button { min-width: 64px; border: 0; background: rgba(255,255,255,.1); color: #fff; font: 700 12px Inter; padding: 5px 8px; border-radius: 7px; cursor: pointer; }
+  #keys .kb button.wait { background: var(--cream); color: var(--ink); }
+  #keys .kreset { grid-column: 1 / -1; justify-self: start; border: 0; background: rgba(255,255,255,.08); color: rgba(255,255,255,.8); font: 600 12px Inter; padding: 6px 12px; border-radius: 9px; cursor: pointer; margin-top: 4px; }
+  @media (max-width: 560px) { #keys { grid-template-columns: 1fr; } }
+  .rig-sl { display: grid; grid-template-columns: 92px 1fr 54px; align-items: center; gap: 10px; margin: 2px 0 8px; }
+  .rig-sl label { font: 600 12px Inter; letter-spacing: .06em; color: rgba(255,255,255,.75); }
+  .rig-sl input { width: 100%; accent-color: var(--cream); }
+  .rig-sl b { font: 600 12px Inter; text-align: right; color: rgba(255,255,255,.9); }
+  #camrig .rig-reset { border: 0; background: rgba(255,255,255,.08); color: rgba(255,255,255,.8); font: 600 12px Inter; padding: 6px 12px; border-radius: 9px; cursor: pointer; margin: 0 0 12px; }
   .book { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; max-width: 980px; }
   .book .h { grid-column: 1 / -1; font: 700 10px Inter; letter-spacing: .16em; text-transform: uppercase; color: rgba(255,255,255,.6); margin: 10px 0 2px; }
   .book div.t { padding: 9px 11px; border-radius: 10px; background: rgba(14,20,32,.62); font: 600 12px Inter; color: rgba(255,255,255,.55); }
@@ -1118,17 +1129,18 @@
   <h2>MENU</h2>
   <div class="opt"><label>Conditions</label><div class="seg" id="tod"></div></div>
   <div class="opt"><label>Controls</label><div class="seg" id="ctrl"></div></div>
+  <div class="opt"><label>Keys</label><div id="keys"></div></div>
   <div class="opt"><label>Weather</label><div class="seg" id="wx"></div></div>
   <div class="opt"><label>Injuries</label><div class="seg" id="gore"></div></div>
   <div class="opt"><label>Look</label><div class="seg" id="look"></div></div>
   <div class="opt"><label>Graphics</label><div class="seg" id="qual"></div></div>
   <div class="opt"><label>Camera</label><div class="seg" id="camm"></div></div>
-  <div class="opt"><label>Distance</label><div class="seg" id="camd"></div></div>
-  <div class="opt"><label>Speed lens</label><div class="seg" id="camfov"></div></div>
+  <div id="camrig"></div>
   <div class="opt"><label>Frame rate</label><div class="seg" id="fpsc"></div></div>
   <div class="opt"><label>Stats</label><div class="seg" id="statsc"></div></div>
   <div class="opt"><label>Music</label><div class="seg" id="mus"></div></div>
   <div class="opt"><label>Sound</label><div class="seg" id="snd"><button data-m="0">On</button><button data-m="1">Off</button></div></div>
+  <div id="vols"></div>
   <div class="row"><button class="btn" id="s-how">How to play</button><button class="btn p" id="s-close">Done</button></div>
 </div></div>
 
@@ -1142,9 +1154,9 @@
     <span><kbd>.</kbd> <kbd>G</kbd></span><span>Hop round to ride backwards (keypad . or G); again to turn forwards</span>
     <span><kbd>SPACE</kbd></span><span>Hold to load, release to pop (no trick)</span>
     <span><kbd>SHIFT</kbd><kbd>Q</kbd><kbd>E</kbd><kbd>F</kbd><kbd>X</kbd><kbd>Z</kbd></span><span>Six grabs by hand. Switch keys mid-air to chain them, hold one a second to tweak it</span>
-    <span><kbd>B</kbd></span><span>Butter (add ↓ for the tail) · hold ← → to pivot 180, 360, 540. A press lasts 1.5 s, then rest a second. Hold B in the air to land into a butter off a bump or a small hop (off a big jump you faceplant). Your first four butters in a run score</span>
-    <span><kbd>↑</kbd> <kbd>↓</kbd> on a rail</span><span>Nose / tail press · ← → swap the slide (two swaps a bar) · <kbd>SPACE</kbd> mid-rail hops and lands back on it, near the end it pops you off</span>
-    <span><kbd>R</kbd></span><span>Hold to restart · <kbd>C</kbd> camera · <kbd>ESC</kbd> pause · <kbd>L</kbd> next park line</span>
+    <span><kbd>B</kbd></span><span>Butter (add ↓ for the tail) · ← → pivots a half turn, a spin you land into it with carries it to 360. A press lasts 1.5 s, then rest a second. Hold B in the air to land into a butter off a bump or a small hop (off a big jump you faceplant). 150, 300 for a 180, 600 for a 360; each butter pays less and only your first four in a run score</span>
+    <span><kbd>↑</kbd> <kbd>↓</kbd> on a rail</span><span>Nose / tail press · ← → swap the slide (two swaps a bar) · <kbd>SPACE</kbd> mid-rail hops and lands back on it (turn in the hop for points), near the end it pops you off</span>
+    <span><kbd>R</kbd></span><span>Hold 2 s to restart · <kbd>C</kbd> camera · hold the right mouse button to look around · <kbd>ESC</kbd> pause · <kbd>L</kbd> next park line · change any key in Menu › Keys</span>
     <span><kbd>V</kbd></span><span>Replay the last trick</span>
     <span><kbd>TAB</kbd> <kbd>T</kbd></span><span>Multiplayer: riders in the room · chat</span>
     <span>Classic keys</span><span>Menu › Controls › Classic: WASD to ride, the arrows roll (sideflips, wildcats), ↑ shifty, ↓ daffy, ↑ + spin + flip for rodeos and mistys. A/D and W/S work in either</span>
@@ -1155,7 +1167,12 @@
     <span>Landing</span><span>Let go near the snow: the rider finishes the closest clean rotation</span>
     <div class="h">Scoring</div>
     <span>720</span><span>four times a 360 · flips count as turns</span>
+    <span>Grabs</span><span>held 0.25 s to count · held a second: ×1.25 on the spin, ×0.05 more for each other grab (three at most)</span>
+    <span>Landing</span><span>skis straight: +450 and +15% of the line · sideways keeps at least half</span>
     <span>Lines</span><span>each feature in a row adds ×0.25 · bail and it's gone</span>
+    <span>Repeats</span><span>the same trick again pays 75%, then 55%, then 40% for the rest of the run · spin the other way, ride switch or pick another flip and it pays in full</span>
+    <span>Rails</span><span>750 a second on the bar, 450 a swap, 450 for each quarter turned in a hop</span>
+    <span>Air</span><span>+135 a second and +36 a metre · small hops on the flat (under a second and 1.3 m) and quick taps don't count</span>
     <span>Runs</span><span>every run pays XP for the Season Pass and flakes for the Shop</span>
   </div>
   <div class="row"><button class="btn p" id="h-close">Got it</button></div>

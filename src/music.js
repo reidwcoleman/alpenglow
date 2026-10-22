@@ -22,6 +22,8 @@ const hz = (semi) => A2 * Math.pow(2, semi / 12);
 export class Music {
   constructor(audio) {
     this.a = audio;
+    audio.music = this;
+    this.vol = 1;
     this.on = true;
     this.mood = 'chill';
     this.bpm = 112;
@@ -34,7 +36,7 @@ export class Music {
     const ctx = this.a.ctx;
     if (!ctx || this.timer) return;
     this.bus = ctx.createGain();
-    this.bus.gain.value = this.on ? 0.42 : 0;
+    this.bus.gain.value = this.on ? 0.42 * this.vol : 0;
     // a touch of space on everything
     const delay = ctx.createDelay(1); delay.delayTime.value = (60 / this.bpm) * 0.75;
     const fb = ctx.createGain(); fb.gain.value = 0.28;
@@ -42,15 +44,17 @@ export class Music {
     const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2600;
     this.send = ctx.createGain(); this.send.gain.value = 1;
     this.send.connect(delay); delay.connect(lp).connect(fb).connect(delay); lp.connect(wet).connect(this.bus);
-    this.bus.connect(this.a.master);
+    this.bus.connect(this.a.out);
     this.next = ctx.currentTime + 0.1;
     this.timer = setInterval(() => this.tick(), 25);
   }
 
   setOn(on) {
     this.on = on;
-    if (this.bus) this.bus.gain.setTargetAtTime(on ? 0.42 : 0, this.a.ctx.currentTime, 0.3);
+    if (this.bus) this.bus.gain.setTargetAtTime(on ? 0.42 * this.vol : 0, this.a.ctx.currentTime, 0.3);
   }
+
+  setVol(v) { this.vol = v; this.setOn(this.on); }
 
   setMood(m) { this.mood = m; }
 

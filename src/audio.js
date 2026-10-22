@@ -4,6 +4,15 @@ export class Audio {
   constructor() {
     this.ctx = null;
     this.muted = false;
+    // Settings > Sound (Cork7: music, wind and effects, each up or down)
+    this.vol = { music: 1, wind: 1, fx: 1 };
+  }
+
+  setVol(k, v) {
+    this.vol[k] = v;
+    if (k === 'fx' && this.master) this.master.gain.value = v;
+    if (k === 'wind' && this.windBus) this.windBus.gain.value = v;
+    if (k === 'music') this.music?.setVol(v);
   }
 
   start() {
@@ -11,10 +20,13 @@ export class Audio {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     const ctx = (this.ctx = new AC());
-    this.master = ctx.createGain();
-    this.master.gain.value = this.muted ? 0 : 0.8;
+    this.out = ctx.createGain();
+    this.out.gain.value = this.muted ? 0 : 0.8;
     const comp = ctx.createDynamicsCompressor();
-    this.master.connect(comp).connect(ctx.destination);
+    this.out.connect(comp).connect(ctx.destination);
+    // (effects and the wind on their own volumes; the music joins at the output)
+    this.master = ctx.createGain(); this.master.gain.value = this.vol.fx; this.master.connect(this.out);
+    this.windBus = ctx.createGain(); this.windBus.gain.value = this.vol.wind; this.windBus.connect(this.out);
     const len = ctx.sampleRate * 2;
     const buf = ctx.createBuffer(1, len, ctx.sampleRate);
     const d = buf.getChannelData(0);
@@ -26,17 +38,17 @@ export class Audio {
       d[i] = (b0 + b1 + b2 + w * 0.1848) * 0.2;
     }
     this.noise = buf;
-    const loop = (type, f, q) => {
+    const loop = (type, f, q, bus = this.master) => {
       const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true;
       src.playbackRate.value = 0.8 + Math.random() * 0.4;
       const filt = ctx.createBiquadFilter(); filt.type = type; filt.frequency.value = f; filt.Q.value = q;
       const g = ctx.createGain(); g.gain.value = 0;
-      src.connect(filt).connect(g).connect(this.master);
+      src.connect(filt).connect(g).connect(bus);
       src.start(0, Math.random());
       return { filt, g };
     };
-    this.wind = loop('bandpass', 400, 0.5);
-    this.windHi = loop('highpass', 2500, 0.7);
+    this.wind = loop('bandpass', 400, 0.5, this.windBus);
+    this.windHi = loop('highpass', 2500, 0.7, this.windBus);
     this.carve = loop('bandpass', 2600, 1.4);
     this.skid = loop('bandpass', 700, 0.9);
     this.crowd = loop('bandpass', 1100, 0.7);
@@ -49,7 +61,7 @@ export class Audio {
 
   setMuted(m) {
     this.muted = m;
-    if (this.master) this.master.gain.value = m ? 0 : 0.8;
+    if (this.out) this.out.gain.value = m ? 0 : 0.8;
   }
 
   update(s, crowdK = 0) {
