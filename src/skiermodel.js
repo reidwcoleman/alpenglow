@@ -320,6 +320,8 @@ export class SkierModel {
       // (the boots' cuffs stay inside the drawn figure's baggy pants: a board's soft boots bend
       // further with the knees)
       for (const k of ['bootL', 'bootR']) P[k].scale.y = this.board ? 0.78 : 0.9;
+      // (the Blender figure has its own hood)
+      if (this.rig.kit.baked && P.hood) P.hood.scale.setScalar(0.001);
       // (and the bindings' highbacks)
       if (this.board) for (const k of ['bindL', 'bindR']) P[k].scale.y = 0.62;
     }

@@ -6,6 +6,7 @@
 // same way.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { loadGLB, plainGeometry } from './models.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 
@@ -228,11 +229,35 @@ export function toyKit() {
   return KIT;
 }
 
+// The figure as modelled in Blender (blender/rider.py): the same skeleton and rest pose, smoothed
+// with subdivision, the shading of its folds baked in (colour red), the body part in green. It
+// takes the place of the coded loft above once it's loaded.
+export async function loadRiderModel() {
+  const kit = toyKit();
+  const gl = await loadGLB('rider');
+  let sk = null;
+  gl.scene.traverse((o) => { if (o.isSkinnedMesh) sk = o; });
+  if (!sk) throw new Error('rider.glb: no skinned mesh');
+  const geo = plainGeometry(sk);
+  // its joints by name onto the kit's bones
+  const map = sk.skeleton.bones.map((b) => kit.I(b.name));
+  if (map.some((i) => i < 0)) throw new Error('rider.glb: unknown bone ' + sk.skeleton.bones[map.indexOf(-1)].name);
+  const si = geo.getAttribute('skinIndex');
+  for (let i = 0; i < si.array.length; i++) si.array[i] = map[si.array[i]];
+  const col = geo.getAttribute('color'), n = col.count, part = new Float32Array(n);
+  for (let i = 0; i < n; i++) part[i] = Math.round(col.getY(i) * 8);
+  geo.setAttribute('aPart', new THREE.BufferAttribute(part, 1));
+  geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(n * 2), 2));
+  kit.geo = geo;
+  kit.baked = true;
+  return kit;
+}
+
 // flat colour by body part: the shell (and its band or panels), pants, mitts, skin. In a crowd
 // copy the jacket colour comes per instance. Blood and the torn ends as the scanned kit has them.
 export function toyMaterial(kit, outfit, crowd = false) {
-  const m = new THREE.MeshStandardMaterial({ roughness: 0.86, metalness: 0 });
-  if (crowd) m.defines = { CROWD: '' };
+  const m = new THREE.MeshStandardMaterial({ roughness: 0.86, metalness: 0, vertexColors: !!kit.baked });
+  m.defines = { ...(crowd ? { CROWD: '' } : {}), ...(kit.baked ? { TOY_AO: '' } : {}) };
   const c = (x, d = 0x22262c) => new THREE.Color(x ?? d);
   const u = {
     uJacket: { value: c(outfit.jacket) }, uJacket2: { value: c(outfit.jacket2 ?? outfit.jacket) },
@@ -266,7 +291,7 @@ float tyH(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x 
       .replace('#include <color_fragment>', `#include <color_fragment>
 {
   float part = floor( vPart + 0.5 );
-#ifdef CROWD
+#if defined( CROWD ) && !defined( TOY_AO )
   vec3 jk = vColor.rgb;
 #else
   vec3 jk = uJacket;
@@ -290,9 +315,13 @@ float tyH(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x 
   // the head after a bad one, and the torn ends of a cut limb
   if ( part < 0.5 && uBlood > 0.0 ) { float n = tyH( floor( vRest * 60.0 ) ); col = mix( col, vec3( 0.22, 0.01, 0.01 ), uBlood * step( 0.45, n ) * smoothstep( 1.64, 1.72, vRest.y ) ); }
   if ( uStain > 0.0 && uCut.w > 0.5 ) col = mix( col, vec3( 0.3, 0.02, 0.02 ), uStain * ( 1.0 - smoothstep( 0.02, 0.09, distance( vRest, uCut.xyz ) ) ) );
+#ifdef TOY_AO
+  // the folds' shading, baked in Blender (soft: the sun does the rest)
+  col *= mix( 1.0, vColor.r, 0.75 );
+#endif
   diffuseColor.rgb = col;
 }`);
   };
-  m.customProgramCacheKey = () => 'toy' + (crowd ? 'c' : '');
+  m.customProgramCacheKey = () => 'toy' + (crowd ? 'c' : '') + (kit.baked ? 'b' : '');
   return m;
 }

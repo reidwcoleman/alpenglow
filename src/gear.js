@@ -10,6 +10,7 @@
 // 3 moulded plastic, 4 foam; all but 0 use the vertex colour as it is. So a whole boot (shell,
 // sole, buckles, power strap, liner) is one mesh and one draw.
 import * as THREE from 'three';
+import { modelParts } from './models.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
 const TAU = Math.PI * 2;
@@ -17,6 +18,26 @@ const cache = new Map();
 const once = (key, make) => { if (!cache.has(key)) cache.set(key, make()); return cache.get(key); };
 const hexs = (c) => '#' + (c >>> 0).toString(16).padStart(6, '0');
 const K = { TINT: 0, METAL: 1, RUBBER: 2, PLASTIC: 3, FOAM: 4 };
+
+// The kit as modelled in Blender (blender/gear.py): each piece in the same frame as the coded
+// one below it, its colours times the baked shading in the vertex colour and what it's made of
+// (K) in the alpha. Loaded before the riders are; the coded pieces stand in without it.
+const BLEND = {};
+export async function loadGearModels() {
+  const parts = await modelParts('gear');
+  for (const [k, g] of Object.entries(parts)) {
+    const C4 = g.getAttribute('color');
+    if (C4) {
+      const n = C4.count, col = new Float32Array(n * 3), kind = new Float32Array(n);
+      for (let i = 0; i < n; i++) { col[i * 3] = C4.getX(i); col[i * 3 + 1] = C4.getY(i); col[i * 3 + 2] = C4.getZ(i); kind[i] = Math.round(C4.getW(i) * 4); }
+      g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      g.setAttribute('gearMat', new THREE.BufferAttribute(kind, 1));
+    }
+    if (!g.getAttribute('uv')) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.getAttribute('position').count * 2), 2));
+    BLEND[k] = g;
+  }
+}
+const blended = (k) => BLEND[k] ?? null;
 
 // ---------------------------------------------------------------- the head
 // the shell sits on an ellipsoid round the cranium; the avatar's hair is squeezed inside
@@ -172,7 +193,7 @@ export function kitMaterial(color, { rough = 0.5, metal = 0, snow = 0, side = TH
 // a helmet: the shell (its stripe and vents are drawn by helmetMaterial), a dark rim and
 // liner, the chin strap and the goggle clip
 export function helmetGeometry() {
-  return once('helmet', () => {
+  return once('helmet', () => blended('helmet') ?? (() => {
     const white = [1, 1, 1], dark = [0.09, 0.09, 0.1], pad = [0.05, 0.05, 0.055], strap = [0.05, 0.05, 0.055];
     const outer = ellipsoidShell(SHELL, helmetCut, 96, 24, () => white);
     // the liner inside, facing in
@@ -207,7 +228,7 @@ export function helmetGeometry() {
       parts.push(stock(rbox(0.042, 0.04, 0.014, 0.006).translate(x, y, z), C(...dark)));
     }
     return toGeo(parts);
-  });
+  })());
 }
 
 // the shell's paint: its colour, a stripe over the top in c2, vent slots (top, brow and rear
@@ -347,7 +368,7 @@ function goggleSurface(r, grow, bulge, color, flip = false, mat = 0) {
 
 // the frame: its face, a foam layer against the face, outriggers where the strap clips on
 export function goggleGeometry() {
-  return once('goggles', () => {
+  return once('goggles', () => blended('goggles') ?? (() => {
     const frame = goggleSurface(GOG.r, 0.008, 0.004, [1, 1, 1]);
     const back = goggleSurface(GOG.r - 0.02, 0.006, 0, [0.05, 0.05, 0.055], true, K.FOAM);
     // the frame's depth (tinted) then the foam (dark): a ring of three rows per outline point
@@ -378,14 +399,14 @@ export function goggleGeometry() {
     const g = toGeo(parts);
     g.computeVertexNormals();
     return g;
-  });
+  })());
 }
 export function lensGeometry() {
-  return once('lens', () => {
+  return once('lens', () => blended('lens') ?? (() => {
     const g = toGeo([goggleSurface(GOG.r + 0.003, -0.003, 0.017, [1, 1, 1])]);
     g.computeVertexNormals();
     return g;
-  });
+  })());
 }
 
 // a mirrored, spherical lens: the sky in it with a hard horizon, the coating's colour, a
@@ -423,7 +444,7 @@ export function lensMaterial(tint) {
 
 // the strap: round the back of the head, from one side of the frame to the other; uv along it
 export function strapGeometry(onBeanie) {
-  return once('strap' + onBeanie, () => {
+  return once('strap' + onBeanie, () => (!onBeanie && blended('strap')) || (() => {
     const E = onBeanie ? KNIT : SHELL;
     const out = { pos: [], nrm: [], col: [], idx: [], uv: [] };
     const a0 = GOG.span * 0.95, N = 48;
@@ -444,7 +465,7 @@ export function strapGeometry(onBeanie) {
       if (k < N) { const o = k * 2; out.idx.push(o, o + 2, o + 1, o + 1, o + 2, o + 3); }
     }
     return toGeo([out]);
-  });
+  })());
 }
 
 // the strap's woven band: the frame colour with a printed name and silicone grip lines
@@ -593,7 +614,7 @@ const BOOT_CUFF = [
 // heel lugs the binding clamps, four buckles (levers outside, ladders inside), a power strap,
 // the cuff rivet and the walk lever at the back
 export function skiBootGeometry() {
-  return once('skiboot2', () => {
+  return once('skiboot2', () => blended('skiBoot') ?? (() => {
     const sole = [0.1, 0.1, 0.11], shellK = 0.86;
     const S = BOOT_SHELL;
     // the shell: the sole band (rubber), a hard line, then the shell (tinted)
@@ -649,12 +670,12 @@ export function skiBootGeometry() {
     for (const s of [1, -1]) parts.push(stock(new THREE.CylinderGeometry(0.009, 0.009, 0.004, 12).rotateZ(Math.PI / 2).translate(s * 0.064, 0.17, -0.03), metal, K.METAL));
     { const [x, y, z] = ringPt(BOOT_CUFF[2], Math.PI, 0.004); parts.push(stock(rbox(0.026, 0.05, 0.008, 0.003).translate(x, y - 0.02, z), C(0.12, 0.12, 0.13), K.PLASTIC)); }
     return toGeo(parts);
-  });
+  })());
 }
 
 // a snowboard boot: soft, laced, chunky
 export function boardBootGeometry() {
-  return once('boardboot', () => {
+  return once('boardboot', () => blended('boardBoot') ?? (() => {
     const sole = [0.12, 0.12, 0.13];
     const shell = loft([
       [0.03, 0.02, 0.06, 0.168, 2.6, sole, K.RUBBER], [0.05, 0.02, 0.064, 0.17, 2.4, sole, K.RUBBER], [0.05, 0.02, 0.064, 0.17, 2.4, [1, 1, 1], 0],
@@ -665,7 +686,7 @@ export function boardBootGeometry() {
     const parts = [shell];
     for (let i = 0; i < 6; i++) parts.push(stock(new THREE.BoxGeometry(0.05, 0.006, 0.008).rotateX(-0.6 - i * 0.12).translate(0, 0.12 + i * 0.03, 0.105 - i * 0.012), lace, K.RUBBER));
     return toGeo(parts);
-  });
+  })());
 }
 
 // ---------------------------------------------------------------- top sheets
@@ -917,7 +938,7 @@ function plankGeometry(L, z0, segs, shape, Lo, morph = null) {
 
 // a twin-tip freeride ski, 1.72 m: sidecut, rockered tip and tail, thinner at the ends
 export function skiGeometry() {
-  return once('ski2', () => {
+  return once('ski2', () => blended('ski') ?? (() => {
     const L = 1.72;
     return plankGeometry(L, -L * 0.45, 60, (t) => {
       const sc = 1 - Math.sin(t * Math.PI) * 0.2;
@@ -935,12 +956,12 @@ export function skiGeometry() {
       const zb = z / (L * 0.5);
       return [0.06 * zb * zb, 0.035 * Math.max(0, (t - 0.5) / 0.5) ** 1.6];
     });
-  });
+  })());
 }
 
 // a twin-tip board, 1.56 m, nose along +X
 export function boardGeometry() {
-  return once('board2', () => {
+  return once('board2', () => blended('board') ?? (() => {
     const L = 1.56;
     const g = plankGeometry(L, -L / 2, 60, (t) => {
       const u = Math.abs(t - 0.5) * 2;
@@ -952,14 +973,14 @@ export function boardGeometry() {
     g.rotateY(Math.PI / 2);
     g.computeVertexNormals();
     return g;
-  });
+  })());
 }
 
 // a freeride ski binding under the boot: a track, the toe piece (housing, wings round the boot's
 // toe lug, the anti-friction plate, the DIN window), the heel piece (housing, heel cup, the
 // step-in lever) and the brake (pedal under the heel, arms folded along the ski's sides)
 export function skiBindingGeometry() {
-  return once('skibind2', () => {
+  return once('skibind2', () => blended('skiBind') ?? (() => {
     const body = C(1), dark = C(0.11, 0.115, 0.13), metal = C(0.72, 0.74, 0.78), accent = C(0.85, 0.1, 0.03), win = C(0.92);
     const parts = [
       // the track the pieces slide on
@@ -992,14 +1013,14 @@ export function skiBindingGeometry() {
       parts.push(stock(rbox(0.008, 0.012, 0.03, 0.003).translate(s * 0.057, 0.04, -0.045), dark, K.PLASTIC));
     }
     return toGeo(parts);
-  });
+  })());
 }
 
 // a snowboard binding: a disc screwed to the board, a base plate with a heel cup, a tall
 // contoured highback leaning forward, a padded ankle strap and a toe cap strap, each with a
 // metal ratchet (toes along +Z)
 export function boardBindingGeometry() {
-  return once('boardbind', () => {
+  return once('boardbind', () => blended('boardBind') ?? (() => {
     const body = new THREE.Color(0.14, 0.15, 0.17), strap = new THREE.Color(1, 1, 1), pad = new THREE.Color(0.22, 0.23, 0.26), metal = new THREE.Color(0.75, 0.77, 0.8);
     const disc = new THREE.CylinderGeometry(0.058, 0.06, 0.012, 24).translate(0, 0.006, 0.02);
     const plate = new THREE.BoxGeometry(0.14, 0.014, 0.3, 1, 1, 1).translate(0, 0.016, 0.02);
@@ -1029,13 +1050,13 @@ export function boardBindingGeometry() {
     const g = toGeo(parts);
     g.computeVertexNormals();
     return g;
-  });
+  })());
 }
 
 // a ski pole, grip at the top (origin), tip down -Y: a moulded grip with finger ridges and a
 // wrist strap, a printed band on the shaft, a powder basket and a carbide tip
 export function poleGeometry(len) {
-  return once('pole2:' + len, () => {
+  return once('pole2:' + len, () => (Math.abs(len - 1.18) < 1e-3 && blended('pole')) || (() => {
     const rubber = C(0.07, 0.07, 0.08), plastic = C(0.13, 0.13, 0.14), print = C(0.9), tipC = C(0.55, 0.57, 0.6);
     // the grip, turned: a flared top, finger ridges down the front, a collar at the bottom
     const prof = [];
@@ -1079,7 +1100,7 @@ export function poleGeometry(len) {
       parts.push(ribbon(pts, ups, 0.014, C(0.1, 0.1, 0.11), K.RUBBER, 0.002));
     }
     return toGeo(parts);
-  });
+  })());
 }
 
 // every material the kit needs for one rider
