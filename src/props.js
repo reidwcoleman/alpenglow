@@ -6,6 +6,7 @@ import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometr
 import { buildClinic, waveFlags, Kit } from './clinic.js';
 import { tower, terminal, liftMaterials } from './liftworks.js';
 import { RoundedBoxGeometry } from './rbox.js';
+import { propMaterial } from './models.js';
 import { heightAt, centerX, halfWidth, GATES, KICKERS, LIFT, START_Z, FINISH_Z, SECTIONS, ZONES, slopeAt, MAP, JUMPS, RAILS, HOSPITAL } from './course.js';
 import { mulberry32, makeSimplex, smoothstep } from './noise.js';
 import { pbr } from './terrain.js';
@@ -368,8 +369,11 @@ export function trailDiff(n) {
 }
 
 export class Props {
-  constructor(scene, forest, env, smash) {
+  // blend: the Blender sets for this park (models.js), by name; layout: what got placed where
+  constructor(scene, forest, env, smash, blend = {}) {
     this.scene = scene;
+    this.blend = blend;
+    this.layout = {};
     this.forest = forest;
     this.smash = smash;
     this.rnd = mulberry32(555);
@@ -930,7 +934,7 @@ export class Props {
   buildStart() {
     const z = START_Z - 7, x = centerX(z);
     const gy = heightAt(x, z);
-    chalet(this.hutKit, this.hutWins, x, gy - 0.3, z - 2, 0, { w: 12, d: 5, h: 3.4, rh: 1.6, plinth: 0.3, wood: 0xc7ab90, roof: 0xffffff, shutter: 0x8a2b22, start: true, rnd: mulberry32(77) });
+    this.chalet(x, gy - 0.3, z - 2, 0, { w: 12, d: 5, h: 3.4, rh: 1.6, plinth: 0.3, wood: 0xc7ab90, roof: 0xffffff, shutter: 0x8a2b22, start: true, seed: 77 });
     const wood = 0x3a2416;
     const postL = colorize(new THREE.BoxGeometry(0.4, 3.4, 0.4), wood); postL.translate(-5.6, 1.7, 0.6);
     const postR = postL.clone(); postR.translate(11.2, 0, 0);
@@ -1188,9 +1192,17 @@ export class Props {
       const gy = Math.min(heightAt(x - w / 2, z - d / 2), heightAt(x + w / 2, z + d / 2), heightAt(x, z));
       const yaw = Math.round(this.rnd() * 3) * Math.PI / 2 + (this.rnd() - 0.5) * 0.3;
       const pick = (a) => a[Math.floor(this.rnd() * a.length)];
-      chalet(K, wins, x, gy, z, yaw, { w, d, h, rh: w * 0.42, wood: pick(woods), roof: pick(roofs), shutter: pick(shutters), balcony: this.rnd() < 0.7, rnd: this.rnd });
+      // (each chalet's details from its own seed: the village's layout doesn't hang on them)
+      this.chalet(x, gy, z, yaw, { w, d, h, rh: w * 0.42, wood: pick(woods), roof: pick(roofs), shutter: pick(shutters), balcony: this.rnd() < 0.7, seed: 1000 + placed.length });
       this.forest.addCollider(x, z, Math.max(w, d) * 0.55, 'chalet');
     }
+  }
+
+  // a chalet: noted down (blender/village.py builds them from the list), and built here unless the
+  // Blender village for this park is loaded
+  chalet(x, gy, z, yaw, o) {
+    (this.layout.chalets ??= []).push({ x, gy, z, yaw, ...o });
+    if (!this.blend.village) chalet(this.hutKit, this.hutWins, x, gy, z, yaw, { ...o, rnd: mulberry32(o.seed) });
   }
 
   // every chalet and hut (and the start house) gathered in one kit: one mesh per material
@@ -1201,6 +1213,19 @@ export class Props {
     this.windowMat.color.set(0x3e3833); this.windowMat.emissive.set(0xffc27a); this.windowMat.roughness = 0.15;
     K.build(hutMaterials(this.windowMat), this.scene);
     if (this.hutWins.length) this.scene.add(new THREE.Mesh(mergeGeometries(this.hutWins), this.windowMat));
+  }
+
+  // the Blender village (blender/village.py), once it's come down: its timber, stone and snow in
+  // the prop material, the panes lit like the coded ones (cNN the chalets, wNN their panes)
+  addVillage(B) {
+    const cs = [], ws = [];
+    for (const [k, g] of Object.entries(B)) (k[0] === 'w' ? ws : cs).push(g);
+    if (!cs.length) return;
+    const m = new THREE.Mesh(mergeGeometries(cs), propMaterial());
+    m.castShadow = m.receiveShadow = true;
+    this.scene.add(m);
+    if (ws.length) this.scene.add(new THREE.Mesh(mergeGeometries(ws), this.windowMat));
+    return m;
     this.hutKit = null;
   }
 

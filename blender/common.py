@@ -218,6 +218,11 @@ def pack(name):
     dst = os.path.join(dst_dir, name + '.glb')
     subprocess.run(['npx', 'gltfpack', '-i', src, '-o', dst, '-cc', '-kn', '-km', '-kv', '-vtf'], cwd=ROOT, check=True)
     print('packed', dst, os.path.getsize(dst))
+    # the list the game checks before asking for a file
+    import json
+    files = sorted(f[:-4] for f in os.listdir(dst_dir) if f.endswith('.glb'))
+    with open(os.path.join(dst_dir, 'manifest.json'), 'w') as fh:
+        json.dump({f: os.path.getsize(os.path.join(dst_dir, f + '.glb')) for f in files}, fh)
 
 
 def export(objs, name, skins=False):

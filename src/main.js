@@ -38,9 +38,10 @@ import { LESSONS, LESSON, quickSpec, COMBOS, ARROW, comboFor, comboSteps } from 
 import { Menu, FLAKE } from './menu.js';
 import { saveRun, getRun } from './vault.js';
 import { MAPS, MAP_IDS } from './maps.js';
-import { preloadAvatars } from './avatar.js';
+import { preloadAvatars, preloadRiders } from './avatar.js';
 import { mulberry32, clamp, smoothstep } from './noise.js';
 import { START_Z, FINISH_Z, GATES, centerX, halfWidth, sectionName, heightAt, PARK, JUMPS, RAILS, PARK_JUMPS, PARK_RAILS, PIPE, ROLLERS, zoneAt, PARK_ID, MAP } from './course.js';
+import { modelParts, models } from './models.js';
 
 const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -136,9 +137,14 @@ class Game {
     // everything that's only arithmetic goes out to the loading threads now, all at once, and
     // the downloads start with it; the rest is built here while they work
     const pool = new Pool();
+    // which Blender sets there are for this park (blender/*.py): the scenery ones stream in once
+    // the game is up, and what they replace isn't built here meanwhile
+    const blendP = models().then((M) => ({ village: !!M['village_' + PARK_ID] }));
     const treesP = pool.job({ kind: 'trees' });
     const shadeP = pool.job({ kind: 'grid', args: ShadeField.grid() });
-    const avatarsP = preloadAvatars((k) => this.loadPart('riders', k)).catch((e) => console.warn('avatars', e));
+    const avatarsP = preloadRiders();
+    // (the scanned crowd: not needed until the people go up, behind the front page)
+    this.crowdP = avatarsP.then(() => preloadAvatars((k) => this.loadPart('riders', k))).catch((e) => console.warn('avatars', e));
     this.terrain = new Terrain(scene, this.env);
     const terrainP = this.terrain.prime(centerX(START_Z), START_Z, pool, (k) => this.loadPart('mountain', k));
     setLoad(4, 'Loading the sky…');
@@ -150,7 +156,7 @@ class Game {
     setLoad(40, 'Building the lift and the village…');
     await nextFrame();
     this.smash = new Smash(this.forest);
-    this.props = new Props(scene, this.forest, this.env, this.smash);
+    this.props = new Props(scene, this.forest, this.env, this.smash, await blendP);
     setLoad(55, 'Shaping the park…');
     this.park = new Park(scene, this.terrain.material, this.smash);
     await this.park.build();
@@ -203,6 +209,7 @@ class Game {
     const warm = async () => {
       await nextFrame();
       wmark('start');
+      await this.crowdP;
       try { this.props.buildPeople(); } catch (e) { console.warn('people', e); }
       this.populateFree(true);
       wmark('people');
@@ -239,6 +246,8 @@ class Game {
         this.post.render(0.016);
         wmark('first frame');
       }
+      // the Blender scenery for this park, as it comes down
+      if (this.props.blend.village) modelParts('village_' + PARK_ID).then((B) => { const m = this.props.addVillage(B); if (m) patchMaterial(m.material); }).catch((e) => console.warn('village', e));
       // and the other skies, for when the weather turns
       setTimeout(() => { for (const p of Object.values(PRESETS)) this.env.ensure(p.hdri); }, 2500);
     };

@@ -4,7 +4,8 @@
 set -e
 cd "$(dirname "$0")/.."
 node blender/export_layout.mjs >/dev/null
-for s in ${@:-rider gear rails}; do
+node tools/dumpprops.mjs >/dev/null
+for s in ${@:-rider gear rails village}; do
   echo "== $s"
   blender -b --python "blender/$s.py" 2>&1 | grep -E "wrote|packed|Error|Traceback|line [0-9]+" || true
 done

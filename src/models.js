@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import MANIFEST from '../public/models/manifest.json';
 
 const BASE = (import.meta.env?.BASE_URL ?? '/') + 'models/';
 let loader = null;
@@ -12,11 +13,16 @@ const files = new Map();
 
 export function loadGLB(name) {
   if (!files.has(name)) {
-    loader ??= new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+    // (the decoding on two worker threads, off the main one)
+    if (!loader) { MeshoptDecoder.useWorkers?.(2); loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder); }
     files.set(name, loader.loadAsync(BASE + name + '.glb'));
   }
   return files.get(name);
 }
+
+// which files there are (written by blender/common.pack), built into the code: nothing to wait for
+export const MODELS = MANIFEST;
+export function models() { return Promise.resolve(MODELS); }
 
 // a mesh's geometry, de-quantised into plain floats in the scene's frame (positions, normals,
 // colour as rgba floats, skinning kept)

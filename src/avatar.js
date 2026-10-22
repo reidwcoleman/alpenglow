@@ -170,14 +170,20 @@ async function loadKit(name, loader, tl) {
   };
 }
 
+// the riders: the drawn figure and the kit (Blender). Every skier waits for these
+export let ridersReady = false;
+export async function preloadRiders() {
+  await Promise.all([loadRiderModel().catch((e) => console.warn('rider model', e)), loadGearModels().catch((e) => console.warn('gear models', e))]);
+  ridersReady = true;
+}
+
+// the scanned people: only the crowd, the chairlift and the helicopter crew are them now, so they
+// come down once the game is up
 export async function preloadAvatars(onEach) {
   const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
   const loader = new GLTFLoader(), tl = new THREE.TextureLoader();
   let n = 0;
-  // (and the riders' own figure, from Blender; the coded one stands in if it can't be had)
-  const rider = Promise.all([loadRiderModel().catch((e) => console.warn('rider model', e)), loadGearModels().catch((e) => console.warn('gear models', e))]);
   const kits = await Promise.all(AVATARS.map((a) => loadKit(a, loader, tl).then((k) => { onEach?.(++n / AVATARS.length); return k; })));
-  await rider;
   avatarKits.push(...kits);
 }
 

@@ -2,7 +2,7 @@
 // Local frame: +Z = ski tips, +Y = up, +X = skier's left.
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { avatarKits, AvatarRig } from './avatar.js';
+import { ridersReady, AvatarRig } from './avatar.js';
 import { toyKit } from './toyrider.js';
 import { ITEMS } from './meta.js';
 import { helmetGeometry, helmetMaterial, beanieGeometry, goggleGeometry, lensGeometry, strapGeometry, skiBootGeometry, boardBootGeometry,
@@ -304,7 +304,7 @@ export class SkierModel {
     this.gAmt = 0; this.gKind = null; this.airS = 0; this.lastT = null;
     this.lod = 0;
     // a real body when the avatars are loaded (browser only); the capsules stay for far away
-    if (avatarKits.length) {
+    if (ridersReady) {
       // every rider is the drawn park figure (toyrider.js); the scanned people are the crowd
       this.rig = new AvatarRig(toyKit(), outfit);
       this.frame.add(this.rig.root);

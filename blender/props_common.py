@@ -37,6 +37,7 @@ class Builder:
         self.order = []
         self.origin = Vector(G(*origin))
         self.uv = None
+        self.fresh = []
 
     def mi(self, name):
         if name not in self.order:
@@ -49,7 +50,16 @@ class Builder:
     def face(self, verts, m):
         f = self.bm.faces.new(verts)
         f.material_index = self.mi(m)
+        self.fresh.append(f)
         return f
+
+    def piece(self):
+        """the faces made since the last piece, turned to face out (each piece is closed on its own;
+        done piece by piece so pieces that touch don't confuse it)"""
+        fs = [f for f in self.fresh if f.is_valid]
+        if fs:
+            bmesh.ops.recalc_face_normals(self.bm, faces=fs)
+        self.fresh = []
 
     def loft(self, rings, m, closed=True, cap0=True, cap1=True, mats=None):
         """rings: lists of game-frame points; faces between them (wrapping if closed)"""
@@ -64,6 +74,10 @@ class Builder:
             self.face(list(reversed(rows[0])), m)
         if cap1:
             self.face(rows[-1], m)
+        if cap0 and cap1 and closed:
+            self.piece()
+        else:
+            self.fresh = []
         return rows
 
     def tube(self, pts, r, m, seg=12, cap=True, up=(0, 1, 0), square=False):
@@ -99,9 +113,13 @@ class Builder:
         faces = list({f for v in vs for f in v.link_faces})
         for f in faces:
             f.material_index = self.mi(m)
-        if r > 0:
+        # (bevels on what's big enough to show one: a chamfer, rounder on the big ones)
+        if r >= 0.05:
             edges = list({e for v in vs for e in v.link_edges})
-            bmesh.ops.bevel(self.bm, geom=vs + edges, offset=r, segments=2, affect='EDGES', profile=0.5)
+            res = bmesh.ops.bevel(self.bm, geom=vs + edges, offset=r, segments=2 if r >= 0.12 else 1, affect='EDGES', profile=0.5)
+            for f in res['faces']:
+                f.material_index = self.mi(m)
+        # (a cube made by bmesh faces out already; turned and placed by rotations, it still does)
         return vs
 
     def cyl(self, a, b, r0, r1, m, seg=12, cap=True):
@@ -137,10 +155,15 @@ class Builder:
         n = len(rs[-1])
         for k in range(n):
             self.face((rs[-1][k], rs[-1][(k + 1) % n], top), m)
+        self.fresh = []
 
-    def finish(self, o):
-        bmesh.ops.remove_doubles(self.bm, verts=self.bm.verts, dist=1e-6)
-        bmesh.ops.recalc_face_normals(self.bm, faces=self.bm.faces)
+    def finish(self, o, grid=3.0):
+        self.piece()
+        # big faces get a few more vertices, so the baked shading can change across them
+        if grid:
+            long = [e for e in self.bm.edges if e.calc_length() > grid]
+            if long:
+                bmesh.ops.subdivide_edges(self.bm, edges=long, cuts=2, use_grid_fill=True)
         self.bm.to_mesh(o.data)
         self.bm.free()
         for n in self.order:
@@ -167,19 +190,36 @@ def bake_colors(objs, distance=0.4, samples=32, ao=True, floor=None):
             helpers.append(bpy.context.active_object)
     for o in objs:
         me = o.data
-        ca = me.color_attributes.new('Col', 'FLOAT_COLOR', 'CORNER')
+        # (per vertex, not per corner: shared corners stay one vertex in the file)
+        ca = me.color_attributes.new('Col', 'FLOAT_COLOR', 'POINT')
         me.color_attributes.active_color = ca
         if ao:
             bpy.ops.object.select_all(action='DESELECT')
             o.select_set(True)
             bpy.context.view_layer.objects.active = o
             bpy.ops.object.bake(type='AO', target='VERTEX_COLORS')
+        occ = [ca.data[i].color[0] if ao else 1 for i in range(len(me.vertices))]
+        if ao:
+            # a vertex buried in another piece (a slab's corner in the roof) sees nothing: give it
+            # its open neighbours' shading instead
+            nb = [[] for _ in me.vertices]
+            for e in me.edges:
+                a_, b_ = e.vertices
+                nb[a_].append(b_); nb[b_].append(a_)
+            for _ in range(4):
+                fix = {}
+                for i, v in enumerate(occ):
+                    if v < 0.1:
+                        good = [occ[j] for j in nb[i] if occ[j] >= 0.1]
+                        if good:
+                            fix[i] = sum(good) / len(good)
+                for i, v in fix.items():
+                    occ[i] = v
         for poly in me.polygons:
             rgb, kind = MATS[me.materials[poly.material_index].name]
-            for li in poly.loop_indices:
-                a = ca.data[li].color[0] if ao else 1
-                a = 0.3 + 0.7 * a
-                ca.data[li].color = (rgb[0] * a, rgb[1] * a, rgb[2] * a, kind / 8)
+            for vi in poly.vertices:
+                a = 0.42 + 0.58 * occ[vi]
+                ca.data[vi].color = (rgb[0] * a, rgb[1] * a, rgb[2] * a, kind / 8)
     for h in helpers:
         bpy.data.objects.remove(h)
 

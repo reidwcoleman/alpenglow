@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { heightAt, centerX, halfWidth, PARK_FEET, RAILS, railAt, JUMPS, PIPE, ROLLERS, PARK, MAP, surfaceAt, parkAt, PARK_ID } from './course.js';
-import { propMesh } from './models.js';
+import { propMesh, MODELS } from './models.js';
 
 // the steel's paint, the dye on the snow (strong lines and the fainter landing edges)
 const RAIL_BLACK = 0x252a30, DYE = 0x2a86ae, DYE_FAINT = 0x77b6cc;
@@ -125,7 +125,7 @@ export class Park {
       if (performance.now() - t > 45) { await nextFrame(); t = performance.now(); }
     }
     // the rails, boxes and logs as modelled in Blender (blender/rails.py), else built here
-    const rails = await propMesh('park_' + PARK_ID).catch(() => null);
+    const rails = MODELS['park_' + PARK_ID] ? await propMesh('park_' + PARK_ID).catch(() => null) : null;
     if (rails) this.group.add(rails); else this.buildRails();
     this.buildLines();
     this.buildSigns();
