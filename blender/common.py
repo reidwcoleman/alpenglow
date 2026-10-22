@@ -216,7 +216,7 @@ def pack(name):
     dst_dir = os.path.join(ROOT, 'public', 'models')
     os.makedirs(dst_dir, exist_ok=True)
     dst = os.path.join(dst_dir, name + '.glb')
-    subprocess.run(['npx', 'gltfpack', '-i', src, '-o', dst, '-cc', '-kn', '-km', '-kv', '-vtf', '-vc', '12'], cwd=ROOT, check=True)
+    subprocess.run(['npx', 'gltfpack', '-i', src, '-o', dst, '-cc', '-kn', '-km', '-kv', '-vtf'], cwd=ROOT, check=True)
     print('packed', dst, os.path.getsize(dst))
 
 

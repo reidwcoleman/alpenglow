@@ -93,3 +93,38 @@ export async function modelSet(name) {
   gl.scene.traverse((o) => { if (o.isMesh) (out[o.name] ??= []).push(o); });
   return { gltf: gl, meshes: out };
 }
+
+// The material every Blender prop shares: its colour (with the shading baked in) from the vertex
+// colour, and what it's made of from the alpha (blender/props_common.py): matte paint, bare steel,
+// painted steel, gloss plastic, rough (wood, bark, rubber), glass, lit, snow
+let PROP = null;
+export function propMaterial() {
+  if (PROP) return PROP;
+  PROP = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 });
+  PROP.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nflat varying float vPropK;')
+      .replace('#include <color_vertex>', '#include <color_vertex>\n  vPropK = floor( color.a * 8.0 + 0.5 );');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nflat varying float vPropK;')
+      .replace('#include <color_fragment>', '  diffuseColor.rgb *= vColor.rgb;')
+      .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
+  {
+    float k = vPropK;
+    roughnessFactor = k < 0.5 ? 0.75 : k < 1.5 ? 0.35 : k < 2.5 ? 0.45 : k < 3.5 ? 0.3 : k < 4.5 ? 0.95 : k < 5.5 ? 0.08 : k < 6.5 ? 0.6 : 0.85;
+    metalnessFactor = k > 0.5 && k < 1.5 ? 0.85 : k > 1.5 && k < 2.5 ? 0.45 : k > 4.5 && k < 5.5 ? 0.3 : 0.0;
+  }`)
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  if ( vPropK > 5.5 && vPropK < 6.5 ) totalEmissiveRadiance += vColor.rgb * 2.2;');
+  };
+  PROP.customProgramCacheKey = () => 'prop';
+  return PROP;
+}
+
+// a file's objects as one mesh in that material (or null when the file isn't there)
+export async function propMesh(name) {
+  const parts = await modelParts(name).catch(() => null);
+  if (!parts) return null;
+  const geos = Object.values(parts);
+  if (!geos.length) return null;
+  const m = new THREE.Mesh(geos.length === 1 ? geos[0] : mergeGeometries(geos), propMaterial());
+  m.castShadow = true; m.receiveShadow = true;
+  return m;
+}
