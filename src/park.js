@@ -288,7 +288,7 @@ export class Park {
     const poleM = new THREE.MeshStandardMaterial({ color: 0xdedede, roughness: 0.5 });
     this.buildMarkers();
     // banner fences along both pipe decks
-    const bannerT = signTexture(['SHREDLINE', 'PARK · PIPE'], '#0f1420', '#fff', '#ff8a3d');
+    const bannerT = signTexture(['STOMPED', 'PARK · PIPE'], '#0f1420', '#fff', '#ff8a3d');
     bannerT.wrapS = THREE.RepeatWrapping;
     const bm = new THREE.MeshStandardMaterial({ map: bannerT, roughness: 0.7, side: THREE.DoubleSide });
     for (const s of [-1, 1]) {

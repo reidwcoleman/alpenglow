@@ -1,4 +1,4 @@
-// The Shredline Mountain Clinic: where the rescue helicopter brings you. An alpine medical
+// The Summit Mountain Clinic: where the rescue helicopter brings you. An alpine medical
 // centre set into the slope on a stone-clad terrace: a rubble-stone ground floor, two floors of
 // larch boards with deep-set windows and a glass-fronted balcony, a white stair tower with the
 // lit cross on top, a standing-seam roof under a thick load of snow with icicles off the eaves,
@@ -7,7 +7,7 @@
 // safety net, edge lights, floodlights and the windsock.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { RoundedBoxGeometry } from './rbox.js';
 import { heightAt, HOSPITAL } from './course.js';
 import { mulberry32 } from './noise.js';
 import { stone, larch, plaster, roofMetal, concrete, pavers, surface, boxUV } from './proctex.js';
@@ -326,7 +326,7 @@ export function buildClinic(scene, forest, ambulance) {
   }
   // three flagpoles by the steps
   const flagTex = [
-    canvasTex(256, 160, (c, w, h) => { c.fillStyle = '#ff8a3d'; c.fillRect(0, 0, w, h); c.fillStyle = '#fff'; c.font = 'bold 44px Helvetica, Arial'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('SHREDLINE', w / 2, h / 2); }),
+    canvasTex(256, 160, (c, w, h) => { c.fillStyle = '#ff8a3d'; c.fillRect(0, 0, w, h); c.fillStyle = '#fff'; c.font = 'bold 44px Helvetica, Arial'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('STOMPED', w / 2, h / 2); }),
     canvasTex(256, 160, (c, w, h) => { c.fillStyle = '#fff'; c.fillRect(0, 0, w, h); c.fillStyle = '#d3232c'; c.fillRect(w / 2 - 22, h / 2 - 60, 44, 120); c.fillRect(w / 2 - 60, h / 2 - 22, 120, 44); }),
     canvasTex(256, 160, (c, w, h) => { c.fillStyle = '#1f4f9e'; c.fillRect(0, 0, w, h); c.fillStyle = '#fff'; c.font = 'bold 30px Helvetica, Arial'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('SKI PATROL', w / 2, h / 2); }),
   ];
@@ -347,7 +347,7 @@ export function buildClinic(scene, forest, ambulance) {
   // ---- signs: the name on the timber, EMERGENCY on the canopy, the lit crosses
   const nameTex = canvasTex(1024, 128, (c, w, h) => {
     let fs = 84; c.font = `800 ${fs}px Helvetica, Arial`;
-    const t = 'SHREDLINE MOUNTAIN CLINIC';
+    const t = 'SUMMIT MOUNTAIN CLINIC';
     while (c.measureText(t).width > w - 30) { fs -= 4; c.font = `800 ${fs}px Helvetica, Arial`; }
     c.textAlign = 'center'; c.textBaseline = 'middle';
     c.fillStyle = 'rgba(0,0,0,0.35)'; c.fillText(t, w / 2 + 3, h / 2 + 7);

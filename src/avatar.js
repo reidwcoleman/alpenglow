@@ -7,12 +7,12 @@
 // little over the body.
 import * as THREE from 'three';
 import { HAIR, KNIT } from './gear.js';
-import { LO } from './gfx.js';
+import { LO, QUALITY_NAME } from './gfx.js';
 import { AG } from './atmos.js';
 
 const BASE = (import.meta.env?.BASE_URL ?? '/') + 'people/';
 // the textures at half size on the phone setting (tools/shrink_assets.py)
-const TEXB = BASE + (LO ? 'lo/' : '');
+const TEXB = BASE + (QUALITY_NAME !== 'ultra' ? 'lo/' : '');
 export const AVATARS = ['Sports_Male_02', 'Sports_Male_03', 'Sports_Male_04', 'Sports_Female_02', 'Male_Adult_05', 'Male_Adult_08', 'Female_Adult_01', 'Female_Adult_03'];
 export const avatarKits = [];
 

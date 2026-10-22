@@ -1,4 +1,4 @@
-// The Shredline Express's steelwork: towers and the two terminals.
+// The Summit Express's steelwork: towers and the two terminals.
 //   Towers: a tapered tube on a concrete footing with snow on it, flanged joints, the head and
 //   crossarm with a grated catwalk and yellow rails, a sheave train each side (rubber-lined
 //   wheels between side plates on a rocking beam), a caged ladder and the tower's number, the
@@ -8,7 +8,7 @@
 //   the operator's glass cabin, lamps, and snow banked against the concrete.
 // Everything goes into one Kit per material (clinic.js), so the whole lift is a few draws.
 import * as THREE from 'three';
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { RoundedBoxGeometry } from './rbox.js';
 import { concrete, surface } from './proctex.js';
 import { Kit } from './clinic.js';
 

@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-<title>Shredline</title>
-<meta name="description" content="Shredline: a freeski game in your browser. Corks, flips, grabs, rails and a 3.4 km run full of kickers, plus a terrain park and a downhill race." />
+<title>Stomped</title>
+<link rel="preload" as="image" href="art/menu.webp" fetchpriority="high">
+<meta name="description" content="Stomped: a freeski game in your browser. Corks, flips, grabs, rails and a 3.4 km run full of kickers, plus a terrain park and a downhill race." />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22%3E%3Crect width=%2264%22 height=%2264%22 rx=%2214%22 fill=%22%23ff8a3d%22/%3E%3Cpath d=%22M6 52 L24 22 L34 36 L42 26 L58 52Z%22 fill=%22%23fff%22/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -474,6 +475,10 @@
   #drop .dif.black { background: #111; border-radius: 1px; transform: rotate(45deg) scale(.86); }
   #drop .dr-row { display: flex; gap: 10px; margin-top: 14px; }
   #drop .dr-row #dr-back { flex: none; padding: 0 18px; border: 0; border-radius: 14px; background: rgba(255,255,255,.1); color: #fff; font: 700 14px Inter; cursor: pointer; }
+  /* the world still going up behind the front page: a pressed button shows it's on its way */
+  #menu.warming button.queued { position: relative; overflow: hidden; }
+  #menu.warming button.queued::after { content: ''; position: absolute; left: 0; bottom: 0; height: 4px; width: 40%; background: var(--ink, #111); opacity: .5; animation: warmbar 0.9s ease-in-out infinite alternate; }
+  @keyframes warmbar { from { left: 0; } to { left: 60%; } }
   #drop .dr-row .ride { flex: 1; font-size: 30px; padding: 12px 18px; }
   #drop .dr-hint { margin-top: 10px; font: 600 11px Inter; letter-spacing: .08em; opacity: .55; }
   @media (max-height: 520px) {
@@ -837,6 +842,7 @@
     var id = null;
     try { id = new URLSearchParams(location.search).get('park') || localStorage.getItem('alpenglow.park'); } catch (e) {}
     if (!PARKS[id]) id = 'yard';
+    window.__park = [id, PARKS[id][0], PARKS[id][1]];
     var touch = matchMedia('(pointer: coarse)').matches;
     // ([x] becomes a key cap)
     var TIPS = touch ? [
@@ -924,7 +930,7 @@
       document.getElementById('cardname').textContent = PARKS[id][0];
       document.getElementById('cardtag').textContent = PARKS[id][1];
       var T = document.getElementById('loadtitle');
-      T.innerHTML = 'SHREDLINE'.split('').map(function (ch, i) { return '<span style="animation-delay:' + (i * 0.05) + 's,' + (0.8 + i * 0.12) + 's">' + ch + '</span>'; }).join('');
+      T.innerHTML = 'STOMPED'.split('').map(function (ch, i) { return '<span style="animation-delay:' + (i * 0.05) + 's,' + (0.8 + i * 0.12) + 's">' + ch + '</span>'; }).join('');
       path = document.getElementById('ld-path'); carve = document.getElementById('ld-carve'); rider = document.getElementById('ld-rider');
       len = path.getTotalLength();
       carve.style.strokeDasharray = len.toFixed(1); carve.style.strokeDashoffset = len.toFixed(1);
@@ -973,7 +979,7 @@
   </div>
   <canvas class="flakes"></canvas>
   <div class="top">
-    <div class="t" id="loadtitle">SHREDLINE</div>
+    <div class="t" id="loadtitle">STOMPED</div>
     <div class="pk"><b>LOADING</b><span id="loadpark">The Yard</span><em id="loadtag">Open session</em></div>
   </div>
   <div class="card"><div class="ph"></div><div class="cn" id="cardname">The Yard</div><div class="ct" id="cardtag">Open session</div></div>
@@ -1007,7 +1013,7 @@
 <div id="menu" class="hidden">
   <div class="m-bg"></div>
   <header class="m-top">
-    <div class="logo">SHREDLINE</div>
+    <div class="logo">STOMPED</div>
     <div class="m-icons">
       <button class="acct" id="ib-acct" title="Your account"><span class="av" id="ac-av">R</span><span class="tx"><b id="ac-name">Rider</b><small id="ac-sub">GUEST</small></span><i class="dot" id="ac-dot"></i></button>
       <span class="wallet" title="Flakes: earned on every run, spent in the Shop"><svg class="flake" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 1v14M1.9 4.5l12.2 7M1.9 11.5l12.2-7M6 2.6 8 4.4l2-1.8M6 13.4l2-1.8 2 1.8"/></svg><b id="flakes">0</b></span>
@@ -1109,7 +1115,7 @@
   </section>
 
   <section class="tab t-wide hidden" id="tab-updates">
-    <div class="eyebrow">SHREDLINE / PATCH NOTES</div>
+    <div class="eyebrow">STOMPED / PATCH NOTES</div>
     <h1>WHAT'S NEW ON THE MOUNTAIN</h1>
     <div class="notes" id="notes"></div>
   </section>
@@ -1227,7 +1233,7 @@
     <div id="timer" class="disp">00:00</div>
   </div>
   <div id="course" class="shadow"><svg id="minimap" viewBox="0 0 44 128"></svg><div class="alt" id="alt"></div><div class="left" id="kmleft"></div></div>
-  <div id="np"><div class="tray"><button id="np-open" title="Music"><span class="art"><i></i></span><span class="tx"><b id="np-t">First Chair</b><small id="np-a">Shredline FM</small><span class="pr"><i id="np-p"></i></span></span></button><div class="ctl"><button id="np-prev" aria-label="Previous">&#9664;&#9664;</button><button id="np-play" aria-label="Pause"><span></span></button><button id="np-next" aria-label="Next">&#9654;&#9654;</button></div></div></div>
+  <div id="np"><div class="tray"><button id="np-open" title="Music"><span class="art"><i></i></span><span class="tx"><b id="np-t">First Chair</b><small id="np-a">Stomped FM</small><span class="pr"><i id="np-p"></i></span></span></button><div class="ctl"><button id="np-prev" aria-label="Previous">&#9664;&#9664;</button><button id="np-play" aria-label="Pause"><span></span></button><button id="np-next" aria-label="Next">&#9654;&#9654;</button></div></div></div>
   <div id="botbar"><i></i></div>
   <div id="camlbl"></div>
   <div id="stats" class="hidden"></div>
@@ -1241,12 +1247,12 @@
     <button id="tc-jump">POP</button>
   </div>
 </div>
-<div id="rotate"><div><svg viewBox="0 0 64 64" width="64" height="64" fill="none" stroke="#fff" stroke-width="3"><rect x="20" y="8" width="24" height="44" rx="4"/><path d="M50 40 A18 18 0 0 1 32 58" stroke-linecap="round"/><path d="M36 54 L31 58 L36 62" stroke-linecap="round"/></svg><b>TURN YOUR PHONE SIDEWAYS</b><span>Shredline plays in landscape</span></div></div>
+<div id="rotate"><div><svg viewBox="0 0 64 64" width="64" height="64" fill="none" stroke="#fff" stroke-width="3"><rect x="20" y="8" width="24" height="44" rx="4"/><path d="M50 40 A18 18 0 0 1 32 58" stroke-linecap="round"/><path d="M36 54 L31 58 L36 62" stroke-linecap="round"/></svg><b>TURN YOUR PHONE SIDEWAYS</b><span>Stomped plays in landscape</span></div></div>
 <button id="tc-cam" class="hidden" style="z-index:13;border-radius:50%;border:2px solid rgba(255,255,255,.5);background:rgba(16,22,34,.35);color:#fff;font:400 11px Knewave">CAM</button>
 
 <div id="parks" class="hidden">
   <div id="pk-stage"><img id="pk-img" src="art/map.webp" alt="" loading="lazy" /><div id="pk-pins"></div></div>
-  <div class="pk-head"><div class="logo" style="font-size:40px">SHREDLINE</div><div class="t">CHOOSE YOUR PARK</div><button class="pk-back" id="pk-back">← Back</button></div>
+  <div class="pk-head"><div class="logo" style="font-size:40px">STOMPED</div><div class="t">CHOOSE YOUR PARK</div><button class="pk-back" id="pk-back">← Back</button></div>
   <div class="pk-panel">
     <h3 id="pk-name">The Yard</h3><span class="tag" id="pk-tag">Open session</span>
     <p id="pk-blurb"></p>
@@ -1278,6 +1284,38 @@
   <div class="row"><button class="btn p" id="p-resume">Resume</button><button class="btn" id="p-restart">Restart</button><button class="btn" id="p-menu">Menu</button></div>
 </div></div>
 
+<script>
+  // The front page is plain markup over a painting, so it opens now, not after the mountain's
+  // built: the world goes up behind it. A click (or Enter) before the game's wired up waits for
+  // it and goes through the moment it is. Links straight into a run keep the loading screen.
+  (function () {
+    var q = new URLSearchParams(location.search);
+    if (q.get('event') || (q.get('menu') === '0' && q.get('mode')) || q.get('watch') || q.get('cwatch') || q.get('drop')) return;
+    window.__instant = true;
+    var m = document.getElementById('menu');
+    m.classList.remove('hidden'); m.classList.add('warming');
+    document.getElementById('loading').classList.add('hidden');
+    // what the game would fill in first: the park's card, the mode you rode last
+    var P = window.__park, $ = function (i) { return document.getElementById(i); };
+    if (P) { $('b-park-pick').style.backgroundImage = 'url(art/' + P[0] + '.webp)'; $('pc-name').textContent = P[1]; $('pc-sub').textContent = P[2]; }
+    var mode = 'run';
+    try { mode = localStorage.getItem('alpenglow.mode') || 'run'; } catch (e) {}
+    if (P && P[0] !== 'yard') mode = 'run';
+    [].forEach.call(document.querySelectorAll('#modes button'), function (c) { c.classList.toggle('on', c.dataset.mode === mode); });
+    $('ridelbl').textContent = { run: 'RIDE', park: 'RIDE THE PARK', race: 'RACE' }[mode] || 'RIDE';
+    var who = 'solo';
+    try { who = localStorage.getItem('alpenglow.who') || 'solo'; } catch (e) {}
+    [].forEach.call(document.querySelectorAll('.who button'), function (c) { c.classList.toggle('on', c.dataset.who === who); });
+    $('best').style.visibility = 'hidden';
+    var hold = function (el) { if (window.__early) window.__early.classList.remove('queued'); window.__early = el; el.classList.add('queued'); };
+    document.addEventListener('click', function (e) {
+      if (window.__ready) return;
+      var t = e.target.closest && e.target.closest('button');
+      if (t) { e.stopPropagation(); hold(t); }
+    }, true);
+    document.addEventListener('keydown', function (e) { if (!window.__ready && e.key === 'Enter') hold(document.getElementById('b-ride')); }, true);
+  })();
+</script>
 <script type="module" src="/src/main.js"></script>
 </body>
 </html>

@@ -126,7 +126,7 @@ final class GameViewController: UIViewController, WKNavigationDelegate, WKUIDele
             iv.layer.addSublayer(shade)
         }
         let title = UILabel()
-        title.text = "SHREDLINE"
+        title.text = "STOMPED"
         title.font = UIFont.systemFont(ofSize: 56, weight: .black).italic()
         title.textColor = .white
         title.layer.shadowColor = UIColor.black.cgColor; title.layer.shadowOpacity = 0.35; title.layer.shadowRadius = 10; title.layer.shadowOffset = .zero

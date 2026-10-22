@@ -1,4 +1,4 @@
-// Shredline: boot, game modes (The Run / Ski Park / Race the Cup), scoring, loop, HUD.
+// Stomped: boot, game modes (The Run / Ski Park / Race the Cup), scoring, loop, HUD.
 import * as THREE from 'three';
 import { Environment, PRESETS, COND, WX_WEIGHT } from './sky.js';
 import { Terrain, CLOUDS } from './terrain.js';
@@ -199,32 +199,45 @@ class Game {
     // the people on the hill, the riders, the park's batching and the shaders: none of it shows
     // on the front page (it's art over the world), so that opens now and this finishes behind
     // it; going straight into a run waits for it here
+    const wmark = (m) => (window.__loadT ??= []).push([Math.round(performance.now()), 'warm', m]);
     const warm = async () => {
       await nextFrame();
+      wmark('start');
       try { this.props.buildPeople(); } catch (e) { console.warn('people', e); }
       this.populateFree(true);
+      wmark('people');
       // the park never moves (bar what you knock over): its matrices are worked out once
       const live = new Set();
       for (const o of this.smash.all) for (const q of o.parts) q.obj?.traverse((x) => live.add(x));
       batchStatic(this.park.group, live);
       this.park.group.updateMatrixWorld(true);
       this.park.group.traverse((o) => { if (!live.has(o)) o.matrixAutoUpdate = false; });
+      wmark('batch');
       await nextFrame();
       // compile the shaders (in parallel where the browser can) before the first frame of a run
       this.rig.menu(0.016, 0, this.skiers);
       this.terrain.update(this.camera.position.x, this.camera.position.z, 1e9);
       this.forest.update(this.camera, 0, this.env.sunDir);
+      // (into the post-processing's buffer, as a real frame draws them: compiled for the canvas
+      // they'd be the wrong variant, sRGB out with tone mapping, and the first frame would build
+      // every one again)
+      this.renderer.setRenderTarget(this.post.composer.readBuffer);
       await this.renderer.compileAsync(scene, this.camera).catch(() => this.renderer.compile(scene, this.camera));
+      this.renderer.setRenderTarget(null);
+      wmark('compile');
       // the buildings' painted stone, timber and concrete (proctex.js)
       await paintTextures(nextFrame);
+      wmark('paint');
       // and every texture up to the GPU a few at a time (the first frame would otherwise do the
       // lot at once, a second or more of nothing on a phone)
       await this.uploadTextures();
+      wmark('upload');
       // behind the front page, one whole frame unseen: whatever's left to set up (the shadow
       // pass's shaders, the post-processing's) happens now, not on the first frame of a run
       if (!direct) {
         await nextFrame();
         this.post.render(0.016);
+        wmark('first frame');
       }
       // and the other skies, for when the weather turns
       setTimeout(() => { for (const p of Object.values(PRESETS)) this.env.ensure(p.hdri); }, 2500);
@@ -262,6 +275,10 @@ class Game {
     window.__h = heightAt;
     window.__lift = this.props.liftPoints;
     window.__ready = true;
+    // (the front page opened before any of this: a button pressed meanwhile goes through now)
+    $('menu').classList.remove('warming');
+    const early = window.__early;
+    if (early) { window.__early = null; early.classList.remove('queued'); setTimeout(() => early.click(), 0); }
     this.cloud.start();
     // keep the game on the device for next time (sw.js; the published site only)
     if (import.meta.env.PROD && 'serviceWorker' in navigator) setTimeout(() => navigator.serviceWorker.register(BASE + 'sw.js').catch(() => {}), 3000);
@@ -610,6 +627,7 @@ class Game {
   showBest() {
     const m = this.selMode;
     const best = m === 'race' ? Number(store.get('best', '0')) : Number(store.get(m === 'run' ? 'best.run.' + this.selPark : 'best.park', '0'));
+    $('best').style.visibility = '';
     $('best').innerHTML = best ? (m === 'race' ? `Best Cup time<b>${fmt(best)}</b>` : `Best ${m === 'run' ? MAPS[this.selPark].name : 'park session'}<b>${best.toLocaleString()}</b>`) : 'No score yet<b>Send it</b>';
   }
 

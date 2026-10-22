@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { heightAt, PARK_ID, EXTENT_Z } from './course.js';
 import { buildChunkArrays } from './chunkbuild.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { LO } from './gfx.js';
+import { LO, QUALITY_NAME } from './gfx.js';
 import { makeSimplex, smoothstep } from './noise.js';
 
 export const CHUNK = 128;
@@ -42,7 +42,9 @@ export const CLOUD_GLSL = `
   }`;
 
 // scanned PBR textures (Poly Haven, CC0; tools/build_assets.py)
-const TEX = import.meta.env.BASE_URL + (LO ? 'tex/lo/' : 'tex/');
+// (the 2K set only on Ultra: at 1K the snow reads the same from the chase camera, and it's a
+// quarter of the download, the decoding and the upload)
+const TEX = import.meta.env.BASE_URL + (QUALITY_NAME !== 'ultra' ? 'tex/lo/' : 'tex/');
 const texLoader = new THREE.TextureLoader();
 export function pbr(name, srgb) {
   const t = texLoader.load(TEX + name);

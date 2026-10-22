@@ -465,7 +465,7 @@ function strapTexture(c, accent) {
     g.fillStyle = ink; g.fillRect(0, 2, 256, 2); g.fillRect(0, 28, 256, 2);
     g.font = 'italic 800 19px "Barlow Condensed", Inter, sans-serif';
     g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText('SHREDLINE', 128, 16.5);
+    g.fillText('STOMPED', 128, 16.5);
     // silicone beads either side of the name
     g.fillStyle = hsl.l > 0.6 ? 'rgba(0,0,0,.35)' : 'rgba(255,255,255,.28)';
     for (const x0 of [8, 196]) for (let x = x0; x < x0 + 52; x += 7) { g.beginPath(); g.ellipse(x, 16, 1.6, 5, 0, 0, TAU); g.fill(); }
@@ -723,7 +723,7 @@ export function paintDesign(g, w, h, design, c1, c2, board = false) {
   g.textAlign = 'center'; g.textBaseline = 'middle';
   const dark = (new THREE.Color(c1).getHSL({}).l > 0.55);
   g.fillStyle = design === 'logo' ? B : dark ? 'rgba(0,0,0,.55)' : 'rgba(255,255,255,.75)';
-  g.fillText('SHREDLINE', 0, 0);
+  g.fillText('STOMPED', 0, 0);
   g.restore();
   if (design === 'logo') { g.fillStyle = B; g.fillRect(0, h * 0.06, w, h * 0.012); g.fillRect(0, h * 0.93, w, h * 0.012); }
 }
@@ -773,7 +773,7 @@ function paintPlankSides(g, Lo, c1, c2, rm) {
   g.font = `italic 900 ${Math.round(bw * 0.62)}px "Barlow Condensed", Inter, sans-serif`;
   g.textAlign = 'center'; g.textBaseline = 'middle';
   g.fillStyle = hexs(new THREE.Color(c2).getHSL({}).l < 0.2 ? c1 : c2);
-  g.globalAlpha = 0.85; g.fillText('SHREDLINE', 0, 0);
+  g.globalAlpha = 0.85; g.fillText('STOMPED', 0, 0);
   g.restore();
   g.globalAlpha = 0.12; g.fillStyle = '#ffffff';
   for (let x = b0 + 3; x < b0 + bw - 3; x += 3) g.fillRect(x, 0, 1, h);

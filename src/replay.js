@@ -205,7 +205,7 @@ export class Replay {
       const blob = new Blob(this.chunks, { type: this.rec?.mimeType ?? type });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `shredline-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.${type.includes('mp4') ? 'mp4' : 'webm'}`;
+      a.download = `stomped-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.${type.includes('mp4') ? 'mp4' : 'webm'}`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 4000);
       this.rec = null;

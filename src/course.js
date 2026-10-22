@@ -277,7 +277,9 @@ export function heightAt(x, z) {
     const r = ridgedSoft(N, (x + wx) / 3000, (z + wz) / 3000, 4);
     const base = fbm(N2, x / 4000, z / 4000, 3);
     const rough = fbm(N3, x / 420, z / 420, 3);
-    y += Math.min(far, 1.4) * (r * 1250 + base * 320 + rough * 38 - 120);
+    // (kept low and rounded, snowed-over domes rather than rock towers: they sit back as soft
+    // shapes behind the park)
+    y += Math.min(far, 1.4) * (r * 720 + base * 380 + rough * 12 - 60);
   }
 
   // groomed piste vs natural snow

@@ -1,4 +1,4 @@
-# Shredline
+# Stomped
 
 A freeski park game in the browser, with accounts, global leaderboards and multiplayer servers, built around the feel of the indie game Cork7: corks, flips, grabs, rails and butters scored by rotation, with lines that build a multiplier until you land or bail. One 3.4 km run from the summit to the village (~1 km of vertical) lined with kickers and rail zones, a terrain park, a downhill race, and a mountain full of AI skiers, under photographed skies with scanned snow and rock and real people on the skis.
 

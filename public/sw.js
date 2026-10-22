@@ -2,7 +2,7 @@
 // from the network when there is one (so a new version shows up straight away), the built code
 // (its names change with every version) from the cache for good, and the textures, people,
 // skies and art from the cache at once while a fresh copy comes down for next time.
-const CACHE = 'shredline-v1';
+const CACHE = 'stomped-v1';
 const KEEP = /\/assets\//;
 const SWR = /\/(tex|people|sky|art|trees)\/|fonts\.(googleapis|gstatic)\.com/;
 

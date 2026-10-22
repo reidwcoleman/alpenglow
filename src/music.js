@@ -11,10 +11,10 @@ const PROGS = [
 ];
 // each progression is a 'track' on the in-run player, with its own tempo
 export const TRACKS = [
-  { name: 'First Chair', by: 'Shredline FM', bpm: 112 },
-  { name: 'Corduroy', by: 'Shredline FM', bpm: 104 },
-  { name: 'Low Sun', by: 'Shredline FM', bpm: 120 },
-  { name: 'Last Lift', by: 'Shredline FM', bpm: 98 },
+  { name: 'First Chair', by: 'Stomped FM', bpm: 112 },
+  { name: 'Corduroy', by: 'Stomped FM', bpm: 104 },
+  { name: 'Low Sun', by: 'Stomped FM', bpm: 120 },
+  { name: 'Last Lift', by: 'Stomped FM', bpm: 98 },
 ];
 const A2 = 110;
 const hz = (semi) => A2 * Math.pow(2, semi / 12);

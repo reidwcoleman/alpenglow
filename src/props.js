@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildClinic, waveFlags, Kit } from './clinic.js';
 import { tower, terminal, liftMaterials } from './liftworks.js';
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { RoundedBoxGeometry } from './rbox.js';
 import { heightAt, centerX, halfWidth, GATES, KICKERS, LIFT, START_Z, FINISH_Z, SECTIONS, ZONES, slopeAt, MAP, JUMPS, RAILS, HOSPITAL } from './course.js';
 import { mulberry32, makeSimplex, smoothstep } from './noise.js';
 import { pbr } from './terrain.js';
@@ -196,7 +196,9 @@ function windowTex() {
 function chalet(K, wins, x, gy, z, yaw, o) {
   const { w, d, h, rh, rnd } = o;
   const P = o.plinth ?? 1.2;
-  const put = (key, g, opts) => { g.rotateY(yaw); g.translate(x, gy, z); return K.add(key, g, opts); };
+  // (turned and set in one pass over the vertices)
+  const M = new THREE.Matrix4().makeRotationY(yaw).setPosition(x, gy, z);
+  const put = (key, g, opts) => { g.applyMatrix4(M); return K.add(key, g, opts); };
   const B = (sx, sy, sz, px, py, pz) => new THREE.BoxGeometry(sx, sy, sz).translate(px, py, pz);
   const RB = (sx, sy, sz, r, px, py, pz) => new RoundedBoxGeometry(sx, sy, sz, 2, r).translate(px, py, pz);
   const DARK = 0x3a2416;
@@ -256,9 +258,9 @@ function chalet(K, wins, x, gy, z, yaw, o) {
       parts.push(['wood', B(ww * 0.55, wh + 0.1, 0.05, u + sd * (ww * 0.5 + 0.11 + ww * 0.275), y, depth + 0.05), o.shutter]);
       parts.push(['snow', RB(ww * 0.55, 0.06, 0.08, 0.02, u + sd * (ww * 0.5 + 0.11 + ww * 0.275), y + wh / 2 + 0.08, depth + 0.05), 0xffffff]);
     }
-    for (const [k, g, t] of parts) { g.rotateY(turn); put(k, g, { tint: t }); }
-    const gl = new THREE.PlaneGeometry(ww, wh).translate(u, y, depth + 0.085).rotateY(turn);
-    gl.rotateY(yaw); gl.translate(x, gy, z);
+    const MW = new THREE.Matrix4().makeRotationY(turn).premultiply(M);
+    for (const [k, g, t] of parts) { g.applyMatrix4(MW); K.add(k, g, { tint: t }); }
+    const gl = new THREE.PlaneGeometry(ww, wh).translate(u, y, depth + 0.085).applyMatrix4(MW);
     wins.push(gl);
   };
   const floors = h > 5.4 ? 2 : 1;
@@ -690,7 +692,7 @@ export class Props {
     const liftTex = canvasTex(1024, 128, (c, w, h) => {
       c.fillStyle = '#1f5a9e'; c.fillRect(0, 0, w, h);
       c.fillStyle = '#fff'; c.font = 'bold 74px Helvetica, Arial'; c.textAlign = 'center'; c.textBaseline = 'middle';
-      c.fillText('SHREDLINE EXPRESS', w / 2, h / 2 + 4);
+      c.fillText('SUMMIT EXPRESS', w / 2, h / 2 + 4);
       c.fillStyle = '#ff8a3d'; c.fillRect(0, h - 10, w, 10);
     });
     const liftSignM = new THREE.MeshStandardMaterial({ map: liftTex, roughness: 0.5, emissive: 0xffffff, emissiveMap: liftTex, emissiveIntensity: 0.15 });
@@ -885,7 +887,7 @@ export class Props {
     const panel = (color) => canvasTex(128, 96, (g, w, h) => {
       g.fillStyle = color; g.fillRect(0, 0, w, h);
       g.fillStyle = 'rgba(255,255,255,0.9)'; g.fillRect(0, h * 0.42, w, h * 0.16);
-      g.fillStyle = color; g.font = 'bold 15px Helvetica'; g.textAlign = 'center'; g.fillText('SHREDLINE', w / 2, h * 0.54);
+      g.fillStyle = color; g.font = 'bold 15px Helvetica'; g.textAlign = 'center'; g.fillText('STOMPED', w / 2, h * 0.54);
     });
     const red = new THREE.MeshStandardMaterial({ map: panel('#d42a2a'), side: THREE.DoubleSide, roughness: 0.7 });
     const blue = new THREE.MeshStandardMaterial({ map: panel('#1f4fc9'), side: THREE.DoubleSide, roughness: 0.7 });
@@ -942,7 +944,7 @@ export class Props {
         const gr = c.createLinearGradient(0, 0, w, 0); gr.addColorStop(0, '#ff6a3d'); gr.addColorStop(1, '#ffb347');
         c.fillStyle = gr; c.fillRect(0, 0, w, h);
         c.fillStyle = '#fff'; c.font = 'bold 64px Helvetica'; c.textAlign = 'center'; c.textBaseline = 'middle';
-        c.fillText('SHREDLINE  ·  START', w / 2, h / 2 + 3);
+        c.fillText('STOMPED  ·  START', w / 2, h / 2 + 3);
       }), roughness: 0.6,
     }));
     banner.position.set(x, gy + 3.0, z + 0.55);
@@ -991,7 +993,7 @@ export class Props {
 
     // A-board fences + banners on both sides of the last 260 m, then the finish corral
     const boardTex = canvasTex(1024, 128, (c, w, h) => {
-      const brands = [['#1f4fc9', 'SUMMIT'], ['#e8432e', 'SHREDLINE'], ['#111', 'FRESH TRACKS'], ['#f2b705', 'POWDER CO.'], ['#18a868', 'GLACIER']];
+      const brands = [['#1f4fc9', 'SUMMIT'], ['#e8432e', 'STOMPED'], ['#111', 'FRESH TRACKS'], ['#f2b705', 'POWDER CO.'], ['#18a868', 'GLACIER']];
       const bw = w / brands.length;
       brands.forEach(([col, t], i) => {
         c.fillStyle = col; c.fillRect(i * bw, 0, bw, h);
@@ -1239,11 +1241,11 @@ export class Props {
   buildNets() {
     const tex = canvasTex(128, 64, (c, w, h) => {
       c.clearRect(0, 0, w, h);
-      c.strokeStyle = 'rgba(40,120,235,1)'; c.lineWidth = 3;
+      c.strokeStyle = 'rgba(255,112,40,1)'; c.lineWidth = 3;
       c.beginPath();
       for (let i = -w; i < w * 2; i += 8) { c.moveTo(i, 0); c.lineTo(i + h, h); c.moveTo(i, h); c.lineTo(i + h, 0); }
       c.stroke();
-      c.fillStyle = 'rgba(30,96,215,1)'; c.fillRect(0, 0, w, 7); c.fillRect(0, h - 4, w, 4);
+      c.fillStyle = 'rgba(232,88,24,1)'; c.fillRect(0, 0, w, 7); c.fillRect(0, h - 4, w, 4);
     });
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.anisotropy = 8;

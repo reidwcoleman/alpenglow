@@ -168,7 +168,7 @@ export class Rescue {
     this.walkT = 0;
     p.held = true; p.frozen = true;
     this.hideSkis(true);
-    this.ui('PATCHED UP', 'Shredline Mountain Hospital');
+    this.ui('PATCHED UP', 'Summit Mountain Clinic');
     // a view of the doors
     this.camPos.copy(h.door).addScaledVector(h.out, 13).add(_w.set(-h.out.z * 6, 3.6, h.out.x * 6));
     this.camLook.copy(h.door).add(_w.set(0, 1.4, 0));

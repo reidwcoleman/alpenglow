@@ -169,7 +169,7 @@ const GOLD_DEFS = [
   ['trail', 'Prism', 0xff4f8b, 0x22e0ff, 0, { fx: 'rainbow' }], ['jacket', 'Vapor', 0xff7ad9, 0x5bd8ff, 5], ['skis', 'Tiger King', 0xffd21e, 0x1b1d24, 0, { design: 'tiger' }],
   ['head', 'Halo Beanie', 0xfff2b0, null, 0, { beanie: true, pom: true }], ['goggles', 'Prism Mirror', 0xb39ddb, 0x22e0ff], ['deck', 'Molten', 0x1b1d24, 0xff6a12, 0, { design: 'split' }],
   ['jacket', 'Royal Puffer', 0x3b2a8a, 0xd9a520, 13], ['pants', 'Royal Camo', 0x3b2a8a, 0x1b1d24, 2], ['trail', 'Supernova', 0xffffff, 0xffd36b, 0, { fx: 'sparkle' }],
-  ['skis', 'Gold Standard Pro', 0xd9a520, 0xffffff, 0, { design: 'chevron' }], ['jacket', 'Shredline Gold', 0xd9a520, 0xffffff, 1], ['deck', 'Crown', 0xd9a520, 0x1b1d24, 0, { design: 'logo' }],
+  ['skis', 'Gold Standard Pro', 0xd9a520, 0xffffff, 0, { design: 'chevron' }], ['jacket', 'Stomped Gold', 0xd9a520, 0xffffff, 1], ['deck', 'Crown', 0xd9a520, 0x1b1d24, 0, { design: 'logo' }],
   ['trail', 'Legend', 0xffd21e, 0xff4f8b, 0, { fx: 'rainbow' }],
 ];
 GOLD_DEFS.forEach(([cat, name, c, c2 = null, pat = 0, extra = {}], i) => ITEMS.push(I('gold-' + (i + 1), cat, name, 'gold', 0, c, c2, pat, { ...extra, level: i * 4 + 2 })));
