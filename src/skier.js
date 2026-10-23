@@ -43,12 +43,11 @@ const TAU = Math.PI * 2;
 // flips build to 6.3 rad/s, 6.8 held hard, 9.5 held with a grab
 const C7 = {
   slopeG: 9.81 * 1.7, airG: 17.5, roll: 0.13, kTuck: 0.0024, kRide: 0.0028, deep: 1.38, edgeDrag: 0.38, brake: 17, vmax: 43,
-  spin0: 6.3, spin1: 6.3 * 1.08, spinGrab: 6.3 * 1.08 * 1.4, spinUp: 10, spinRev: 28, spinDown: 6.5,
-  // (our runs are steeper for longer than Cork7's park: past its cruising pace, ~137 km/h riding
-  // (Cork7 sits at 140-144 down its parks), ~150 tucked, the snow holds you back more; lined up
-  // for a kicker the pace eases toward the speed that kicker's built for, so it lands you on its
-  // landing as Cork7's do)
-  vSoft: 38, vSoftTuck: 42, gov: 0.2, govMax: 4.5,
+  spin0: 6.3, spin1: 6.3 * 1.08, spinGrab: 6.3 * 1.08 * 1.4, spinUp: 6.5, spinRev: 18, spinDown: 6.5,
+  // (a calm pace: past ~83 km/h riding, ~100 tucked, the snow holds you back more; lined up for a
+  // kicker the pace goes to the speed that kicker's built for, so it lands you on its landing as
+  // Cork7's do)
+  vSoft: 23, vSoftTuck: 28, gov: 0.2, govMax: 6,
 };
 // the player's riding runs at this pace of real time (main.js steps him at h * pace; the HUD
 // shows real speed and air time). Below 1 everything goes the same way, only slower; Cork7's own
@@ -642,8 +641,8 @@ export class Skier {
     const r = heightAt(this.pos.x + sx, this.pos.z + sz) - heightAt(this.pos.x - sx, this.pos.z - sz);
     // (deep snow off the piste, or a powder day, drags harder)
     const k = (tucking ? C7.kTuck : C7.kRide) * (powder > 0.5 ? C7.deep : 1);
-    const Ja = this.lipAhead(0, 110);
-    const vs = Math.min(tucking ? C7.vSoftTuck : C7.vSoft, Ja?.pspeed ? Ja.pspeed * (tucking ? 1.12 : 1.06) : 99);
+    const Ja = this.lipAhead(0, 110, 0.25);
+    const vs = Ja?.pspeed ? Ja.pspeed * (tucking ? 1.12 : 1.06) : tucking ? C7.vSoftTuck : C7.vSoft;
     const over = Math.max(0, speed - vs);
     // (a board floats in powder where skis sink; it stops a little slower, sideways on its heels)
     const deep = powder > 0.5 && B ? 0.72 : 1;
@@ -720,8 +719,9 @@ export class Skier {
       if (this.assist) { /* the landing assist has the rotation now */ }
       else if (this.strict && this.auto && !this.auto.turn) { /* a combo is flying the spin */ }
       else if (this.strict) {
-        // Cork7's spin: held, it builds toward 6.3 rad/s (6.8 held hard, 9.5 with a grab) at
-        // 10/s (28 the other way); let go, it winds down at 6.5/s
+        // Cork7's spin: held, it builds toward 6.3 rad/s (6.8 held hard, 9.5 with a grab), a
+        // little slower than Cork7's 10/s so the body has some weight (18 the other way); let go,
+        // it winds down at 6.5/s
         const s = Math.abs(c.steer) > 0.06 ? clamp(c.steer, -1, 1) : 0;
         this.spinTight = ease(this.spinTight ?? 0, Math.abs(s), s ? 12 : 10, dt);
         this.airGrab = ease(this.airGrab ?? 0, c.grab ? 1 : 0, 12, dt);
@@ -1089,11 +1089,15 @@ export class Skier {
     if (!A.plan) {
       const T = this.flightTime(), avail = Math.max(0.05, T - 0.3);
       let spin = A.spin ?? 0, flips = A.flips ?? 0;
-      // (the player gets the trick he asked for, whether there's the air for it or not)
-      while (!this.strict && spin > 0 && !A.turn && (spin / 180) * Math.PI / avail > 13.5) spin -= 180;
-      while (!this.strict && flips > 0 && (flips * TAU) / avail > 12.5) flips--;
+      // (no more than a body can really turn in the air there is: Cork7's own rates, ~545
+      // degrees a second at the most spinning, ~390 flipping; a bigger ask comes out smaller)
+      // (what's still to turn: a combo upgraded mid-spin has some of it done already)
       const sd = A.dir ?? 1;
       const f0 = A.f0 ?? (this.heading - hor) / Math.PI;
+      const doneS = Math.abs((this.heading - hor) / Math.PI - f0) * Math.PI, doneF = Math.abs(this.pitch);
+      const capSp = this.strict ? C7.spinGrab : 13.5, capFl = this.strict ? C7.spin1 : 12.5;
+      while (spin > 0 && !A.turn && ((spin / 180) * Math.PI - doneS) / avail > capSp) spin -= 180;
+      while (flips > 0 && (flips * TAU - doneF) / avail > capFl) flips--;
       let type = flips ? A.type : null;
       // a cork with no spin left is just a flip
       if (type && !spin && !['backflip', 'frontflip', 'sideflip'].includes(type)) type = TRICKS[type].back ? 'backflip' : 'frontflip';
@@ -1141,7 +1145,7 @@ export class Skier {
       const gk = A.grab ? 1.12 : 1;
       const rS = 7.4 * gk * (this.popped ? 1.06 : 1);
       const fr = TRICKS[this.trickType]?.rate ?? 5.6, rP = fr * gk * (this.perfectPop ? 1.08 : 1);
-      const capS = strict ? 13 : 14, capP = strict ? fr * 1.8 : 13;
+      const capS = strict ? C7.spinGrab : 14, capP = strict ? C7.spin1 : 13;
       // its natural length peaks near the body's own rate; a big air stretches it over most of the flight
       const D = Math.min(win, Math.max(Math.abs(dS) * 1.3 / rS, Math.abs(dP) * 1.3 / rP, win * 0.55));
       // (already turning: wound up off the lip, or a combo upgraded mid-spin, carries straight on)
@@ -1227,13 +1231,14 @@ export class Skier {
     return T;
   }
 
-  // a kicker whose lip is between a and b metres ahead of us (and we're on it)
-  lipAhead(a, b) {
+  // a kicker whose lip is between a and b metres ahead of us (and we're on it; cone: how much
+  // wider the window opens per metre still to go, for one we're only heading for)
+  lipAhead(a, b, cone = 0) {
     const z = this.pos.z;
     for (const J of JUMPS) {
       const d = J.lip - z;
       if (d < a || d > b) continue;
-      if (Math.abs(this.pos.x - centerX(J.lip) - J.dx) < J.w / 2 - 0.3) return J;
+      if (Math.abs(this.pos.x - centerX(J.lip) - J.dx) < J.w / 2 - 0.3 + d * cone) return J;
     }
     return null;
   }
