@@ -2041,13 +2041,19 @@ class Game {
       if (this.player && !this.player.ai) {
         // (on a rail a quick tap of A/D is a whole swap: the steer is on at once, as in the air)
         const c = inp.read(dt, !this.player.onGround && !this.player.grind, !!this.player.grind);
-        // in the air the arrows spin and flip by hand only once held: a quick tap is a combo
+        // in the air a spin starts the moment its key goes down, as in Cork7 (a quick tap of the
+        // arrows still makes a combo, which takes the spin over from wherever it's got to). A flip
+        // off W / S, the pad or touch is as quick; off the up and down arrows it waits until held,
+        // since a tap of those is a grab or a flip combo
         if (!this.player.onGround && !this.player.grind && this.world.arcade) {
-          this.holdS = Math.abs(c.steer) > 0.15 ? (this.holdS ?? 0) + dt : 0;
-          this.holdF = c.flip || c.roll ? (this.holdF ?? 0) + dt : 0;
-          if (this.holdS < 0.17) c.steer = 0;
-          if (this.holdF < 0.17) { c.flip = 0; c.roll = 0; }
-        } else this.holdS = this.holdF = 0;
+          const arrowsOnly = inp.scheme === 'arrows' && (inp.down('ArrowUp') || inp.down('ArrowDown')) && !inp.down('KeyW') && !inp.down('KeyS')
+            && !inp.touch.tuck && !inp.touch.brake && !inp.pad();
+          this.holdF = c.flip ? (this.holdF ?? 0) + dt : 0;
+          if (arrowsOnly && this.holdF < 0.17) c.flip = 0;
+          // (the classic keys roll on the arrows: those taps are combos too)
+          this.holdR = c.roll ? (this.holdR ?? 0) + dt : 0;
+          if (!inp.pad() && this.holdR < 0.17) c.roll = 0;
+        } else this.holdF = this.holdR = 0;
         Object.assign(this.player.controls, c);
         if (this.state === 'lift') {
           Object.assign(this.player.controls, { steer: 0, tuck: 0, brake: 0, jump: false, grab: false });

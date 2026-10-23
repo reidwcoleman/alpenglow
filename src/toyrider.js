@@ -1,12 +1,12 @@
 // The riders' own figure, after Cork7's: a chunky park skier, one smooth skinned mesh in flat
-// colour. A boxy puffy hooded shell to the top of the thighs, very baggy pants stacked over the
+// colour. A boxy puffy hooded shell cut at the hips, long straight baggy pants stacked over the
 // boots, fat sleeves, big mitts, a big head under the helmet. It comes out as a "kit" in the same
 // shape the scanned bodies load as (avatar.js): the same bone names, rest pose and limb lengths,
 // so AvatarRig poses it and the gear sits on it. The figure itself is modelled in Blender
 // (blender/rider.py); the loft here is only what's drawn if that file doesn't arrive.
 
 // the head (and the helmet on it) grown from the head bone: blender/rider.py HS must match
-export const HEAD_SCALE = 1.3;
+export const HEAD_SCALE = 1.15;
 // the torso this much shorter than the skeleton below was drawn: the chest squeezed between the
 // waist and the shoulders, everything above (and the arms) brought down. blender/rider.py TORSO
 // must match
@@ -161,11 +161,11 @@ export function toyKit() {
     return { ...Object.fromEntries(Object.entries(spineW(y)).map(([b, v]) => [b, v * (1 - kk)])), Bip01_L_Thigh: kk * l, Bip01_R_Thigh: kk * (1 - l) };
   };
   //            y      half width  half depth  z      squareness
-  const SHELL = [[0.725, 0.21, 0.172, 0.026, 2.3], [0.755, 0.209, 0.168, 0.022, 2.4], [0.84, 0.203, 0.16, 0.012, 2.5], [0.93, 0.196, 0.151, 0.004, 2.5],
+  const SHELL = [[0.8, 0.208, 0.172, 0.03, 2.3], [0.83, 0.206, 0.168, 0.026, 2.4], [0.88, 0.2, 0.16, 0.016, 2.5], [0.93, 0.194, 0.152, 0.006, 2.5],
     [1.04, 0.188, 0.142, -0.004, 2.5], [1.17, 0.191, 0.141, -0.008, 2.4], [1.28, 0.195, 0.143, -0.012, 2.3], [1.355, 0.192, 0.138, -0.016, 2.2],
     [1.405, 0.178, 0.128, -0.02, 2.1], [1.445, 0.152, 0.114, -0.022, 2.0], [1.482, 0.118, 0.098, -0.02, 2.0], [1.515, 0.092, 0.088, -0.016, 2.0],
     [1.55, 0.081, 0.084, -0.01, 2.0], [1.585, 0.077, 0.082, -0.008, 2.0]];
-  geos.push(tube(SHELL.map(([y, a, b, z, p]) => ring(V(0, y, z), UP, X, a, b, y < 0.88 ? hemW(y, 0.88 * (1 - (y - 0.725) / 0.16)) : spineW(y), 2, p)), I, 0.05, 0.15));
+  geos.push(tube(SHELL.map(([y, a, b, z, p]) => ring(V(0, y, z), UP, X, a, b, y < 0.95 ? hemW(y, 0.7 * (1 - (y - 0.8) / 0.15)) : spineW(y), 2, p)), I, 0.05, 0.15));
 
   for (const s of [1, -1]) {
     const S = s > 0 ? 'L' : 'R', B = (n) => `Bip01_${S}_${n}`;
@@ -297,7 +297,7 @@ vPart = aPart; vRest = position;
 {
   // the loose ends move in the wind: the shell's hem, the cuffs, the pants' legs
   float pp = floor( aPart + 0.5 );
-  float loose = pp == 2.0 ? smoothstep( 0.86, 0.68, position.y ) : pp == 4.0 ? 0.4 : pp == 7.0 ? 0.5 : pp == 6.0 ? 0.25 : 0.0;
+  float loose = pp == 2.0 ? smoothstep( 0.95, 0.8, position.y ) : pp == 4.0 ? 0.4 : pp == 7.0 ? 0.5 : pp == 6.0 ? 0.25 : 0.0;
   float fl = sin( uFlap.x * 24.0 + position.y * 31.0 + position.x * 17.0 + position.z * 13.0 ) * 0.6 + sin( uFlap.x * 41.0 + position.y * 57.0 - position.x * 23.0 ) * 0.4;
   transformed += objectNormal * fl * loose * uFlap.y * 0.008;
 }`);
@@ -334,9 +334,9 @@ float tyOld(float y) { return y <= 0.93 ? y : y >= 1.38 - ${TORSO.toFixed(4)} ? 
     else if ( pat > 4.5 && pat < 5.5 ) col = mix( uJacket2, jk, smoothstep( 0.7, 1.45, ry ) );
     else if ( pat > 1.5 && pat != 4.0 && pat != 5.0 && pat != 8.0 ) { float n = tyH( floor( vRest * 14.0 ) ); col = n > 0.66 ? uJacket2 : col; }
     // a darker hem band and cuffs
-    if ( part < 2.5 && vRest.y < 0.72 ) col *= 0.8;
+    if ( part < 2.5 && vRest.y < 0.86 ) col *= 0.8;
     // the zip up the front, and a little white tab on the chest
-    if ( part < 2.5 && vRest.z > 0.0 && abs( vRest.x ) < 0.0045 && ry > 0.69 && ry < 1.56 ) col = vec3( 0.05, 0.06, 0.07 );
+    if ( part < 2.5 && vRest.z > 0.0 && abs( vRest.x ) < 0.0045 && ry > 0.84 && ry < 1.56 ) col = vec3( 0.05, 0.06, 0.07 );
     if ( part < 2.5 && vRest.z > 0.05 && vRest.x > 0.085 && vRest.x < 0.13 && ry > 1.3 && ry < 1.33 ) col = vec3( 0.92 );
   }
   else if ( part < 5.5 ) col = uGloves;

@@ -758,7 +758,10 @@ export class Skier {
     // flips (W front, S back) and rolls (arrows): the axis is set the moment one starts,
     // and spinning at that moment makes it off-axis (cork, bio, rodeo, misty, flatspin)
     const fIn = arc ? c.flip || 0 : c.flip, rIn = arc ? c.roll || 0 : 0;
-    if (!this.trickType && !this.assist && this.airTime > 0.04 && (fIn || rIn)) {
+    // (Cork7 turns you over the moment the key goes down; a straight flip that a spin joins inside
+    // the first quarter second is made off-axis after all)
+    const retype = this.strict && this.airTime <= 0.25 && (this.trickType === 'backflip' || this.trickType === 'frontflip') && Math.abs(c.steer) > 0.4 && fIn;
+    if ((!this.trickType || retype) && !this.assist && this.airTime > (this.strict ? 0 : 0.04) && (fIn || rIn)) {
       // (Cork7: an off-axis flip has to be set at the lip, the spin and the flip together inside
       // 0.25 s; a flip started later while spinning is a flip, the spin just tilts it)
       const spinning = (Math.abs(c.steer) > 0.4 || Math.abs(this.spin) > 0.7) && (!this.strict || this.airTime <= 0.25);
@@ -773,7 +776,7 @@ export class Skier {
       if (T.roll) this.flipAxis.set(0, 0, 1);
       else this.flipAxis.set(Math.cos(T.a), 0, Math.sin(T.a) * sd * (fIn < 0 ? 1 : -1)).normalize();
     }
-    if (this.trickType && this.airTime > 0.08 && !this.assist && !(this.strict && this.auto)) {
+    if (this.trickType && this.airTime > (this.strict ? 0 : 0.08) && !this.assist && !(this.strict && this.auto)) {
       const T = TRICKS[this.trickType];
       const held = T.roll ? rIn : fIn;
       if (this.strict) {
