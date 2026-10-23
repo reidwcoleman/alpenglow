@@ -326,7 +326,7 @@ export function beanieGeometry(pom) {
 
 // ---------------------------------------------------------------- goggles
 // a curved frame, a spherical lens bulging out of it, a strap round the back of the head
-const GOG = { cy: 0.02, cz: 0.022, r: 0.137, span: 1.0, h0: -0.01, h1: 0.05 };
+const GOG = { cy: 0.02, cz: 0.002, r: 0.137, span: 1.0, h0: -0.056, h1: 0.05 };
 function inGoggle(s, y, grow = 0) {
   // a rounded rectangle in (arc length, height), with a notch for the nose
   const half = GOG.span * GOG.r + grow;
@@ -409,39 +409,29 @@ export function lensGeometry() {
   })());
 }
 
-// a mirrored, spherical lens: the sky in it with a hard horizon, the coating's colour, a
-// rainbow sheen toward the rim (thin-film), and the standard lighting's sun glint on top
+// Cork7's lens: a smooth tinted shield, not a mirror. Its own colour, a soft gloss that brightens
+// toward the top and darkens toward the nose, a faint sheen of the sky across it at a glance
 export function lensMaterial(tint) {
   const c = new THREE.Color(tint);
-  // (a toned mirror, as Cork7's: it reads grey against the white frame, not white)
-  const m = new THREE.MeshStandardMaterial({ color: c.clone().multiplyScalar(0.5), metalness: 0.9, roughness: 0.08, envMapIntensity: 1.0 });
+  const m = new THREE.MeshStandardMaterial({ color: c.clone().multiplyScalar(0.62), metalness: 0.35, roughness: 0.2, envMapIntensity: 0.55 });
   const u = { uTint: { value: c } };
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, u);
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 uTint;')
       .replace('#include <opaque_fragment>', `
 {
-  vec3 V = normalize( vViewPosition );
   vec3 N = normalize( normal );
-  float ndv = clamp( abs( dot( N, V ) ), 0.0, 1.0 );
-  float fr = pow( 1.0 - ndv, 3.0 );
-  vec3 R = inverseTransformDirection( reflect( -V, N ), viewMatrix );
-  // the horizon in the lens: the sky above bright, the snow below darker and bluish
-  float sky = smoothstep( -0.04, 0.08, R.y );
-  float lum = dot( outgoingLight, vec3( 0.299, 0.587, 0.114 ) );
-  outgoingLight *= mix( 0.6, 1.2, sky );
-  outgoingLight += uTint * lum * 0.6 * ( 1.0 - sky * 0.5 );
-  // thin-film sheen at grazing angles
-  vec3 film = 0.5 + 0.5 * cos( 6.2831 * ( fr * 0.9 + R.y * 0.25 + vec3( 0.0, 0.33, 0.67 ) ) );
-  outgoingLight = mix( outgoingLight, film * max( lum, 0.15 ) * 1.4, fr * 0.45 );
-  // the coating darkens toward the bottom of the lens a little (a gradient mirror)
-  outgoingLight *= 0.85 + 0.15 * smoothstep( -0.6, 0.6, N.y );
-  // (never as bright as the frame round it)
-  outgoingLight = min( outgoingLight, vec3( 0.34, 0.38, 0.43 ) * ( 0.6 + 0.4 * sky ) );
+  vec3 V = normalize( vViewPosition );
+  float fr = pow( 1.0 - clamp( abs( dot( N, V ) ), 0.0, 1.0 ), 3.0 );
+  // (lighter across the top, deeper at the bottom)
+  outgoingLight *= 0.8 + 0.35 * smoothstep( -0.5, 0.6, N.y );
+  outgoingLight += uTint * fr * 0.12;
+  // (never as bright as the white frame round it)
+  outgoingLight = min( outgoingLight, uTint * 0.3 + 0.025 );
 }
 #include <opaque_fragment>`);
   };
-  m.customProgramCacheKey = () => 'ag-lens';
+  m.customProgramCacheKey = () => 'ag-lens2';
   return m;
 }
 

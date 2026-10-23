@@ -114,6 +114,48 @@ export const PARK = MAP.park ?? { top: -1e5, z0: -1e5, z1: -1e5 };
 export const PARK_JUMPS = MAP.parkJumps ?? [];
 const RUN_JUMPS = MAP.runJumps;
 export const JUMPS = [...RUN_JUMPS, ...PARK_JUMPS].sort((a, b) => a.z - b.z);
+// Cork7-sized kickers. Each map lists a kicker by its old size; it's built the way Cork7 builds
+// them: a steep kicker throwing you out at a set angle up (22 to 37 degrees, steeper the bigger),
+// a gap behind its lip, then a big landing hill whose knuckle stands a table's length out and
+// whose landing runs on for 50 to 120 m. Each grows as big as it can up to Cork7's size for it
+// without running into the next feature in its lane or off the side of the piste.
+{
+  const lane = (o) => o.J ? [o.J.dx - o.J.w / 2 - 2 - 0.9 * o.J.h, o.J.dx + o.J.w / 2 + 2 + 0.9 * o.J.h] : [o.dx - 3, o.dx + 3];
+  const others = [...MAP.runRails ?? [], ...MAP.parkRails ?? []].map((R) => ({ z0: R.z - 9, dx: R.dx }));
+  if (MAP.park) others.push({ z0: (MAP.pipe?.z0 ?? 1100) - 4, dx: MAP.pipe?.dx ?? 54, half: 25 }, { z0: (MAP.rollers?.z0 ?? 1058) - 4, dx: MAP.rollers?.dx ?? -58, half: 12 });
+  for (const J of JUMPS) {
+    if (J.drop) continue;
+    const grade = sectionAt(J.z).grad, hw = halfWidth(J.z);
+    const size = (h) => {
+      const lip = clamp(13 + 2.2 * h, 19, 37);
+      const t = Math.tan((lip * Math.PI) / 180);
+      const w = Math.max(J.w, 11 + 1.2 * h);
+      const ramp = Math.max(J.ramp, (2 * h) / (t + Math.max(0.05, grade)));
+      return { h, lip, w, ramp, table: 2.3 * h + 12, land: 8.5 * h + 25 };
+    };
+    const fits = (S) => {
+      const lo = J.dx - S.w / 2 - 2 - 0.9 * S.h, hi = J.dx + S.w / 2 + 2 + 0.9 * S.h;
+      if (Math.max(Math.abs(lo), Math.abs(hi)) > hw + 4) return false;
+      let room = Infinity;
+      for (const K of JUMPS) if (K !== J && K.z > J.z) { const [a, b] = lane({ J: K }); if (b > lo && a < hi) room = Math.min(room, K.z - J.z - 3); }
+      for (const o of others) if (o.z0 > J.z && o.dx + (o.half ?? 3) > lo && o.dx - (o.half ?? 3) < hi) room = Math.min(room, o.z0 - J.z - 3);
+      // (short of room, the landing and then the table give first)
+      let len = S.ramp + S.table + S.land;
+      if (len > room) S.land = Math.max(3.5 * S.h + 15, room - S.ramp - S.table);
+      len = S.ramp + S.table + S.land;
+      if (len > room) S.table = Math.max(1.4 * S.h + 6, room - S.ramp - S.land);
+      return S.ramp + S.table + S.land <= room;
+    };
+    let S = null;
+    for (let h = clamp(2 * J.h + 1.5, 3.2, 11); h >= J.h; h -= 0.25) { const T = size(h); if (fits(T)) { S = T; break; } }
+    if (!S) continue;
+    Object.assign(J, { h: S.h, w: S.w, ramp: S.ramp, table: S.table, land: S.land, lipAngle: S.lip, gap: true });
+    // the knuckle: ~0.6 of the kicker's height below its lip, the landing hill built up to it out
+    // of the falling slope (no taller than Cork7's, 1.3 times the kicker)
+    J.knuck = Math.min(1.3 * S.h, 0.4 * S.h + grade * S.table);
+    J.grade = grade;
+  }
+}
 for (const J of JUMPS) {
   // (the approach speed that lands in the sweet spot, roughly, where it wasn't measured)
   J.speed ??= 7.5 + 2.1 * J.h;
@@ -147,6 +189,15 @@ function jumpProfile(u, J) {
     return J.h * (1 - smoothstep(L + J.table, J.len, u));
   }
   if (u < L) { const t = u / L; return J.h * t * t; }
+  if (J.gap) {
+    // Cork7's: the kicker's back face drops into a gap, the landing hill rises out of it to the
+    // knuckle a table's length out, then the long landing
+    const back = J.h * (1 - smoothstep(L, L + 2.2 + 0.2 * J.h, u));
+    // (the hill's face never climbs against the fall line: come up short and you roll on down
+    // into the landing rather than stopping in the gap)
+    const hill = u < L + J.table ? Math.max(0, J.knuck - 0.85 * J.grade * (L + J.table - u)) : J.knuck * (1 - smoothstep(L + J.table + 2, J.len, u));
+    return Math.max(back, hill);
+  }
   // the lip's back face drops onto the table
   const top = J.h - 0.45;
   if (u < L + 0.7) return J.h - 0.45 * smoothstep(L, L + 0.7, u);
@@ -217,7 +268,8 @@ export function parkAt(dx, z) {
 
 // areas the features' own fine surface covers (the coarse terrain hides underneath)
 export const PARK_FEET = [
-  ...JUMPS.map((J) => ({ dx0: J.dx - J.w / 2 - 3 - J.h, dx1: J.dx + J.w / 2 + 3 + J.h, z0: J.z - 3, z1: J.z + J.len + 3 })),
+  // (a big kicker's snow is sampled coarser: it's big and smooth, and there's a lot of it)
+  ...JUMPS.map((J) => ({ dx0: J.dx - J.w / 2 - 3 - J.h, dx1: J.dx + J.w / 2 + 3 + J.h, z0: J.z - 3, z1: J.z + J.len + 3, res: clamp(0.11 * J.h + 0.12, 0.3, 0.75) })),
   ...(MAP.park ? [{ dx0: ROLLERS.dx - 10, dx1: ROLLERS.dx + 10, z0: ROLLERS.z0 - 3, z1: ROLLERS.z1 + 3 }, { dx0: PIPE.dx - 23, dx1: PIPE.dx + 23, z0: PIPE.z0 - 3, z1: PIPE.z1 + 3 }] : []),
   ...RAILS.map((R) => ({ dx0: R.dx - RAMP_W * 2 - 1.5, dx1: R.dx + RAMP_W * 2 + 1.5, z0: R.z - RAMP_L - 3, z1: R.z + 5 })),
 ];
@@ -348,6 +400,8 @@ function sweetSpeed(J, g = 9.81, kick = 0) {
     const il = 1 / Math.hypot(1, sl);
     // (kick: the lip's own pop, square to the ramp)
     let z = zl, y = y0, vz = v * il - kick * sl * il, vy = v * sl * il + kick * il;
+    // (the player leaves a Cork7 kicker at its own angle, the kick straight up)
+    if (kick && J.lipAngle) { const i = (J.lipAngle * Math.PI) / 180; vz = v * Math.cos(i); vy = v * Math.sin(i) + kick; }
     for (let t = 0; t < 8; t += 0.01) {
       vy -= g * 0.01; z += vz * 0.01; y += vy * 0.01;
       if (t > 0.05 && y <= heightAt(centerX(z) + J.dx, z)) return z;

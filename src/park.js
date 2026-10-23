@@ -118,7 +118,7 @@ export class Park {
     for (const f of PARK_FEET) {
       const isPipe = f.dx0 < PIPE.dx && f.dx1 > PIPE.dx;
       const isRoll = f.dx0 < ROLLERS.dx && f.dx1 > ROLLERS.dx;
-      const g = surface(f, isPipe ? 0.25 : isRoll ? 0.5 : 0.3, isPipe ? 0.6 : isRoll ? 0.6 : 0.3);
+      const g = surface(f, isPipe ? 0.25 : isRoll ? 0.5 : f.res ?? 0.3, isPipe ? 0.6 : isRoll ? 0.6 : f.res ?? 0.3);
       const m = new THREE.Mesh(g, this.snowMat);
       m.receiveShadow = true;
       this.group.add(m);

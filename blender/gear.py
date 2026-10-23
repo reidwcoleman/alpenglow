@@ -183,7 +183,8 @@ finish(helm, 0.05)
 OBJS.append(helm)
 
 # ------------------------------------------------------------------ goggles: frame and lens
-GOG = dict(cy=0.02, cz=0.022, r=0.137, span=1.0, h0=-0.01, h1=0.05)
+# (Cork7's: big, low over the eyes to the bridge of the nose, close to the face)
+GOG = dict(cy=0.02, cz=0.002, r=0.137, span=1.0, h0=-0.056, h1=0.05)
 
 
 def in_goggle(s, y, grow=0):
@@ -225,7 +226,8 @@ smooth(gog)
 finish(gog, 0.03)
 OBJS.append(gog)
 mat('g_lens', (1, 1, 1), TINT)
-lens = mesh('lens', lambda bm, mi: goggle_sheet(bm, mi('g_lens'), -0.004, GOG['r'] + 0.024, 0.008), MATS)
+# (a little inside the frame's edge, so a thin white rim shows all the way round it)
+lens = mesh('lens', lambda bm, mi: goggle_sheet(bm, mi('g_lens'), -0.011, GOG['r'] + 0.024, 0.006), MATS)
 # (the sheet comes out facing in, toward the face: the lens is seen from outside)
 bm = bmesh.new(); bm.from_mesh(lens.data)
 bmesh.ops.reverse_faces(bm, faces=bm.faces); bm.to_mesh(lens.data); bm.free()

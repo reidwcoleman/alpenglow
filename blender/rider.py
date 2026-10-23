@@ -81,9 +81,9 @@ hood = []
 for i in range(11):
     a = -1.3 + i / 10 * 2.6
     k = 1 - abs(a) / 1.7
-    c = (math.sin(a) * 0.108, 1.548 - 0.03 * abs(math.sin(a)) + 0.012 * k, -0.045 - math.cos(a) * 0.088)
+    c = (math.sin(a) * 0.106, 1.515 - 0.025 * abs(math.sin(a)), -0.05 - math.cos(a) * 0.085)
     t = (math.cos(a), 0, math.sin(a))
-    hood.append(dict(c=c, t=t, side=(0, 1, 0), a=0.05 + 0.03 * k, b=0.034 + 0.026 * k, part=2, w={'Bip01_Spine2': 0.4, 'Bip01_Neck': 0.6}))
+    hood.append(dict(c=c, t=t, side=(0, 1, 0), a=0.04 + 0.02 * k, b=0.03 + 0.018 * k, part=2, w={'Bip01_Spine2': 0.5, 'Bip01_Neck': 0.5}))
 parts.append(loft('hood', hood, seg=16, cap0=0.8, cap1=0.8))
 
 for s in (1, -1):
@@ -141,7 +141,7 @@ parts.append(loft('neck', [dict(c=(0, 1.49, -0.012), t=UP, side=X, a=0.058, b=0.
 head = []
 # (a full round face, filling the helmet out to just behind the goggles)
 HC, HW = V(0, 1.676, 0.022), {'Bip01_Head': 1}
-head.append(ellipsoid('head', tuple(HC), (0.092, 0.108, 0.108), HW, 0, rings=14, seg=28))
+head.append(ellipsoid('head', tuple(HC), (0.097, 0.106, 0.11), HW, 0, rings=14, seg=28))
 head.append(ellipsoid('nose', tuple(HC + V(0, -0.03, 0.104)), (0.015, 0.022, 0.018), HW, 0, rings=6, seg=12, axis=(0, 1, 0.4)))
 for s in (1, -1):
     head.append(ellipsoid('ear', tuple(HC + V(s * 0.093, -0.012, -0.012)), (0.012, 0.025, 0.017), HW, 0, rings=6, seg=12))
