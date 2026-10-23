@@ -15,7 +15,8 @@ export function loadGLB(name) {
   if (!files.has(name)) {
     // (the decoding on two worker threads, off the main one)
     if (!loader) { MeshoptDecoder.useWorkers?.(2); loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder); }
-    files.set(name, loader.loadAsync(BASE + name + '.glb'));
+    // (the size in the address: a rebuilt file is a new one to the cache on the device)
+    files.set(name, loader.loadAsync(BASE + name + '.glb?v=' + (MANIFEST[name] ?? 0)));
   }
   return files.get(name);
 }

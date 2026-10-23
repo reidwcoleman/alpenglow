@@ -78,7 +78,7 @@ export class Floodlights {
       this.group.add(s, s.target);
       this.spots.push(s);
     }
-    this.intensity = 12000;
+    this.intensity = 4200;
     this.t = 0;
   }
 
@@ -108,7 +108,7 @@ export class Floodlights {
     T.forEach((t, i) => { pos[i * 3] = t.head.x; pos[i * 3 + 1] = t.head.y; pos[i * 3 + 2] = t.head.z; });
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    this.glowM = new THREE.PointsMaterial({ map: glowTexture(), size: 16, sizeAttenuation: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: 0xffffff, fog: false });
+    this.glowM = new THREE.PointsMaterial({ map: glowTexture(), size: 10, sizeAttenuation: true, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending, color: 0xffffff, fog: false });
     this.glow = new THREE.Points(g, this.glowM);
     this.glow.frustumCulled = false;
     this.group.add(this.glow);
@@ -120,7 +120,7 @@ export class Floodlights {
         void main() { vL = position.z / 20.0; vec4 mv = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
           vN = normalize(normalMatrix * mat3(instanceMatrix) * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }`,
       fragmentShader: `uniform float uK; varying float vL; varying vec3 vN; varying vec3 vV;
-        void main() { float rim = pow(abs(dot(vN, vV)), 1.5); float a = (1.0 - vL) * (1.0 - vL) * rim * 0.05 * uK;
+        void main() { float rim = pow(abs(dot(vN, vV)), 1.5); float a = (1.0 - vL) * (1.0 - vL) * rim * 0.03 * uK;
           gl_FragColor = vec4(vec3(1.0, 0.9, 0.75) * a, 1.0); }`,
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
     });
@@ -141,7 +141,7 @@ export class Floodlights {
     // the masts stand all day; the lamps, their glow and beams only at night
     this.group.visible = true;
     this.glow.visible = on; this.beams.visible = on;
-    this.lampM.emissiveIntensity = on ? 40 : 0;
+    this.lampM.emissiveIntensity = on ? 14 : 0;
     this.beamM.uniforms.uK.value = on ? 1 : 0;
     for (const s of this.spots) { s.visible = on; s.intensity = on ? this.intensity : 0; }
     this.assigned = null;

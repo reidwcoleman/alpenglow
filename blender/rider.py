@@ -30,6 +30,22 @@ UP, X, Z = (0, 1, 0), (1, 0, 0), (0, 0, 1)
 # the head bone: toyrider.js HEAD_SCALE must match
 HS = 1.3
 HEAD = P['Bip01_Head']
+# the torso is this much shorter than the skeleton it's drawn on: the chest is squeezed between the
+# waist and the shoulders, and everything above (and the arms) comes down. toyrider.js TORSO
+# must match
+TORSO = 0.075
+
+
+def TY(y):
+    if y <= 0.93:
+        return y
+    if y >= 1.38:
+        return y - TORSO
+    return 0.93 + (y - 0.93) * (1 - TORSO / 0.45)
+
+
+ARMS = ('Clavicle', 'UpperArm', 'Forearm', 'Hand')
+RB = {n: (p - V(0, TORSO, 0) if any(a in n for a in ARMS) else V(p.x, TY(p.y), p.z)) for n, p, _ in BONES}
 
 
 def spineW(y):
@@ -69,10 +85,12 @@ SHELL = [(0.64, 0.216, 0.182, 0.042, 2.3), (0.67, 0.215, 0.18, 0.038, 2.4), (0.7
          (1.505, 0.099, 0.096, -0.014, 2.0), (1.535, 0.092, 0.092, -0.01, 2.0), (1.56, 0.09, 0.09, -0.006, 2.0)]
 rings = []
 for i, (y, a, b, z, p) in enumerate(SHELL):
-    r = dict(c=(0, y, z), t=UP, side=X, a=a, b=b, p=p, part=2, w=hemW(y, 0.95 * (1 - (y - 0.64) / 0.28)) if y < 0.92 else spineW(y))
+    # (cut looser than the body: wider and a touch deeper below the chest)
+    k = 1 + 0.08 * max(0, min(1, (1.4 - y) / 0.3))
+    r = dict(c=(0, y, z), t=UP, side=X, a=a * k, b=b * (1 + (k - 1) * 0.5), p=p, part=2, w=hemW(y, 0.95 * (1 - (y - 0.64) / 0.28)) if y < 0.92 else spineW(y))
     # (loose folds hanging down the body, deeper toward the hem; the collar stays smooth)
     if y < 1.36:
-        r['fold'] = creases(5, 0.028 * (1.4 - y), i * 0.9)
+        r['fold'] = creases(5, 0.034 * (1.4 - y), i * 0.9)
     rings.append(r)
 parts.append(loft('shell', rings, seg=32, cap0=0.05, cap1=0.15))
 
@@ -94,18 +112,20 @@ for s in (1, -1):
     leg = []
     # pants: loose from the hips (not so full there that they come through the shell when a knee
     # comes up), wider on down, creased, bunching at the knee
-    TH = [(0, 0.09, 0.092, {'Bip01_Pelvis': 0.5, B('Thigh'): 0.5}), (0.2, 0.092, 0.095, {'Bip01_Pelvis': 0.15, B('Thigh'): 0.85}), (0.45, 0.086, 0.088, {B('Thigh'): 1}),
-          (0.6, 0.105, 0.11, {B('Thigh'): 1}), (0.72, 0.124, 0.13, {B('Thigh'): 1}), (0.88, 0.127, 0.133, {B('Thigh'): 0.8, B('Calf'): 0.2}), (1.0, 0.128, 0.135, {B('Thigh'): 0.5, B('Calf'): 0.5})]
+    # (very baggy: out wide from under the shell, the legs hanging straight down outside the knees)
+    TH = [(0, 0.09, 0.092, {'Bip01_Pelvis': 0.5, B('Thigh'): 0.5}), (0.2, 0.093, 0.096, {'Bip01_Pelvis': 0.15, B('Thigh'): 0.85}), (0.45, 0.09, 0.092, {B('Thigh'): 1}),
+          (0.6, 0.114, 0.12, {B('Thigh'): 1}), (0.72, 0.15, 0.156, {B('Thigh'): 1}), (0.88, 0.155, 0.162, {B('Thigh'): 0.8, B('Calf'): 0.2}), (1.0, 0.156, 0.164, {B('Thigh'): 0.5, B('Calf'): 0.5})]
+    out = lambda t: V(s * 0.016 * t, 0, 0)
     for i, (t, a, b, w) in enumerate(TH):
-        leg.append(dict(c=tuple(H.lerp(K, t)), t=tuple(K - H), side=X, a=a, b=b, w=w, part=6, fold=creases(4, 0.042 if t > 0.6 else 0.012, i * 1.3 + s)))
+        leg.append(dict(c=tuple(H.lerp(K, t) + out(max(0, t - 0.4) / 0.6)), t=tuple(K - H), side=X, a=a, b=b, w=w, part=6, fold=creases(4, 0.052 if t > 0.6 else 0.014, i * 1.3 + s)))
     # (deep front to back: the boot's cuff leans forward inside and mustn't come through the seat;
     # the hem stacks in rolls over the boot)
-    SH = [(0.1, 0.13, 0.136, {B('Thigh'): 0.25, B('Calf'): 0.75}), (0.3, 0.133, 0.142, {B('Calf'): 1}), (0.5, 0.137, 0.147, {B('Calf'): 1}),
-          (0.64, 0.14, 0.151, {B('Calf'): 1}), (0.74, 0.143, 0.155, {B('Calf'): 1}), (0.81, 0.144, 0.156, {B('Calf'): 1}), (0.87, 0.147, 0.159, {B('Calf'): 1}),
-          (0.93, 0.149, 0.161, {B('Calf'): 1}), (0.975, 0.15, 0.162, {B('Calf'): 1}), (1.0, 0.148, 0.16, {B('Calf'): 1})]
+    SH = [(0.1, 0.156, 0.164, {B('Thigh'): 0.25, B('Calf'): 0.75}), (0.3, 0.158, 0.168, {B('Calf'): 1}), (0.5, 0.161, 0.172, {B('Calf'): 1}),
+          (0.64, 0.164, 0.176, {B('Calf'): 1}), (0.74, 0.167, 0.18, {B('Calf'): 1}), (0.81, 0.169, 0.182, {B('Calf'): 1}), (0.87, 0.172, 0.185, {B('Calf'): 1}),
+          (0.93, 0.174, 0.187, {B('Calf'): 1}), (0.975, 0.175, 0.188, {B('Calf'): 1}), (1.0, 0.173, 0.186, {B('Calf'): 1})]
     for i, (t, a, b, w) in enumerate(SH):
-        leg.append(dict(c=tuple(K.lerp(A, t) + V(0, 0, -0.012 * math.sin(t * math.pi))), t=tuple(A - K), side=X, a=a, b=b, w=w, part=7,
-                        fold=creases(4, 0.03, i * 1.1 - s)))
+        leg.append(dict(c=tuple(K.lerp(A, t) + out(1) + V(0, 0, -0.012 * math.sin(t * math.pi))), t=tuple(A - K), side=X, a=a, b=b, w=w, part=7,
+                        fold=creases(4, 0.04, i * 1.1 - s)))
     # (the hem stays open wide over the boot, not gathered in)
     parts.append(loft('leg' + S, leg, seg=28, cap0=0.3, cap1=-0.04))
 
@@ -126,7 +146,7 @@ for s in (1, -1):
         (E.lerp(W, 0.86), W - E, 0.078, 0.08, {B('Forearm'): 0.9, B('Hand'): 0.1}, 4),
         (E.lerp(W, 0.92), W - E, 0.074, 0.076, {B('Forearm'): 0.85, B('Hand'): 0.15}, 4),
     ]
-    parts.append(loft('arm' + S, [dict(c=tuple(c), t=tuple(t), side=Z, a=a, b=b, w=w, part=pt, fold=creases(3, 0.036, k * 0.8))
+    parts.append(loft('arm' + S, [dict(c=tuple(c), t=tuple(t), side=Z, a=a * 1.08, b=b * 1.08, w=w, part=pt, fold=creases(3, 0.036, k * 0.8))
                                   for k, (c, t, a, b, w, pt) in enumerate(arm)], seg=22, cap0=0.3, cap1=-0.35))
     # the mitt: a big padded paddle with a gauntlet over the cuff, a thumb on the inside
     d = (W - E).normalized()
@@ -160,6 +180,12 @@ parts += head
 for o in parts:
     subdivide(o, 1)
     smooth(o)
+    # then the shorter torso: the arms come down with the shoulders, the legs stay
+    if o.name.startswith('leg'):
+        continue
+    rigid = o.name.startswith(('arm', 'mitt', 'thumb'))
+    for v in o.data.vertices:
+        v.co.z = v.co.z - TORSO if rigid else TY(v.co.z)
 body = join(parts, 'rider')
 
 # the armature, rest pose = the game's
@@ -173,11 +199,12 @@ kids = {}
 for n, p, par in BONES:
     if par:
         kids.setdefault(par, []).append(n)
-for n, p, par in BONES:
+for n, _, par in BONES:
+    p = RB[n]
     b = arm_d.edit_bones.new(n)
     b.head = G(*p)
     ch = kids.get(n)
-    tail = P[ch[0]] if ch and (P[ch[0]] - p).length > 0.02 else p + V(0, 0.06, 0)
+    tail = RB[ch[0]] if ch and (RB[ch[0]] - p).length > 0.02 else p + V(0, 0.06, 0)
     b.tail = G(*tail)
     eb[n] = b
 for n, p, par in BONES:

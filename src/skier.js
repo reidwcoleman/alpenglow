@@ -44,10 +44,11 @@ const TAU = Math.PI * 2;
 const C7 = {
   slopeG: 9.81 * 1.7, airG: 17.5, roll: 0.13, kTuck: 0.0024, kRide: 0.0028, deep: 1.38, edgeDrag: 0.38, brake: 17, vmax: 43,
   spin0: 6.3, spin1: 6.3 * 1.08, spinGrab: 6.3 * 1.08 * 1.4, spinUp: 10, spinRev: 28, spinDown: 6.5,
-  // (our runs are steeper for longer than Cork7's park: past its cruising pace, ~105 km/h riding,
-  // ~125 tucked, the snow holds you back more; lined up for a kicker the pace eases toward the
-  // speed that kicker's built for, so it lands you on its landing as Cork7's do)
-  vSoft: 29, vSoftTuck: 35, gov: 0.2, govMax: 4.5,
+  // (our runs are steeper for longer than Cork7's park: past its cruising pace, ~137 km/h riding
+  // (Cork7 sits at 140-144 down its parks), ~150 tucked, the snow holds you back more; lined up
+  // for a kicker the pace eases toward the speed that kicker's built for, so it lands you on its
+  // landing as Cork7's do)
+  vSoft: 38, vSoftTuck: 42, gov: 0.2, govMax: 4.5,
 };
 // the player's riding runs at this pace of real time (main.js steps him at h * pace; the HUD
 // shows real speed and air time). Below 1 everything goes the same way, only slower; Cork7's own

@@ -95,6 +95,8 @@ vKind = aKind;
   float sdist = length( ip.xz - ( sa + sd * st ) ), sr = th * 0.27 + 0.6;
   float sy = mix( cameraPosition.y, uSee.y + 1.0, st );
   vSee = ( 1.0 - smoothstep( sr * 0.75, sr * 1.2, sdist ) ) * step( 0.005, st ) * ( 1.0 - smoothstep( 0.92, 0.995, st ) ) * step( sy, ip.y + th );
+  // (and one the camera is passing right through goes altogether: it never fills the screen)
+  vSee = max( vSee, 1.3 * ( 1.0 - smoothstep( th * 0.3 + 1.5, th * 0.3 + 3.5, length( ip.xz - sa ) ) ) );
 }`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
@@ -104,7 +106,7 @@ if ( vSee > 0.01 ) {
   // (an ordered 4x4 dither: an even screen of holes, three quarters open at the most)
   vec2 q = floor( gl_FragCoord.xy ), h = floor( q * 0.5 );
   float bay = fract( dot( h, vec2( 0.5, h.y * 0.75 ) ) ) * 0.25 + fract( dot( q, vec2( 0.5, q.y * 0.75 ) ) );
-  if ( bay < vSee * 0.78 ) discard;
+  if ( vSee > 1.2 || bay < vSee * 0.78 ) discard;
 }`)
       .replace('#include <color_fragment>', `
 #if defined( USE_COLOR ) || defined( USE_INSTANCING_COLOR )

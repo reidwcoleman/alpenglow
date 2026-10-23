@@ -1958,12 +1958,12 @@ class Game {
       // and hangs in the air behind; a turn sends a wave of it to the outside; clumps break off
       // the trench walls and roll
       if (pw > 0.15) {
-        const n = rnd(pw * sp * 6 * dt * near);
-        if (n) this.particles.emit(s.pos.x + fx * 0.2, y + 0.2, s.pos.z + fz * 0.2, vx * 0.35, 1.2 + pw, vz * 0.35, 1.8, 0.26 + pw * 0.16, 1.3, n, 0.6, 1.5, 1.6 + pw, 0.42);
+        const n = rnd(pw * sp * 2.5 * dt * near);
+        if (n) this.particles.emit(s.pos.x + fx * 0.2, y + 0.2, s.pos.z + fz * 0.2, vx * 0.35, 1.2 + pw, vz * 0.35, 1.8, 0.24 + pw * 0.12, 1.1, n, 0.6, 1.8, 1.2 + pw * 0.4, 0.38);
         const turn = smoothstep(0.15, 0.7, Math.abs(s.lean));
-        const nw = rnd(pw * turn * sp * 3 * dt * near);
+        const nw = rnd(pw * turn * sp * 1.6 * dt * near);
         if (nw) this.particles.emit(s.pos.x + lx * out * 0.35, y + 0.1, s.pos.z + lz * out * 0.35, vx * 0.4 + lx * out * (2 + pw * 2), 2 + pw * 1.6, vz * 0.4 + lz * out * (2 + pw * 2),
-          1.4, 0.4 + pw * 0.25, 1.1, nw, 0.4, 1.5, 1.4 + pw, 0.6);
+          1.4, 0.36 + pw * 0.2, 1.0, nw, 0.4, 1.5, 1.1 + pw * 0.4, 0.55);
         const nc = rnd(pw * sp * 0.5 * dt * near);
         if (nc) this.particles.emitChunks(s.pos.x + lx * out * 0.35, y + 0.1, s.pos.z + lz * out * 0.35, vx * 0.35 + lx * out * 1.5, 1.4 + pw, vz * 0.35 + lz * out * 1.5, 1.8, 0.06 + pw * 0.06, nc);
       }

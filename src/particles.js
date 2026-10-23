@@ -234,7 +234,7 @@ export class Particles {
       this.spawn(grain ? GRAIN : MIST,
         x + (Math.random() - 0.5) * jit, y + Math.random() * jit * 0.5, z + (Math.random() - 0.5) * jit,
         vx * kick + (Math.random() - 0.5) * sp, vy * kick + Math.random() * sp * 0.7, vz * kick + (Math.random() - 0.5) * sp,
-        size * (0.5 + Math.random()) * (grain ? 0.035 + Math.random() * 0.04 : 0.6),
+        size * (0.5 + Math.random()) * (grain ? 0.035 + Math.random() * 0.04 : 0.42),
         life * (0.6 + Math.random() * 0.6) * (grain ? 0.8 : 1.15 * hang), grain ? 1 : amp, grain ? 1 : 0.85 + 0.15 * hang);
     }
   }
@@ -252,7 +252,7 @@ export class Particles {
   // billows up and hangs, clumps knocked out to tumble away. k 0..1 how hard, pw how deep the snow
   impact(x, y, z, vx, vz, k, pw = 0, spread = 3) {
     k = Math.min(1.2, Math.max(0.1, k));
-    const ng = Math.round((24 + 90 * k) * (1 - pw * 0.4)), nm = Math.round(14 + 40 * k + pw * 40), nc = Math.round(2 + 10 * k + pw * 10);
+    const ng = Math.round((24 + 90 * k) * (1 - pw * 0.4)), nm = Math.round(7 + 18 * k + pw * 18), nc = Math.round(2 + 10 * k + pw * 10);
     for (let i = 0; i < ng; i++) {
       const a = Math.random() * TAU, s = (1.5 + Math.random() * 4.5) * (0.5 + k) * (spread / 3);
       this.spawn(GRAIN, x + Math.cos(a) * 0.3, y + 0.05, z + Math.sin(a) * 0.3,
@@ -263,7 +263,7 @@ export class Particles {
       const a = Math.random() * TAU, s = (0.6 + Math.random() * 2.2) * (0.6 + k) * (spread / 3);
       this.spawn(MIST, x + Math.cos(a) * 0.4, y + Math.random() * 0.4, z + Math.sin(a) * 0.4,
         vx * 0.25 + Math.cos(a) * s, 0.6 + Math.random() * (1.5 + 2 * k + pw * 1.5), vz * 0.25 + Math.sin(a) * s,
-        (0.3 + Math.random() * 0.4) * (0.8 + k * 0.4 + pw * 0.4), (1.3 + Math.random() * 1.2) * (1 + pw * 0.8), 1, 1.1 + pw * 0.5);
+        (0.22 + Math.random() * 0.3) * (0.8 + k * 0.3 + pw * 0.3), (1.0 + Math.random() * 0.9) * (1 + pw * 0.5), 1, 1.05 + pw * 0.3);
     }
     this.emitChunks(x, y + 0.1, z, vx * 0.35, 1 + 1.5 * k, vz * 0.35, 2 + 2.5 * k, 0.045 + 0.05 * k + pw * 0.04, nc);
   }
