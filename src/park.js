@@ -3,6 +3,7 @@
 // lips and knuckles, and the signs.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { PACE } from './skier.js';
 import { heightAt, centerX, halfWidth, PARK_FEET, RAILS, railAt, JUMPS, PIPE, ROLLERS, PARK, MAP, surfaceAt, parkAt, PARK_ID } from './course.js';
 import { propMesh, MODELS } from './models.js';
 
@@ -332,7 +333,7 @@ export class Park {
       g.font = 'italic 800 132px "Barlow Condensed", "Arial Narrow", sans-serif';
       g.fillText(String(k + 1).padStart(2, '0'), x + px / 2, y + 108);
       g.font = '700 40px Inter, Arial, sans-serif';
-      g.fillText(Math.round(J.pspeed * 3.6) + ' KM/H', x + px / 2, y + 200);
+      g.fillText(Math.round(J.pspeed * 3.6 * PACE) + ' KM/H', x + px / 2, y + 200);
     });
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;

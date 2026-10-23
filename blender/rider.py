@@ -61,17 +61,18 @@ def creases(n, amp, ph):
 
 
 parts = []
-# the shell: hem to collar, boxy and full, a little bell at the hem, the collar zipped up high
-SHELL = [(0.675, 0.226, 0.196, 0.05, 2.4), (0.705, 0.228, 0.196, 0.046, 2.5), (0.76, 0.223, 0.188, 0.034, 2.6), (0.85, 0.216, 0.171, 0.012, 2.7),
-         (0.95, 0.211, 0.163, 0.004, 2.7), (1.05, 0.213, 0.159, -0.004, 2.7), (1.16, 0.219, 0.161, -0.008, 2.6), (1.26, 0.223, 0.162, -0.012, 2.5),
-         (1.335, 0.219, 0.157, -0.016, 2.4), (1.395, 0.202, 0.146, -0.02, 2.2), (1.438, 0.17, 0.129, -0.022, 2.0), (1.472, 0.13, 0.111, -0.02, 2.0),
-         (1.505, 0.103, 0.099, -0.014, 2.0), (1.535, 0.095, 0.095, -0.01, 2.0), (1.56, 0.093, 0.093, -0.006, 2.0)]
+# the shell: a slim rider in a loose one. Narrow through the chest and shoulders, hanging long
+# and loose to the top of the thighs, opening out a little at the hem, the collar zipped up high
+SHELL = [(0.64, 0.216, 0.182, 0.042, 2.3), (0.67, 0.215, 0.18, 0.038, 2.4), (0.73, 0.209, 0.172, 0.028, 2.5), (0.83, 0.2, 0.161, 0.014, 2.5),
+         (0.95, 0.191, 0.15, 0.003, 2.5), (1.05, 0.188, 0.145, -0.004, 2.5), (1.16, 0.19, 0.146, -0.008, 2.4), (1.26, 0.193, 0.147, -0.012, 2.3),
+         (1.335, 0.192, 0.143, -0.016, 2.2), (1.395, 0.18, 0.135, -0.02, 2.1), (1.438, 0.155, 0.122, -0.022, 2.0), (1.472, 0.122, 0.106, -0.02, 2.0),
+         (1.505, 0.099, 0.096, -0.014, 2.0), (1.535, 0.092, 0.092, -0.01, 2.0), (1.56, 0.09, 0.09, -0.006, 2.0)]
 rings = []
 for i, (y, a, b, z, p) in enumerate(SHELL):
-    r = dict(c=(0, y, z), t=UP, side=X, a=a, b=b, p=p, part=2, w=hemW(y, 0.95 * (1 - (y - 0.675) / 0.25)) if y < 0.925 else spineW(y))
-    # (loose folds down the body, fuller toward the hem; the collar stays smooth)
+    r = dict(c=(0, y, z), t=UP, side=X, a=a, b=b, p=p, part=2, w=hemW(y, 0.95 * (1 - (y - 0.64) / 0.28)) if y < 0.92 else spineW(y))
+    # (loose folds hanging down the body, deeper toward the hem; the collar stays smooth)
     if y < 1.36:
-        r['fold'] = creases(5, 0.018 * (1.4 - y), i * 0.9)
+        r['fold'] = creases(5, 0.028 * (1.4 - y), i * 0.9)
     rings.append(r)
 parts.append(loft('shell', rings, seg=32, cap0=0.05, cap1=0.15))
 
@@ -93,37 +94,39 @@ for s in (1, -1):
     leg = []
     # pants: loose from the hips (not so full there that they come through the shell when a knee
     # comes up), wider on down, creased, bunching at the knee
-    TH = [(0, 0.092, 0.094, {'Bip01_Pelvis': 0.5, B('Thigh'): 0.5}), (0.2, 0.094, 0.097, {'Bip01_Pelvis': 0.15, B('Thigh'): 0.85}), (0.45, 0.088, 0.09, {B('Thigh'): 1}),
-          (0.6, 0.1, 0.104, {B('Thigh'): 1}), (0.72, 0.115, 0.119, {B('Thigh'): 1}), (0.88, 0.115, 0.12, {B('Thigh'): 0.8, B('Calf'): 0.2}), (1.0, 0.116, 0.121, {B('Thigh'): 0.5, B('Calf'): 0.5})]
+    TH = [(0, 0.09, 0.092, {'Bip01_Pelvis': 0.5, B('Thigh'): 0.5}), (0.2, 0.092, 0.095, {'Bip01_Pelvis': 0.15, B('Thigh'): 0.85}), (0.45, 0.086, 0.088, {B('Thigh'): 1}),
+          (0.6, 0.105, 0.11, {B('Thigh'): 1}), (0.72, 0.124, 0.13, {B('Thigh'): 1}), (0.88, 0.127, 0.133, {B('Thigh'): 0.8, B('Calf'): 0.2}), (1.0, 0.128, 0.135, {B('Thigh'): 0.5, B('Calf'): 0.5})]
     for i, (t, a, b, w) in enumerate(TH):
-        leg.append(dict(c=tuple(H.lerp(K, t)), t=tuple(K - H), side=X, a=a, b=b, w=w, part=6, fold=creases(4, 0.03 if t > 0.6 else 0.012, i * 1.3 + s)))
+        leg.append(dict(c=tuple(H.lerp(K, t)), t=tuple(K - H), side=X, a=a, b=b, w=w, part=6, fold=creases(4, 0.042 if t > 0.6 else 0.012, i * 1.3 + s)))
     # (deep front to back: the boot's cuff leans forward inside and mustn't come through the seat;
     # the hem stacks in rolls over the boot)
-    SH = [(0.1, 0.118, 0.124, {B('Thigh'): 0.25, B('Calf'): 0.75}), (0.3, 0.121, 0.132, {B('Calf'): 1}), (0.5, 0.126, 0.14, {B('Calf'): 1}),
-          (0.64, 0.13, 0.145, {B('Calf'): 1}), (0.74, 0.137, 0.151, {B('Calf'): 1}), (0.81, 0.133, 0.148, {B('Calf'): 1}), (0.87, 0.142, 0.155, {B('Calf'): 1}),
-          (0.93, 0.141, 0.154, {B('Calf'): 1}), (0.975, 0.143, 0.155, {B('Calf'): 1})]
+    SH = [(0.1, 0.13, 0.136, {B('Thigh'): 0.25, B('Calf'): 0.75}), (0.3, 0.133, 0.142, {B('Calf'): 1}), (0.5, 0.137, 0.147, {B('Calf'): 1}),
+          (0.64, 0.14, 0.151, {B('Calf'): 1}), (0.74, 0.143, 0.155, {B('Calf'): 1}), (0.81, 0.144, 0.156, {B('Calf'): 1}), (0.87, 0.147, 0.159, {B('Calf'): 1}),
+          (0.93, 0.149, 0.161, {B('Calf'): 1}), (0.975, 0.15, 0.162, {B('Calf'): 1}), (1.0, 0.148, 0.16, {B('Calf'): 1})]
     for i, (t, a, b, w) in enumerate(SH):
         leg.append(dict(c=tuple(K.lerp(A, t) + V(0, 0, -0.012 * math.sin(t * math.pi))), t=tuple(A - K), side=X, a=a, b=b, w=w, part=7,
-                        fold=creases(4, 0.035, i * 1.1 - s)))
-    parts.append(loft('leg' + S, leg, seg=28, cap0=0.3, cap1=-0.25))
+                        fold=creases(4, 0.03, i * 1.1 - s)))
+    # (the hem stays open wide over the boot, not gathered in)
+    parts.append(loft('leg' + S, leg, seg=28, cap0=0.3, cap1=-0.04))
 
-    # the sleeve: set deep into the shoulder, fat and quilted, gathered a little at the cuff
-    C0, Sh, E, W = V(s * 0.12, 1.415, -0.024), P[B('UpperArm')], P[B('Forearm')], P[B('Hand')]
+    # the sleeve: a slim arm in a loose sleeve, set into the shoulder, hanging in folds to a wide
+    # cuff over the mitt
+    C0, Sh, E, W = V(s * 0.115, 1.41, -0.024), P[B('UpperArm')], P[B('Forearm')], P[B('Hand')]
     arm = [
-        (C0, Sh - C0, 0.084, 0.088, {'Bip01_Spine2': 0.7, B('UpperArm'): 0.3}, 3),
-        (Sh, E - Sh, 0.092, 0.094, {'Bip01_Spine2': 0.25, B('UpperArm'): 0.75}, 3),
-        (Sh.lerp(E, 0.25), E - Sh, 0.088, 0.09, {B('UpperArm'): 1}, 3),
-        (Sh.lerp(E, 0.45), E - Sh, 0.091, 0.093, {B('UpperArm'): 1}, 3),
-        (Sh.lerp(E, 0.65), E - Sh, 0.086, 0.088, {B('UpperArm'): 1}, 3),
-        (Sh.lerp(E, 0.85), E - Sh, 0.087, 0.089, {B('UpperArm'): 0.8, B('Forearm'): 0.2}, 3),
-        (E, W - Sh, 0.084, 0.086, {B('UpperArm'): 0.5, B('Forearm'): 0.5}, 4),
-        (E.lerp(W, 0.25), W - E, 0.082, 0.084, {B('Forearm'): 1}, 4),
-        (E.lerp(W, 0.5), W - E, 0.083, 0.085, {B('Forearm'): 1}, 4),
-        (E.lerp(W, 0.72), W - E, 0.08, 0.082, {B('Forearm'): 1}, 4),
-        (E.lerp(W, 0.86), W - E, 0.074, 0.076, {B('Forearm'): 0.9, B('Hand'): 0.1}, 4),
-        (E.lerp(W, 0.92), W - E, 0.07, 0.072, {B('Forearm'): 0.85, B('Hand'): 0.15}, 4),
+        (C0, Sh - C0, 0.074, 0.078, {'Bip01_Spine2': 0.7, B('UpperArm'): 0.3}, 3),
+        (Sh, E - Sh, 0.079, 0.081, {'Bip01_Spine2': 0.25, B('UpperArm'): 0.75}, 3),
+        (Sh.lerp(E, 0.25), E - Sh, 0.076, 0.078, {B('UpperArm'): 1}, 3),
+        (Sh.lerp(E, 0.45), E - Sh, 0.078, 0.08, {B('UpperArm'): 1}, 3),
+        (Sh.lerp(E, 0.65), E - Sh, 0.075, 0.077, {B('UpperArm'): 1}, 3),
+        (Sh.lerp(E, 0.85), E - Sh, 0.077, 0.079, {B('UpperArm'): 0.8, B('Forearm'): 0.2}, 3),
+        (E, W - Sh, 0.076, 0.078, {B('UpperArm'): 0.5, B('Forearm'): 0.5}, 4),
+        (E.lerp(W, 0.25), W - E, 0.075, 0.077, {B('Forearm'): 1}, 4),
+        (E.lerp(W, 0.5), W - E, 0.077, 0.079, {B('Forearm'): 1}, 4),
+        (E.lerp(W, 0.72), W - E, 0.079, 0.081, {B('Forearm'): 1}, 4),
+        (E.lerp(W, 0.86), W - E, 0.078, 0.08, {B('Forearm'): 0.9, B('Hand'): 0.1}, 4),
+        (E.lerp(W, 0.92), W - E, 0.074, 0.076, {B('Forearm'): 0.85, B('Hand'): 0.15}, 4),
     ]
-    parts.append(loft('arm' + S, [dict(c=tuple(c), t=tuple(t), side=Z, a=a, b=b, w=w, part=pt, fold=creases(3, 0.025, k * 0.8))
+    parts.append(loft('arm' + S, [dict(c=tuple(c), t=tuple(t), side=Z, a=a, b=b, w=w, part=pt, fold=creases(3, 0.036, k * 0.8))
                                   for k, (c, t, a, b, w, pt) in enumerate(arm)], seg=22, cap0=0.3, cap1=-0.35))
     # the mitt: a big padded paddle with a gauntlet over the cuff, a thumb on the inside
     d = (W - E).normalized()

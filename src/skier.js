@@ -43,12 +43,17 @@ const TAU = Math.PI * 2;
 // flips build to 6.3 rad/s, 6.8 held hard, 9.5 held with a grab
 const C7 = {
   slopeG: 9.81 * 1.7, airG: 17.5, roll: 0.13, kTuck: 0.0024, kRide: 0.0028, deep: 1.38, edgeDrag: 0.38, brake: 17, vmax: 43,
-  spin0: 6.3, spin1: 6.3 * 1.08, spinGrab: 6.3 * 1.08 * 1.4, spinUp: 10, spinRev: 28, spinDown: 6.5,
+  // (spins and flips build up more gently than Cork7's 10/s)
+  spin0: 6.3, spin1: 6.3 * 1.08, spinGrab: 6.3 * 1.08 * 1.4, spinUp: 6, spinRev: 20, spinDown: 6.5,
   // (our runs are steeper for longer than Cork7's park: past its cruising pace, ~105 km/h riding,
   // ~125 tucked, the snow holds you back more; lined up for a kicker the pace eases toward the
   // speed that kicker's built for, so it lands you on its landing as Cork7's do)
   vSoft: 29, vSoftTuck: 35, gov: 0.2, govMax: 4.5,
 };
+// the player's riding runs at this pace of real time: everything (speed, spins, flips, the fall
+// through the air) goes the same way as Cork7's, just slower, so it's calmer and every jump still
+// lands where it did (main.js steps him at h * pace; the HUD shows real speed and air time)
+export const PACE = 0.78;
 // exponential approach (k per second)
 const ease = (a, b, k, dt) => a + (b - a) * (1 - Math.exp(-k * dt));
 
@@ -132,6 +137,7 @@ export class Skier {
   // only the player rides switch on skis (the computer riders always turn round)
   // the player riding himself: no landing assist, no auto-finished spins
   get strict() { return this.isPlayer && !this.ai && this.world.arcade; }
+  get pace() { return this.strict ? PACE : 1; }
   // what the air pulls at: Cork7's for the player (not in the pipe, which keeps its own walls)
   get airG() { return this.strict && !this.pipeAir ? C7.airG : GRAV; }
   get canSwitch() { return this.isPlayer && !this.board && !this.ai; }
@@ -1672,7 +1678,8 @@ export class Skier {
       // (deep and slow in powder he sits back a little to keep the tips up)
       fore: crashed || !this.onGround ? 0 : clamp(this.accelS ?? 0, -6, 6) / 6 - this.surf.powder * 0.25 * (1 - smoothstep(6, 16, sp)),
       crouch: clamp(crouch, 0, 1),
-      tuck: crashed || (this.skating && !this.board) ? 0 : clamp((this.c7 && this.onGround ? (this.c7Tuck ? 1 : 0) : c.tuck) * smoothstep(5, 9, sp), 0, 1) * (1 - airK * 0.5),
+      // (a Cork7 rider tucking only hunches over a little, eased into)
+      tuck: (this.tuckPose = ease(this.tuckPose ?? 0, crashed || (this.skating && !this.board) ? 0 : clamp((this.c7 && this.onGround ? (this.c7Tuck ? 1 : 0) : c.tuck) * smoothstep(5, 9, sp), 0, 1) * (1 - airK * 0.5) * (this.strict ? 0.18 : 1), 4, dt)),
       plow: c.brake > 0 && sp < 9 && !this.isPlayer && !this.board ? 1 : 0,
       air: crashed ? 0 : airK,
       grab: c.grab && airK > 0 ? 1 : 0,

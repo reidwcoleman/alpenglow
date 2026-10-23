@@ -10,7 +10,7 @@ import { DropPicker } from './drop.js';
 import { Music } from './music.js';
 import { Tracks } from './tracks.js';
 import { Particles, Snowfall, DiamondDust } from './particles.js';
-import { Skier } from './skier.js';
+import { Skier, PACE } from './skier.js';
 import { FarRiders } from './farriders.js';
 import { batchStatic } from './batch.js';
 import { QUALITY_NAME, LO } from './gfx.js';
@@ -1314,14 +1314,14 @@ class Game {
     this.bank(name, t.sketchy, t.air, t.stomp, t.side);
     // Cork7: a stomp onto a downslope sends you (the skier gives the 2.6 m/s)
     if (p.strict) {
-      if (t.boost > 0) { this.burst(p, 40, 2.5); this.audio.beep(660, 0.12, 0.08, 'sawtooth'); this.status(`BOOST +${Math.round(t.boost * 3.6)} KM/H`); }
+      if (t.boost > 0) { this.burst(p, 40, 2.5); this.audio.beep(660, 0.12, 0.08, 'sawtooth'); this.status(`BOOST +${Math.round(t.boost * 3.6 * p.pace)} KM/H`); }
     } else if (!t.sketchy && trick) {
       // land it clean and it sends you: a boost out of every trick, bigger for bigger tricks
       const boost = clamp(1.2 + pts / 1800, 1.2, 4.5) * (t.stomp ? 1.2 : 1);
       p.vel.addScaledVector(p.forward(_v), boost * (p.skiSwitch ? -1 : 1));
       this.burst(p, 40, 2.5);
       this.audio.beep(660, 0.12, 0.08, 'sawtooth');
-      this.status(`BOOST +${Math.round(boost * 3.6)} KM/H`);
+      this.status(`BOOST +${Math.round(boost * 3.6 * (this.player?.pace ?? 1))} KM/H`);
     }
   }
 
@@ -1637,7 +1637,7 @@ class Game {
       <div class="bigscore">${sc.score.toLocaleString()}</div><p class="lead" style="margin-top:0">${isBest ? 'New best run.' : prev ? `Best ${prev.toLocaleString()}` : ''}</p>${pay}
       <div class="stats">
         <div class="stat"><b>${clock(sc.t)}</b><span>Time</span></div>
-        <div class="stat"><b>${Math.round(sc.top * 3.6)} km/h</b><span>Top speed</span></div>
+        <div class="stat"><b>${Math.round(sc.top * 3.6 * (this.player?.pace ?? 1))} km/h</b><span>Top speed</span></div>
         <div class="stat"><b>${sc.clean}</b><span>Clean landings</span></div>
         <div class="stat"><b>${sc.crashes}</b><span>Bails</span></div>
         <div class="stat"><b>${sc.fresh ?? 0}</b><span>New tricks</span></div>
@@ -1685,7 +1685,7 @@ class Game {
     const racing = this.state === 'race' || this.state === 'countdown' || (this.state === 'results' && this.mode === 'race');
     for (const ai of this.ais) ai.update(h, this.skiers);
     if (this.player?.ai) this.player.ai.update(h, this.skiers);
-    for (const s of this.skiers) s.step(h);
+    for (const s of this.skiers) s.step(h * s.pace);
     this.collideSkiers();
     if (racing && this.world.raceStarted) {
       this.raceTime += h;
@@ -2126,14 +2126,14 @@ class Game {
       z.classList.remove('in'); void z.offsetWidth; z.classList.add('in');
     }
     // speed, or air time while flying
-    const kmh = Math.round(p.speed * 3.6);
+    const kmh = Math.round(p.speed * 3.6 * p.pace);
     const flying = !p.onGround && !p.grind && p.crash <= 0 && p.airTime > 0.2;
     if (flying !== this.wasFlying) {
       this.wasFlying = flying;
       $('spdl').textContent = flying ? 'Air time' : 'Speed';
       $('spdu').textContent = flying ? 'S' : 'KM/H';
     }
-    $('spd').textContent = flying ? p.airTime.toFixed(1) : kmh;
+    $('spd').textContent = flying ? (p.airTime / p.pace).toFixed(1) : kmh;
     $('spdbar').firstChild.style.width = Math.min(100, (kmh / 140) * 100).toFixed(1) + '%';
     this.statusT = Math.max(0, (this.statusT ?? 0) - dt);
     // (in the air, Cork7's: the speed and how far you've flown)
@@ -2223,7 +2223,7 @@ class Game {
         if (J.drop) continue;
         const dz = J.z - p.pos.z;
         if (dz > 0 && dz < 45 && Math.abs(dx - J.dx) < J.w / 2 + 3) {
-          const want = Math.round((p.strict ? J.pspeed : J.speed) * 3.6), now = kmh;
+          const want = Math.round((p.strict ? J.pspeed * PACE : J.speed) * 3.6), now = kmh;
           tip = `${J.name} · ${want - 2}–${want + 3} km/h${now < want - 6 ? ' · tuck' : now > want + 8 ? ' · scrub speed' : ''}`;
           break;
         }
