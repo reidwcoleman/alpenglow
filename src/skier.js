@@ -43,17 +43,16 @@ const TAU = Math.PI * 2;
 // flips build to 6.3 rad/s, 6.8 held hard, 9.5 held with a grab
 const C7 = {
   slopeG: 9.81 * 1.7, airG: 17.5, roll: 0.13, kTuck: 0.0024, kRide: 0.0028, deep: 1.38, edgeDrag: 0.38, brake: 17, vmax: 43,
-  // (spins and flips build up more gently than Cork7's 10/s)
-  spin0: 6.3, spin1: 6.3 * 1.08, spinGrab: 6.3 * 1.08 * 1.4, spinUp: 6, spinRev: 20, spinDown: 6.5,
+  spin0: 6.3, spin1: 6.3 * 1.08, spinGrab: 6.3 * 1.08 * 1.4, spinUp: 10, spinRev: 28, spinDown: 6.5,
   // (our runs are steeper for longer than Cork7's park: past its cruising pace, ~105 km/h riding,
   // ~125 tucked, the snow holds you back more; lined up for a kicker the pace eases toward the
   // speed that kicker's built for, so it lands you on its landing as Cork7's do)
   vSoft: 29, vSoftTuck: 35, gov: 0.2, govMax: 4.5,
 };
-// the player's riding runs at this pace of real time: everything (speed, spins, flips, the fall
-// through the air) goes the same way as Cork7's, just slower, so it's calmer and every jump still
-// lands where it did (main.js steps him at h * pace; the HUD shows real speed and air time)
-export const PACE = 0.78;
+// the player's riding runs at this pace of real time (main.js steps him at h * pace; the HUD
+// shows real speed and air time). Below 1 everything goes the same way, only slower; Cork7's own
+// timing is 1 (slowed to 0.78 it read as floaty, not calm: the calm is in the camera and the body)
+export const PACE = 1;
 // exponential approach (k per second)
 const ease = (a, b, k, dt) => a + (b - a) * (1 - Math.exp(-k * dt));
 

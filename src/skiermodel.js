@@ -506,10 +506,12 @@ export class SkierModel {
     j.hdL.set(0.33 + lr * 0.25, handY - p.lean * 0.06 + Math.abs(lr) * 0.1, hipZ + 0.42 - lf * 0.12).lerp(tmpV.set(0.11, hipH + 0.18, hipZ + 0.62), tuck);
     j.hdR.set(-0.33 + lr * 0.25, handY + p.lean * 0.06 + Math.abs(lr) * 0.1, hipZ + 0.42 - lf * 0.12).lerp(tmpV.set(-0.11, hipH + 0.18, hipZ + 0.62), tuck);
     if (air > 0) {
-      // arms out for balance, pulled in tight while spinning, swung up as he pops
+      // arms a little out for balance, pulled in while spinning, lifted a touch as he pops (a
+      // Cork7 rider is calm in the air: relaxed, low, close to the body)
       const tight = clamp(Math.max(Math.abs(p.spinRate || 0), Math.abs(K.sr)) / 7, 0, 1);
-      const out = 0.42 - tight * 0.24;
-      const ay = hipH + 0.18 + tight * 0.1 + pop * 0.22, az = hipZ + 0.2 + tight * 0.15 + pop * 0.12;
+      const calm = p.tall || 0;
+      const out = 0.42 - tight * 0.24 - calm * (0.1 - tight * 0.04);
+      const ay = hipH + 0.18 + tight * 0.1 + pop * 0.22 - calm * (0.1 + pop * 0.12), az = hipZ + 0.2 + tight * 0.15 + pop * 0.12 + calm * 0.1;
       j.hdL.lerp(tmpV.set(out, ay, az), air);
       j.hdR.lerp(tmpV.set(-out, ay, az), air);
       // through a flip the hands hug the shins
@@ -531,7 +533,7 @@ export class SkierModel {
       j.hdR.lerp(tmpV.set(-0.3, hipH + 0.02, hipZ + 0.5), k);
     }
     // grabbing: the free arm out and up for balance
-    if (g > 0.01) (G.hand === 'L' ? j.hdR : j.hdL).lerp(tmpV.set(G.hand === 'L' ? -0.52 : 0.52, hipH + 0.36, hipZ + 0.05), g);
+    if (g > 0.01) { const c = p.tall || 0; (G.hand === 'L' ? j.hdR : j.hdL).lerp(tmpV.set((G.hand === 'L' ? -1 : 1) * (0.52 - c * 0.1), hipH + 0.36 - c * 0.14, hipZ + 0.05 + c * 0.1), g); }
     if (this.twistNow) for (const h of [j.hdL, j.hdR]) h.sub(j.pelvis).applyQuaternion(tmpQ.setFromAxisAngle(Y, this.twistNow)).add(j.pelvis);
     // on the snow: hands forward where he can see them, and the pole plant
     this.groundArms(p);

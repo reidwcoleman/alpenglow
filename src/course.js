@@ -12,6 +12,11 @@ const N = makeSimplex(7);
 const N2 = makeSimplex(19);
 const N3 = makeSimplex(42);
 
+// Every park is laid out a quarter less steep than its sections say: Cork7's park falls at about
+// 0.21 on average, gentle enough that the camera looking down it still holds the horizon and
+// the mountains, and the kickers fly as Cork7's do. (Done to the sections themselves, once, so
+// everything built from them, here and in the workers, agrees.)
+if (!MAP.eased) { for (const s of MAP.sections) s.grad = +(s.grad * 0.75).toFixed(4); MAP.eased = true; }
 export const SECTIONS = MAP.sections;
 
 export const START_Z = MAP.start;

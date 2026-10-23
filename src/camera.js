@@ -89,8 +89,28 @@ export class CameraRig {
       // hill but never letting the rider out of the frame (and pulled back for a big air)
       const pull = this.pull;
       const x0 = s.pos.x, z0 = s.pos.z, g0 = heightAt(x0, z0);
-      const gr = clamp((heightAt(x0 + this.dir.x * 8, z0 + this.dir.z * 8) - g0) / 8, -1.1, 1.1);
-      this.grade = (this.grade ?? gr) + (gr - (this.grade ?? gr)) * Math.min(1, dt * (s.onGround || s.grind ? 4 : 0.8));
+      // the grade the view follows (Cork7's): on the snow, the way the rider is actually moving
+      // (up a kicker that's its ramp) or the slope just ahead; in the air it starts from the one he
+      // left on, so off a kicker it looks up at him against the sky, and only through the flight
+      // comes round to the landing, steeper as he drops toward it
+      const hor = Math.hypot(x0 - (this.lx ?? x0), z0 - (this.lz ?? z0));
+      if (inAir && !this.wasAir) this.tg = this.grade ?? 0;
+      let gr;
+      if (inAir) {
+        const T = this.td, r = clamp((heightAt(T.x + this.dir.x * 8, T.z + this.dir.z * 8) - T.y) / 8, -1.1, 1.1);
+        const i = clamp(s.airTime / Math.max(0.25, s.airTime + this.tdIn), 0, 1), a = clamp((s.airTime + this.tdIn - 0.6) / 0.6, 0, 1);
+        const c = clamp((T.y - s.pos.y) / Math.max(4, Math.hypot(T.x - x0, T.z - z0)), -1.1, 0), l = clamp((-s.vel.y - 2) / 6, 0, 1);
+        const u = this.tg + (r - this.tg) * i, d = Math.min(u, u + (c - u) * l);
+        gr = this.tg + (d - this.tg) * a;
+      } else {
+        const ahead = (heightAt(x0 + this.dir.x * 8, z0 + this.dir.z * 8) - g0) / 8;
+        gr = clamp(hor > 1e-3 ? Math.max((s.pos.y - (this.ly ?? s.pos.y)) / hor, ahead * 0.8) : ahead, -1.1, 1.1);
+      }
+      this.grade = (this.grade ?? gr) + (gr - (this.grade ?? gr)) * Math.min(1, dt * (inAir ? 3.3 : 2));
+      // (the arm's own angle holds through the air, and after a landing eases back over a second)
+      this.since = inAir ? 0 : (this.since ?? 9) + dt;
+      if (!inAir) this.armGrade = this.since > 1.2 || this.armGrade == null ? this.grade : this.armGrade + (this.grade - this.armGrade) * Math.min(1, dt * (this.since < 0.6 ? 6 : 3));
+      this.wasAir = inAir; this.lx = x0; this.lz = z0; this.ly = s.pos.y;
       const portrait = clamp(1.2 - cam.aspect, 0, 0.7);
       const b = (O.distance + portrait * 1.6) * (1 + 0.5 * pull), hh = O.height + 1.6 * pull;
       // (the rider's height on a spring: rollers and bumps don't jolt the view)
@@ -106,7 +126,7 @@ export class CameraRig {
       // (free look swings the arm round the rider and up or down)
       const fr = this.free;
       if (!fr.on) { const k = 1 - Math.exp(-4 * dt); fr.yaw -= fr.yaw * k; fr.pitch -= fr.pitch * k; }
-      const C = Math.atan(clamp(Math.min(0, this.grade), -0.9, 0)) * O.slopeTilt / 100;
+      const C = Math.atan(clamp(Math.min(0, this.armGrade ?? this.grade), -0.9, 0)) * O.slopeTilt / 100;
       let E = b * Math.cos(C) + hh * Math.sin(C), D = hh * Math.cos(C) - b * Math.sin(C);
       if (fr.pitch) { const r = Math.hypot(E, D), a = clamp(Math.atan2(D, E) + fr.pitch, -0.1, 1.3); E = r * Math.cos(a); D = r * Math.sin(a); }
       const adir = this.dir.clone();

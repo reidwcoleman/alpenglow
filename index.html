@@ -597,7 +597,7 @@
   .pk-head { position: absolute; top: clamp(16px, 3vw, 34px); left: clamp(16px, 4vw, 54px); right: clamp(16px, 4vw, 54px); display: flex; align-items: center; gap: 22px; z-index: 2; }
   .pk-head .t { font: 400 clamp(24px, 3vw, 36px) var(--disp); text-shadow: 0 3px 0 rgba(0,0,0,.25); }
   .pk-back { margin-left: auto; padding: 10px 16px; border-radius: 14px; border: 3px solid #ffd36b; background: rgba(24,31,44,.85); color: #fff; font: 400 18px var(--disp); cursor: pointer; }
-  .pk-pin { position: absolute; z-index: 2; transform: translate(-28px, -28px); display: flex; align-items: center; gap: 10px; padding: 8px 16px 8px 8px; border-radius: 16px; background: rgba(24,31,44,.82); border: 2px solid rgba(255,255,255,.12); color: #fff; cursor: pointer; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); transition: transform .15s; }
+  .pk-pin { position: absolute; z-index: 2; transform: translate(-28px, -28px); white-space: nowrap; display: flex; align-items: center; gap: 10px; padding: 8px 16px 8px 8px; border-radius: 16px; background: rgba(24,31,44,.82); border: 2px solid rgba(255,255,255,.12); color: #fff; cursor: pointer; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); transition: transform .15s; }
   .pk-pin:hover { transform: translate(-28px, -30px); }
   .pk-pin.on { border-color: #fff; background: rgba(24,31,44,.95); }
   .pk-pin .n { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; border: 3px solid var(--c); font: 400 21px var(--disp); }
@@ -610,6 +610,8 @@
   .pk-panel p { font: 500 13px/1.45 Inter; color: rgba(255,255,255,.82); margin: 10px 0 12px; }
   .pk-panel .facts { display: flex; gap: 14px; font: 400 15px var(--disp); margin-bottom: 14px; }
   .pk-panel .seg { margin-bottom: 14px; }
+  .pk-drop { display: block; width: 100%; margin-top: 10px; padding: 10px; border-radius: 12px; border: 1px solid var(--line); background: rgba(255,255,255,.06); color: #fff; font: 600 14px Inter; cursor: pointer; }
+  .pk-drop:hover { background: rgba(255,255,255,.12); }
 
   /* ---------- multiplayer HUD ---------- */
   #live { position: absolute; top: calc(max(26px, env(safe-area-inset-top)) + 40px); left: clamp(18px, 3.6vw, 46px); font: 700 11px Inter; letter-spacing: .1em; text-transform: uppercase; display: flex; align-items: center; gap: 7px; }
@@ -1230,6 +1232,7 @@
     <div class="facts" id="pk-facts"></div>
     <div class="seg" id="pk-tod"><button data-n="0">Day</button><button data-n="1">Night</button></div>
     <button class="ride" id="pk-ride" style="font-size:34px;padding:14px 20px"><span>RIDE</span><span class="r"><kbd>ENTER</kbd><span class="arr">↗</span></span></button>
+    <button class="pk-drop" id="pk-drop">Pick where to drop in ↗</button>
   </div>
 </div>
 

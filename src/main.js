@@ -516,8 +516,11 @@ class Game {
       navigator.clipboard?.writeText(url).then(() => { $('mp-copy').textContent = 'Copied'; setTimeout(() => ($('mp-copy').textContent = 'Copy invite'), 1500); });
     };
     this.setWho(this.who);
-    $('b-ride').onclick = () => this.go();
-    $('pk-ride').onclick = () => this.go();
+    // RIDE opens the mountain to choose a park on (Cork7's); from there, ride from the top or
+    // pick a spot to drop in
+    $('b-ride').onclick = () => this.openParks();
+    $('pk-ride').onclick = () => this.go({ top: true });
+    $('pk-drop').onclick = () => this.go();
     $('pk-back').onclick = () => this.closeParks();
     for (const b of document.querySelectorAll('#pk-tod button')) b.onclick = () => { this.wxPinned = true; this.setNight(b.dataset.n === '1'); };
     addEventListener('resize', () => this.layoutParks());
@@ -680,7 +683,8 @@ class Game {
     $('parks').classList.remove('hidden');
     const pins = $('pk-pins');
     if (!pins.children.length) {
-      const POS = { yard: [15, 40], slope: [45, 47], forest: [57, 38], bigair: [76, 17], timber: [48, 80], grand: [30, 14], mega: [36, 64], canyon: [62, 62], cloud: [84, 34] };
+      // (where each park is on the painted mountain, art/map.webp: per cent across and down)
+      const POS = { yard: [26, 64], slope: [47, 49], forest: [31, 37], bigair: [64, 27], timber: [11, 52], grand: [58, 9], mega: [44, 76], canyon: [79, 18], cloud: [27, 17] };
       const COL = { yard: '#7fe0c4', slope: '#ff8a5c', forest: '#9fd36b', bigair: '#ff5c7a', timber: '#c6e36b', grand: '#8ec8ff', mega: '#d68cff', canyon: '#ffb347', cloud: '#bfe8ff' };
       MAP_IDS.forEach((id, i) => {
         const M = MAPS[id];
@@ -690,7 +694,7 @@ class Game {
         b.style.setProperty('--c', COL[id]);
         b.innerHTML = `<span class="n">0${i + 1}</span><span><div class="nm">${M.name.toUpperCase()}</div><div class="tg">${M.tag}</div></span>`;
         b.onclick = () => this.selectPark(id);
-        b.ondblclick = () => { this.selectPark(id); this.go(); };
+        b.ondblclick = () => { this.selectPark(id); this.go({ top: true }); };
         pins.appendChild(b);
       });
     }
@@ -733,20 +737,22 @@ class Game {
   }
 
   // ride: the chosen park is already loaded, or load it
-  go() {
+  // opts.top: straight in at the top, without the drop picker
+  go(opts = {}) {
     let mode = this.selMode;
     if (this.selPark !== 'yard') mode = 'run';
     if (this.selPark !== PARK_ID) {
       store.set('park', this.selPark);
-      // (a race starts straight away; otherwise the new park opens on the drop picker)
-      const q = new URLSearchParams(mode === 'race' ? { park: this.selPark, menu: '0', mode, tod: this.tod } : { park: this.selPark, drop: mode, tod: this.tod });
+      // (a race or a ride from the top starts straight away; otherwise the new park opens on the
+      // drop picker)
+      const q = new URLSearchParams(mode === 'race' || opts.top ? { park: this.selPark, menu: '0', mode, tod: this.tod } : { park: this.selPark, drop: mode, tod: this.tod });
       if (this.who === 'multi') q.set('room', this.roomName || 'public');
       location.search = q.toString();
       return;
     }
     this.closeParks();
     // pick where to drop in (a race always starts in the gate)
-    if (mode === 'race') this.start(mode); else this.drop.open(mode);
+    if (mode === 'race' || opts.top) this.start(mode); else this.drop.open(mode);
   }
 
   // ---------------- multiplayer ----------------
@@ -1916,7 +1922,9 @@ class Game {
     if (inp.hit('KeyM')) { this.setMuted(!this.audio.muted); this.menu?.sound(); }
     if (inp.hit('KeyC') || inp.padHit?.[12]) this.cycleCam();
     if (!this.drop.on && (inp.hit('Enter') || inp.padHit?.[0])) {
-      if (this.state === 'menu' && !typing && ['settings', 'howto', 'account', 'credits'].every((id) => $(id).classList.contains('hidden'))) this.go();
+      if (this.state === 'menu' && !typing && ['settings', 'howto', 'account', 'credits'].every((id) => $(id).classList.contains('hidden'))) {
+        if ($('parks').classList.contains('hidden')) this.openParks(); else this.go({ top: true });
+      }
       else if (this.state === 'results' && !$('results').classList.contains('hidden')) this.start(this.mode);
     }
 
