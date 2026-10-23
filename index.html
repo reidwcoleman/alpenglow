@@ -488,6 +488,14 @@
   #zone.in { animation: zoneIn .9s cubic-bezier(.2,.9,.3,1.2); }
   @keyframes zoneIn { 0% { transform: translateX(-24px) scale(1.5); opacity: 0; } 30% { opacity: 1; } 100% { transform: none; } }
   #menubtn { position: absolute; top: max(14px, env(safe-area-inset-top)); right: clamp(14px, 3vw, 44px); pointer-events: auto; display: flex; align-items: center; gap: 10px; padding: 9px 12px 9px 14px; border-radius: 10px; background: rgba(24,31,44,.62); border: 1px solid var(--line); color: #fff; font: 600 13px Inter; letter-spacing: .06em; cursor: pointer; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+  /* the ride up (Cork7's gondola): the run's HUD waits, a skip button sits at the bottom */
+  #hud.lifting > :not(#callout):not(#liftbar):not(#menubtn):not(#np) { visibility: hidden; }
+  #liftbar { display: none; position: absolute; left: 50%; bottom: max(28px, env(safe-area-inset-bottom)); transform: translateX(-50%); flex-direction: column; align-items: center; gap: 10px; pointer-events: auto; }
+  #hud.lifting #liftbar { display: flex; }
+  #liftbar .where { font: 400 clamp(20px, 2.2vw, 28px)/1 var(--disp); text-transform: uppercase; text-shadow: 0 2px 10px rgba(0,0,0,.35); }
+  #liftbar .bar { width: min(240px, 60vw); height: 4px; border-radius: 2px; background: rgba(255,255,255,.28); overflow: hidden; }
+  #liftbar .bar i { display: block; height: 100%; width: 0; background: #fff; }
+  #liftskip { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-radius: 10px; background: rgba(24,31,44,.62); border: 1px solid var(--line); color: #fff; font: 600 13px Inter; letter-spacing: .06em; cursor: pointer; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
   #menubtn .bars { width: 14px; height: 10px; border-top: 2px solid #fff; border-bottom: 2px solid #fff; position: relative; }
   #menubtn .bars::after { content: ''; position: absolute; left: 0; right: 0; top: 2px; border-top: 2px solid #fff; }
   #scorebox { position: absolute; top: calc(max(14px, env(safe-area-inset-top)) + 54px); right: clamp(18px, 3.4vw, 48px); text-align: right; }
@@ -1193,6 +1201,7 @@
   <div id="players" class="hidden"></div>
   <div id="chatbox" class="hidden"><input id="chatin" maxlength="80" placeholder="Say something · Enter to send" /></div>
   <div id="callout" class="shadow"></div>
+  <div id="liftbar"><div class="where" id="liftwhere"></div><div class="bar"><i id="liftprog"></i></div><button id="liftskip">SKIP RIDE <kbd>F</kbd></button></div>
   <div id="count" class="hidden"></div>
   <div id="hint" class="shadow hidden"></div>
   <div id="charge" class="hidden"><span></span><b>Release to pop</b></div>

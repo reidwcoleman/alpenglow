@@ -13,7 +13,7 @@ export class Pool {
       for (let i = 0; i < n; i++) {
         const w = new Worker(new URL('./bootWorker.js', import.meta.url), { type: 'module', name: 'park=' + PARK_ID });
         w.busy = false;
-        w.onmessage = (e) => { w.busy = false; const f = this.waiting.get(e.data.id); this.waiting.delete(e.data.id); f.res(e.data.r); this.pump(); };
+        w.onmessage = (e) => { w.busy = false; const f = this.waiting.get(e.data.id); (window.__jobs ??= []).push([f.job.kind, Math.round(e.data.ms), Math.round(e.data.at - performance.timeOrigin), i]); this.waiting.delete(e.data.id); f.res(e.data.r); this.pump(); };
         w.onerror = (e) => { w.busy = false; w.dead = true; console.warn('loading thread', e.message); this.pump(); };
         this.workers.push(w);
       }

@@ -48,19 +48,26 @@ export function bake(rig) {
   const pos = src.getAttribute('position'), nrm = src.getAttribute('normal'), si = src.getAttribute('skinIndex'), sw = src.getAttribute('skinWeight');
   const n = pos.count;
   const P = new Float32Array(n * 3), N = new Float32Array(n * 3);
+  // (straight off the arrays: the per-vertex getters are most of the cost here)
+  const flat = (a) => (a.isInterleavedBufferAttribute || a.normalized ? null : a.array);
+  const pa = flat(pos), na = flat(nrm), ia = flat(si), wa = flat(sw);
   const e = _m.elements;
   for (let i = 0; i < n; i++) {
     e.fill(0);
     for (let c = 0; c < 4; c++) {
-      const w = sw.getComponent(i, c);
+      const w = wa ? wa[i * 4 + c] : sw.getComponent(i, c);
       if (!w) continue;
-      const b = si.getComponent(i, c) * 16;
+      const b = (ia ? ia[i * 4 + c] : si.getComponent(i, c)) * 16;
       for (let k = 0; k < 16; k++) e[k] += bm[b + k] * w;
     }
-    _p.fromBufferAttribute(pos, i).applyMatrix4(_m);
-    P[i * 3] = _p.x; P[i * 3 + 1] = _p.y; P[i * 3 + 2] = _p.z;
+    const x = pa ? pa[i * 3] : pos.getX(i), y = pa ? pa[i * 3 + 1] : pos.getY(i), z = pa ? pa[i * 3 + 2] : pos.getZ(i);
+    const iw = 1 / (e[3] * x + e[7] * y + e[11] * z + e[15]);
+    P[i * 3] = (e[0] * x + e[4] * y + e[8] * z + e[12]) * iw;
+    P[i * 3 + 1] = (e[1] * x + e[5] * y + e[9] * z + e[13]) * iw;
+    P[i * 3 + 2] = (e[2] * x + e[6] * y + e[10] * z + e[14]) * iw;
     _n.setFromMatrix4(_m);
-    _p.fromBufferAttribute(nrm, i).applyMatrix3(_n).normalize();
+    if (na) _p.set(na[i * 3], na[i * 3 + 1], na[i * 3 + 2]); else _p.fromBufferAttribute(nrm, i);
+    _p.applyMatrix3(_n).normalize();
     N[i * 3] = _p.x; N[i * 3 + 1] = _p.y; N[i * 3 + 2] = _p.z;
   }
   const g = new THREE.BufferGeometry();

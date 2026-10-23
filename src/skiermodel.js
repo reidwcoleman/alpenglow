@@ -9,6 +9,7 @@ import { helmetGeometry, helmetMaterial, beanieGeometry, goggleGeometry, lensGeo
   skiGeometry, boardGeometry, skiBindingGeometry, boardBindingGeometry, poleGeometry, gearMaterials } from './gear.js';
 
 const THIGH = 0.44, SHIN = 0.45, UPPER = 0.29, FORE = 0.28, POLE = 1.18;
+export const RIDER_SCALE = 0.9;
 
 let G = null;
 function geos() {
@@ -204,6 +205,9 @@ export class SkierModel {
 
     this.group = new THREE.Group();
     this.tilt = new THREE.Group();
+    // (Cork7's rider is a compact one: the whole figure and its kit a little smaller, about the
+    // snow under the skis)
+    this.tilt.scale.setScalar(RIDER_SCALE);
     this.group.add(this.tilt);
     // a snowboarder stands sideways: the body lives in a frame turned a quarter (left foot forward)
     this.frame = this.tilt;
@@ -327,6 +331,40 @@ export class SkierModel {
     }
   }
 
+  // on the chairlift: back in the seat, thighs out level, the skis (or the board) hanging off
+  // the boots, hands on the knees and the poles across the lap. In the tilt group's own frame
+  // (a board rider sits square on the chair too)
+  sit() {
+    const j = this.j, P = this.parts;
+    if (this.board) { this.frame.rotation.y = 0; this.sw = undefined; }
+    j.pelvis.set(0, 0.6, -0.08);
+    j.spine.set(0, Math.cos(0.16), -Math.sin(0.16));
+    this.frameUpper(0);
+    j.hipL.copy(j.pelvis).addScaledVector(this.hipSide, 0.095);
+    j.hipR.copy(j.pelvis).addScaledVector(this.hipSide, -0.095);
+    const w = this.board ? 0.2 : 0.12;
+    j.ankL.set(w, 0.2, 0.38); j.ankR.set(-w, 0.2, 0.38);
+    this.kp[0].set(0.1, 0.5, 1); this.kp[1].set(-0.1, 0.5, 1);
+    this.legs();
+    if (this.board) {
+      P.deck.position.set(0, 0.03, 0.38);
+      P.deck.quaternion.identity();
+    } else {
+      for (const [ank, ski, boot, cuff, bind] of [[j.ankL, P.skiL, P.bootL, P.cuffL, P.sbindL], [j.ankR, P.skiR, P.bootR, P.cuffR, P.sbindR]]) {
+        ski.position.set(ank.x, ank.y - 0.17, ank.z);
+        ski.rotation.set(0.12, 0, 0);
+        boot.position.copy(ski.position); boot.rotation.copy(ski.rotation);
+        bind.position.copy(ski.position); bind.rotation.copy(ski.rotation);
+        cuff.position.copy(boot.position); cuff.rotation.set(0.25, 0, 0);
+        if (ski.morphTargetInfluences) ski.morphTargetInfluences.fill(0);
+      }
+    }
+    j.hdL.set(0.16, 0.66, 0.3); j.hdR.set(-0.16, 0.66, 0.3);
+    for (const [s, sg] of [[0, 1], [1, -1]]) this.ep[s].set(sg * 0.6, -0.6, -0.5).normalize();
+    this.twistNow = 0;
+    this.sitting = true;
+  }
+
   // close by: the avatar; far away the capsule figure is plenty
   setReal(on) {
     if (!this.rig || on === this.real) return;
@@ -405,6 +443,8 @@ export class SkierModel {
       if (sw !== this.sw) { this.sw = sw; this.frame.rotation.y = sw ? Math.PI / 2 : -Math.PI / 2; }
       this.lowerBoard(sw ? { ...p, lean: -p.lean, edge: -(p.edge || 0) } : p);
     } else this.lowerSki(p);
+    this.sitting = false;
+    if (p.sit) this.sit();
     this.upper(p);
     if (this.rig && this.real) this.rig.mesh.material.userData.u.uFlap.value.set(p.t % 600, p.wind || 0);
   }
@@ -794,8 +834,10 @@ export class SkierModel {
     for (const [s, hd, pole] of [[1, j.hdL, P.poleL], [-1, j.hdR, P.poleR]]) {
       const tip = tmpV.set(hd.x + s * 0.12, 0.06, hd.z - 0.62);
       tip.lerp(tmpV2.set(hd.x + s * 0.06, hd.y + 0.12, hd.z - 1.15), Math.max(tuck, air * 0.7));
+      // (on the chair: held loosely by the knees, the tips down past the skis)
+      if (this.sitting) tip.set(hd.x + s * 0.1, hd.y - 1, hd.z + 0.28);
       const dir = tip.sub(hd).normalize();
-      this.groundPole(s, hd, dir, p);
+      if (!this.sitting) this.groundPole(s, hd, dir, p);
       pole.position.copy(hd);
       pole.quaternion.setFromUnitVectors(Y, dir.negate());
     }

@@ -12,52 +12,15 @@ const RAIL_BLACK = 0x252a30, DYE = 0x2a86ae, DYE_FAINT = 0x77b6cc;
 
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
 
-// a grid laid along the course (columns across the piste, rows down it), heights from heightAt
-function surface(f, ddx, dz) {
-  const nx = Math.ceil((f.dx1 - f.dx0) / ddx) + 1, nz = Math.ceil((f.z1 - f.z0) / dz) + 1;
-  // one extra ring of samples for the normals
-  const gx = nx + 2, gz = nz + 2;
-  const H = new Float32Array(gx * gz), X = new Float32Array(gx * gz);
-  for (let j = 0; j < gz; j++) {
-    const z = f.z0 + (j - 1) * dz, c = centerX(z);
-    for (let i = 0; i < gx; i++) {
-      const x = c + f.dx0 + (i - 1) * ddx;
-      X[j * gx + i] = x;
-      H[j * gx + i] = heightAt(x, z);
-    }
-  }
-  const pos = new Float32Array(nx * nz * 3), nrm = new Float32Array(nx * nz * 3);
-  const pst = new Float32Array(nx * nz).fill(1), ice = new Float32Array(nx * nz), face = new Float32Array(nx * nz);
-  const surf = { powder: 0, ice: 0 };
-  let v = 0;
-  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
-    const k = (j + 1) * gx + (i + 1);
-    const z = f.z0 + j * dz;
-    pos[v * 3] = X[k]; pos[v * 3 + 1] = H[k]; pos[v * 3 + 2] = z;
-    pst[v] = 1 - surfaceAt(X[k], z, surf).powder;
-    // how steeply the feature itself rises out of the run here (its faces get a blue shade)
-    const ddx0 = X[k] - centerX(z);
-    const fx = (parkAt(ddx0 + 0.4, z) - parkAt(ddx0 - 0.4, z)) / 0.8, fz = (parkAt(ddx0, z + 0.4) - parkAt(ddx0, z - 0.4)) / 0.8;
-    const fs = Math.hypot(fx, fz);
-    face[v] = Math.min(1, Math.max(0, (fs - 0.06) / 0.34)) ** 1.5;
-    const hx = (H[k + 1] - H[k - 1]) / (2 * ddx), hz = (H[k + gx] - H[k - gx]) / (2 * dz);
-    const l = Math.hypot(hx, 1, hz);
-    nrm[v * 3] = -hx / l; nrm[v * 3 + 1] = 1 / l; nrm[v * 3 + 2] = -hz / l;
-    v++;
-  }
-  const idx = new Uint32Array((nx - 1) * (nz - 1) * 6);
-  let q = 0;
-  for (let j = 0; j < nz - 1; j++) for (let i = 0; i < nx - 1; i++) {
-    const a = j * nx + i, b = a + 1, c = a + nx, d = c + 1;
-    idx[q++] = a; idx[q++] = c; idx[q++] = b; idx[q++] = b; idx[q++] = c; idx[q++] = d;
-  }
+// a feature's snow as a mesh: the arrays come from a loading thread (boot.js featArrays)
+function surface(a) {
   const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
-  g.setAttribute('aPiste', new THREE.BufferAttribute(pst, 1));
-  g.setAttribute('aIce', new THREE.BufferAttribute(ice, 1));
-  g.setAttribute('aFace', new THREE.BufferAttribute(face, 1));
-  g.setIndex(new THREE.BufferAttribute(idx, 1));
+  g.setAttribute('position', new THREE.BufferAttribute(a.pos, 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(a.nrm, 3));
+  g.setAttribute('aPiste', new THREE.BufferAttribute(a.pst, 1));
+  g.setAttribute('aIce', new THREE.BufferAttribute(a.ice, 1));
+  g.setAttribute('aFace', new THREE.BufferAttribute(a.face, 1));
+  g.setIndex(new THREE.BufferAttribute(a.idx, 1));
   g.computeBoundingSphere();
   return g;
 }
@@ -113,14 +76,14 @@ export class Park {
     this.dyeFaint = dye(DYE_FAINT, 0.6);
   }
 
-  async build() {
-    // the snow first: it's most of the work, so give the loading screen a breath now and then
+  // feats: every feature's snow arrays, worked out on the loading threads (Park.jobs)
+  // the snow of every feature, out to the loading threads (start them early: boot.js featArrays)
+  static jobs(pool) { return Promise.all(PARK_FEET.map((f, i) => pool.job({ kind: 'feat', i }))); }
+
+  async build(feats) {
     let t = performance.now();
-    for (const f of PARK_FEET) {
-      const isPipe = f.dx0 < PIPE.dx && f.dx1 > PIPE.dx;
-      const isRoll = f.dx0 < ROLLERS.dx && f.dx1 > ROLLERS.dx;
-      const g = surface(f, isPipe ? 0.25 : isRoll ? 0.5 : f.res ?? 0.3, isPipe ? 0.6 : isRoll ? 0.6 : f.res ?? 0.3);
-      const m = new THREE.Mesh(g, this.snowMat);
+    for (const a of await feats) {
+      const m = new THREE.Mesh(surface(a), this.snowMat);
       m.receiveShadow = true;
       this.group.add(m);
       if (performance.now() - t > 45) { await nextFrame(); t = performance.now(); }

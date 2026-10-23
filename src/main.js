@@ -15,6 +15,7 @@ import { FarRiders } from './farriders.js';
 import { batchStatic } from './batch.js';
 import { QUALITY_NAME, LO } from './gfx.js';
 import { Pool } from './pool.js';
+import { TREE_PARTS } from './boot.js';
 import { paintTextures } from './proctex.js';
 import { AIController } from './ai.js';
 import { randomOutfit } from './skiermodel.js';
@@ -43,6 +44,9 @@ import { modelParts, models } from './models.js';
 import { startBakes } from './bake.js';
 
 const params = new URLSearchParams(location.search);
+// the ride up the chairlift before a run (headless tools skip it unless they ask: ?lift=1)
+const LIFT_OK = params.get('lift') === '1' || (!navigator.webdriver && params.get('lift') !== '0');
+const _up = new THREE.Vector3(0, 1, 0);
 const $ = (id) => document.getElementById(id);
 // hidden things (far riders, race gates outside a race) skip the per-frame matrix walk; they
 // catch up the frame they're shown, or whenever their parent moves
@@ -142,8 +146,13 @@ class Game {
       village: !!M['village_' + PARK_ID],
       ...Object.fromEntries(await Promise.all(['lift', 'props'].map(async (k) => [k, M[k] ? await modelParts(k).catch(() => null) : null]))),
     }));
-    const treesP = pool.job({ kind: 'trees' });
+    // (the forest in bands, one per thread, joined back up in order)
+    const treesP = Promise.all(Array.from({ length: TREE_PARTS }, (_, part) => pool.job({ kind: 'trees', part, of: TREE_PARTS }))).then((P) => {
+      const cat = (k) => { const out = new Float32Array(P.reduce((n, p) => n + p[k].length, 0)); let o = 0; for (const p of P) { out.set(p[k], o); o += p[k].length; } return out; };
+      return { trees: cat('trees'), colliders: cat('colliders') };
+    });
     const shadeP = pool.job({ kind: 'grid', args: ShadeField.grid() });
+    const featsP = Park.jobs(pool);
     const avatarsP = preloadRiders();
     // (the scanned crowd: not needed until the people go up, behind the front page)
     this.crowdP = avatarsP.then(() => preloadAvatars((k) => this.loadPart('riders', k))).catch((e) => console.warn('avatars', e));
@@ -161,7 +170,7 @@ class Game {
     this.props = new Props(scene, this.forest, this.env, this.smash, await blendP);
     setLoad(55, 'Shaping the park…');
     this.park = new Park(scene, this.terrain.material, this.smash);
-    await this.park.build();
+    await this.park.build(featsP);
     this.lights = new Floodlights(scene, this.quality);
     this.tracks = new Tracks(scene);
     // (your own line keeps a ring of its own, so it stays down the hill behind you)
@@ -232,13 +241,12 @@ class Game {
       await this.renderer.compileAsync(scene, this.camera).catch(() => this.renderer.compile(scene, this.camera));
       this.renderer.setRenderTarget(null);
       wmark('compile');
-      // the buildings' painted stone, timber and concrete (proctex.js)
-      await paintTextures(nextFrame);
-      wmark('paint');
-      // and every texture up to the GPU a few at a time (the first frame would otherwise do the
-      // lot at once, a second or more of nothing on a phone)
-      await this.uploadTextures();
-      wmark('upload');
+      // the buildings' painted stone, timber and concrete (proctex.js), and every texture up to
+      // the GPU a few at a time (the first frame would otherwise do the lot at once, a second or
+      // more of nothing on a phone); straight into a run, that carries on while you stand at the
+      // top instead of holding the loading screen
+      const finish = async () => { await paintTextures(nextFrame); wmark('paint'); await this.uploadTextures(); wmark('upload'); };
+      if (direct) finish(); else await finish();
       // behind the front page, one whole frame unseen: whatever's left to set up (the shadow
       // pass's shaders, the post-processing's) happens now, not on the first frame of a run
       if (!direct) {
@@ -266,7 +274,7 @@ class Game {
     this.unveil = direct ? 4 : 1;
     const mode = params.get('mode');
     if (params.get('event') && EVENT[params.get('event')]) this.startEvent(params.get('event'), Math.max(0, Math.min(2, Number(params.get('tier') ?? 1))));
-    else if (params.get('menu') === '0' && mode) this.start(mode === 'race' ? 'race' : mode === 'park' ? 'park' : 'run');
+    else if (params.get('menu') === '0' && mode) this.start(mode === 'race' ? 'race' : mode === 'park' ? 'park' : 'run', { lift: true });
     else {
       this.showMenu();
       // (just switched park from the menu: straight on to where to drop in)
@@ -519,6 +527,7 @@ class Game {
     // RIDE opens the mountain to choose a park on (Cork7's); from there, ride from the top or
     // pick a spot to drop in
     $('b-ride').onclick = () => this.openParks();
+    $('liftskip').onclick = () => this.endLift();
     $('pk-ride').onclick = () => this.go({ top: true });
     $('pk-drop').onclick = () => this.go();
     $('pk-back').onclick = () => this.closeParks();
@@ -752,7 +761,7 @@ class Game {
     }
     this.closeParks();
     // pick where to drop in (a race always starts in the gate)
-    if (mode === 'race' || opts.top) this.start(mode); else this.drop.open(mode);
+    if (mode === 'race' || opts.top) this.start(mode, { lift: true }); else this.drop.open(mode);
   }
 
   // ---------------- multiplayer ----------------
@@ -947,7 +956,7 @@ class Game {
   // ---------------- population ----------------
   clearSkiers() {
     for (const s of this.skiers) s.dispose();
-    this.skiers.length = 0; this.ais = []; this.player = null;
+    this.skiers.length = 0; this.ais = []; this.player = null; this.freshFree = false;
     this.debris.items.forEach((it) => this.scene.remove(it.mesh)); this.debris.items = [];
     if (this.rig) this.rig.subject = null;
   }
@@ -963,6 +972,8 @@ class Game {
   }
 
   populateFree(menu = false) {
+    // (the riders put on the hill while loading are still fresh: just add you)
+    if (!menu && this.freshFree && !this.player) { this.freshFree = false; return this.addYou(); }
     this.clearSkiers();
     this.world.race = false; this.world.raceStarted = false;
     this.props.setRaceMode(false);
@@ -980,12 +991,15 @@ class Game {
       s.ai.lastZ = z;
       n++;
     }
-    if (!menu) {
-      const p = this.addSkier({ outfit: this.outfit(), name: 'You', isPlayer: true, grip: 1.75, sidecut: 16 });
-      p.place(centerX(START_Z), START_Z, null, 0);
-      this.player = p;
-      this.hookPlayer(p);
-    }
+    if (!menu) this.addYou();
+    this.freshFree = menu;
+  }
+
+  addYou() {
+    const p = this.addSkier({ outfit: this.outfit(), name: 'You', isPlayer: true, grip: 1.75, sidecut: 16 });
+    p.place(centerX(START_Z), START_Z, null, 0);
+    this.player = p;
+    this.hookPlayer(p);
   }
 
   // the park: riders on every line, you at the gate
@@ -1410,6 +1424,85 @@ class Game {
     this.rig.snap = true;
     this.secName = '';
     this.startAt = this.time;
+    // from the map or again from the bottom: up on the chairlift first, as Cork7 rides its gondola
+    // (F skips it)
+    this.endLift(true);
+    if (opts.lift && mode === 'run' && !this.event && !z && (!drop || drop.top) && LIFT_OK) this.beginLift();
+  }
+
+  // ---------------- the ride up ----------------
+  // a chair a little way below the top station: you sit on it until it gets there
+  beginLift() {
+    const L = this.props, P = this.player;
+    if (!L.chairs?.length || !P) return;
+    const T = 24, v = L.liftV, top = L.totalLen[0] - 7, want = top - v * T;
+    let best = null, bd = 1e9;
+    L.chairs.forEach((c, i) => {
+      if (c.li !== 0) return;
+      const d = (c.d + this.time * v) % L.totalLen[0];
+      if (d > top - v * 10) return;
+      if (Math.abs(d - want) < bd) { bd = Math.abs(d - want); best = i; }
+    });
+    if (best == null) return;
+    const c = L.chairs[best];
+    c.mine = true;
+    this.lift = { ci: best, top, T: (top - ((c.d + this.time * v) % L.totalLen[0])) / v, t: 0, cam: null };
+    this.state = 'lift';
+    P.held = true;
+    P.vel.set(0, 0, 0);
+    if (P.blob) P.blob.visible = false;
+    $('hud').classList.add('lifting');
+    $('liftwhere').textContent = MAP.name;
+    $('callout').innerHTML = '';
+  }
+
+  // each frame up: the chair along the cable, you sat on it, the camera alongside
+  rideLift(dt) {
+    const F = this.lift, L = this.props, P = this.player, m = P.model;
+    F.t += dt;
+    const c = L.chairs[F.ci], d = (c.d + this.time * L.liftV) % L.totalLen[0];
+    $('liftprog').style.width = (Math.min(1, F.t / F.T) * 100).toFixed(1) + '%';
+    if (d >= F.top || F.t > F.T + 2) { this.endLift(); return; }
+    const at = L.cablePoint(0, d, (this._lp ??= new THREE.Vector3()));
+    const yaw = Math.atan2(L.liftDir.x, L.liftDir.z);
+    const Q = (this._lq ??= new THREE.Quaternion()).setFromAxisAngle(_up, yaw);
+    // a point in the chair's own frame (x across the seats, y up the hanger from the grip, z ahead)
+    const local = (x, y, z, out) => out.set(x, y, z).applyQuaternion(Q).add(at);
+    // (in a middle seat, sat back in it)
+    local(0.36, -2.72, 0.19, m.group.position);
+    m.group.quaternion.copy(Q);
+    m.group.visible = true;
+    m.setDetail(true); m.setReal?.(true);
+    m.pose({ sit: 1, lean: 0, angulate: 0, crouch: 0, tuck: 0, plow: 0, air: 1, grab: 0, grabKind: 'mute', t: this.time, wind: 0.2, edge: 0, look: Math.sin(F.t * 0.4) * 0.5, twist: 0 });
+    // the camera: out in front and off to one side, looking back at you in the seat with the
+    // valley behind; as the top station nears it swings wide round the end of the chair and up
+    // behind it, to see where you're going
+    const k = smoothstep(F.T - 9, F.T - 2, F.t), drift = Math.sin(F.t * 0.25) * 0.5;
+    const ang = k * Math.PI * 0.95, R = 5.2 + Math.sin(k * Math.PI) * 1.5;
+    const cam = this.camera, seat = local(0.36, -2.0, 0.2, (this._ls ??= new THREE.Vector3()));
+    const want = local(0.36 + Math.sin(0.62 + ang * 0.6) * R * 0.75 + drift, -1.7 + k * 2.2, Math.cos(0.62 + ang) * R, (this._lc ??= new THREE.Vector3()));
+    if (!F.cam) F.cam = want.clone(); else F.cam.lerp(want, Math.min(1, dt * 3));
+    cam.position.copy(F.cam);
+    const look = local(0.36, -2.0 + 0.1 + k * 0.7, 0.2 + k * 10, (this._ll ??= new THREE.Vector3()));
+    cam.lookAt(look);
+    if (cam.fov !== 55) { cam.fov = 55; cam.updateProjectionMatrix(); }
+  }
+
+  // off at the top (or skipped): stood at the start, the run's HUD back
+  endLift(quiet = false) {
+    const F = this.lift;
+    if (!F) return;
+    this.lift = null;
+    this.props.chairs[F.ci].mine = false;
+    $('hud').classList.remove('lifting');
+    const P = this.player;
+    if (!P) return;
+    P.held = false;
+    if (quiet) return;
+    P.place(centerX(START_Z), START_Z, null, 0);
+    this.state = 'free';
+    this.rig.snap = true;
+    this.say('DROP IN', '', this.weatherLine(), '', 3200);
   }
 
   // hold R: back to the top (the whole run, or your park line), score wiped
@@ -1651,7 +1744,7 @@ class Game {
       <p class="lead" style="margin-top:16px">Best trick <b style="color:var(--gold)">${sc.best.name}</b>${sc.best.pts ? ' · ' + sc.best.pts.toLocaleString() : ''}</p>
       <div class="row"><button class="btn p" id="r-lift">Ride again</button><button class="btn" id="r-replay">Watch replay</button><button class="btn" id="r-menu">Menu</button></div>`;
     $('results').classList.remove('hidden');
-    $('r-lift').onclick = () => this.start('run');
+    $('r-lift').onclick = () => this.start('run', { lift: true });
     $('r-replay').onclick = () => { if (this.replay.open('all')) $('results').classList.add('hidden'); };
     $('r-menu').onclick = () => this.showMenu();
   }
@@ -1691,7 +1784,7 @@ class Game {
     const racing = this.state === 'race' || this.state === 'countdown' || (this.state === 'results' && this.mode === 'race');
     for (const ai of this.ais) ai.update(h, this.skiers);
     if (this.player?.ai) this.player.ai.update(h, this.skiers);
-    for (const s of this.skiers) s.step(h * s.pace);
+    for (const s of this.skiers) if (!s.held) s.step(h * s.pace);
     this.collideSkiers();
     if (racing && this.world.raceStarted) {
       this.raceTime += h;
@@ -1887,6 +1980,7 @@ class Game {
     }
     if (this.unveil && --this.unveil === 0) {
       window.__loadProgress?.(1);
+      (window.__loadT ??= []).push([Math.round(performance.now()), 'shown', 'game shown']);
       setTimeout(() => { $('loading').classList.add('out'); setTimeout(() => $('loading').classList.add('hidden'), 460); }, 120);
     }
     this.clock.update();
@@ -1925,12 +2019,12 @@ class Game {
       if (this.state === 'menu' && !typing && ['settings', 'howto', 'account', 'credits'].every((id) => $(id).classList.contains('hidden'))) {
         if ($('parks').classList.contains('hidden')) this.openParks(); else this.go({ top: true });
       }
-      else if (this.state === 'results' && !$('results').classList.contains('hidden')) this.start(this.mode);
+      else if (this.state === 'results' && !$('results').classList.contains('hidden')) this.start(this.mode, { lift: true });
     }
 
     // the soundtrack: once there's sound at all, in the mood of what's happening
     if (this.audio.ctx && !this.music.timer) this.music.start();
-    this.music.setMood(this.state === 'menu' || this.state === 'loading' ? 'chill' : 'ride');
+    this.music.setMood(this.state === 'menu' || this.state === 'loading' || this.state === 'lift' ? 'chill' : 'ride');
     // your trail (a Shop item) in the air behind you
     if (!this.paused) { const P = this.player; this.trail.update(dt, P && this.state !== 'menu' ? P : null, P?.model?.outfit?.trail); }
     // breath in the cold air, every couple of seconds
@@ -1955,6 +2049,10 @@ class Game {
           if (this.holdF < 0.17) { c.flip = 0; c.roll = 0; }
         } else this.holdS = this.holdF = 0;
         Object.assign(this.player.controls, c);
+        if (this.state === 'lift') {
+          Object.assign(this.player.controls, { steer: 0, tuck: 0, brake: 0, jump: false, grab: false });
+          if (inp.hit('KeyF') || inp.hit('Space') || inp.padHit?.[0]) this.endLift();
+        }
         if (this.state === 'countdown' || this.state === 'results') { this.player.controls.steer = 0; this.player.controls.tuck = 0; this.player.controls.brake = this.state === 'results' ? 1 : 0; this.player.controls.jump = false; }
         if (this.mode === 'race') {
           if ((inp.hit('KeyR') || inp.padHit?.[8]) && this.state !== 'countdown') { this.player.respawn(); this.rig.snap = true; }
@@ -1973,7 +2071,7 @@ class Game {
           const names = { jumps: 'JUMP LINE', rails: 'RAIL GARDEN', pipe: 'HALFPIPE', rollers: 'ROLLERS' };
           this.parkSpawn(P, line); this.rig.snap = true; this.say(names[line], '', 'L for the next line', '', 1200);
         }
-        if (this.mode !== 'race' && this.state !== 'countdown') this.combos(inp, dt);
+        if (this.mode !== 'race' && this.state !== 'countdown' && this.state !== 'lift') this.combos(inp, dt);
         // keypad . (or G): hop round to ride the other way, backwards or forwards again
         if ((inp.hit('NumpadDecimal') || inp.hit('KeyG') || inp.hit('NumpadEnter')) && P.onGround && !P.grind && P.crash <= 0 && this.state !== 'countdown') {
           P.turnReq = -Math.sign(P.controls.steer) || (this.turnDir = -(this.turnDir || -1));
@@ -2008,7 +2106,7 @@ class Game {
     }
 
     // the replay records what you ride
-    if (this.player && !this.paused && this.state !== 'menu' && this.state !== 'countdown') this.replay.record(dt, this.player);
+    if (this.player && !this.paused && this.state !== 'menu' && this.state !== 'countdown' && this.state !== 'lift') this.replay.record(dt, this.player);
     // the front page is art over a still world: only the rider sticker draws
     if (this.state === 'menu' && !$('menu').classList.contains('hidden') && $('parks').classList.contains('hidden')) {
       this.room?.update(dt, null, this.camera.position);
@@ -2021,6 +2119,7 @@ class Game {
     const cam = this.camera;
     if (replaying) { /* the replay placed the camera */ }
     else if (this.state === 'menu') { this.menuT = (this.menuT ?? 0) + dt; this.rig.menu(dt, this.menuT, this.skiers); }
+    else if (this.lift) this.rideLift(this.paused ? 0 : dt);
     else if (this.player) this.rig.update(dt, this.player);
     if (window.__freeCam) { const f = window.__freeCam; cam.position.set(...f.pos); cam.lookAt(...f.look); cam.fov = f.fov ?? 55; cam.updateProjectionMatrix(); }
     if (!replaying) for (const s of this.skiers) if (!s.held) s.updateVisual(dt, cam.position);

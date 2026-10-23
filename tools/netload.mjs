@@ -1,0 +1,25 @@
+// Load time + bytes over the network: MBPS=20 node tools/netload.mjs [url]
+import { chromium } from 'playwright-core';
+import { CHROME, ANGLE } from './chrome.mjs';
+const url = process.argv[2];
+const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: [ANGLE, '--enable-gpu', '--ignore-gpu-blocklist'] });
+const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+const page = await ctx.newPage();
+const c = await ctx.newCDPSession(page);
+await c.send('Network.enable');
+if (process.env.MBPS) await c.send('Network.emulateNetworkConditions', { offline: false, latency: 40, downloadThroughput: Number(process.env.MBPS) * 125000, uploadThroughput: 1e6 });
+const reqs = [];
+page.on('requestfinished', async (r) => { try { const s = await r.sizes(); reqs.push([r.url(), s.responseBodySize + s.responseHeadersSize, Date.now() - t0]); } catch {} });
+const t0 = Date.now();
+await page.goto(url, { waitUntil: 'domcontentloaded' });
+await page.waitForFunction(() => window.__ready === true, null, { timeout: 300000 });
+const tr = Date.now() - t0;
+const T = await page.evaluate(() => window.__loadT);
+for (const [t, p, m] of T) console.log(String(t).padStart(6), String(p).padStart(4) + '%', m);
+console.log('ready', tr, 'ms');
+await new Promise(r => setTimeout(r, 1500));
+reqs.sort((a, b) => b[1] - a[1]);
+let tot = 0; for (const r of reqs) tot += r[1];
+console.log('requests', reqs.length, 'bytes', (tot / 1e6).toFixed(2), 'MB');
+for (const r of reqs.slice(0, 25)) console.log((r[1] / 1e3).toFixed(0).padStart(7), 'kB', String(r[2]).padStart(6), r[0].replace(/^https?:\/\/[^/]+/, ''));
+await browser.close();

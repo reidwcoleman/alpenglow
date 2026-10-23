@@ -865,7 +865,7 @@ export class Props {
     // close chairs in full detail, the rest as the simple ones; the stand-in riders only where
     // the real ones aren't sitting and not so far off that they'd be a pixel
     const near2 = 210 * 210, real2 = 280 * 280, far2 = 1100 * 1100;
-    let nN = 0, nF = 0, nR = 0;
+    let nN = 0, nF = 0, nR = 0, nB = 0;
     const one = tmpS.set(1, 1, 1);
     this.chairs.forEach((c, i) => {
       const d = (c.d + time * v) % this.totalLen[c.li];
@@ -875,21 +875,22 @@ export class Props {
       tmpM.toArray(this.chairM, i * 16);
       const d2 = cam ? tmpP.distanceToSquared(cam) : 0;
       c.near = !!(this.seats && cam && d2 < real2);
-      if (d2 < near2) { this.bubbleMesh.setMatrixAt(nN, tmpM); this.chairMesh.setMatrixAt(nN++, tmpM); } else this.chairFar.setMatrixAt(nF++, tmpM);
-      if (c.ride && c.li === 0 && !c.near && d2 < far2) { this.riderMesh.setMatrixAt(nR, tmpM); this.riderMesh.setColorAt(nR++, this.jackets[i % 8]); }
+      // (the chair you're riding up on has its bubble up)
+      if (d2 < near2) { if (!c.mine) this.bubbleMesh.setMatrixAt(nB++, tmpM); this.chairMesh.setMatrixAt(nN++, tmpM); } else this.chairFar.setMatrixAt(nF++, tmpM);
+      if (c.ride && !c.mine && c.li === 0 && !c.near && d2 < far2) { this.riderMesh.setMatrixAt(nR, tmpM); this.riderMesh.setColorAt(nR++, this.jackets[i % 8]); }
     });
     const done = (im, n) => {
       im.count = n;
       im.instanceMatrix.clearUpdateRanges(); im.instanceMatrix.addUpdateRange(0, n * 16); im.instanceMatrix.needsUpdate = true;
       if (im.instanceColor) { im.instanceColor.clearUpdateRanges(); im.instanceColor.addUpdateRange(0, n * 3); im.instanceColor.needsUpdate = true; }
     };
-    done(this.chairMesh, nN); done(this.bubbleMesh, nN); done(this.chairFar, nF); done(this.riderMesh, nR);
+    done(this.chairMesh, nN); done(this.bubbleMesh, nB); done(this.chairFar, nF); done(this.riderMesh, nR);
     if (this.seats) {
       const off = new THREE.Matrix4();
       for (const im of this.seatMeshes) if (im) im.userData.n = 0;
       let nS = 0;
       for (const st of this.seats) {
-        if (!this.chairs[st.ci].near) continue;
+        if (!this.chairs[st.ci].near || this.chairs[st.ci].mine) continue;
         tmpM.fromArray(this.chairM, st.ci * 16).multiply(off.makeTranslation(st.dx, 0, 0));
         const k = st.im.userData.n++;
         st.im.setMatrixAt(k, tmpM); st.im.setColorAt(k, st.col);

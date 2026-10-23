@@ -24,7 +24,7 @@ export class Debris {
       const part = m.parts[k];
       const mesh = new THREE.Mesh(part.geometry, part.material);
       part.matrixWorld.decompose(_p, _q, _s);
-      mesh.position.copy(_p); mesh.quaternion.copy(_q);
+      mesh.position.copy(_p); mesh.quaternion.copy(_q); mesh.scale.copy(_s);
       mesh.castShadow = true;
       this.scene.add(mesh);
       const k2 = 0.35 + Math.random() * 0.55;
