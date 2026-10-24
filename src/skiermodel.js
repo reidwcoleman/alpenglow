@@ -600,7 +600,8 @@ export class SkierModel {
     const ts = clamp(p.lean / 0.6, -1, 1); // + toeside, - heelside
     const G = BOARD_GRAB[BOARD_NAME[this.gKind]] ?? BOARD_GRAB.indy;
     const g = this.gAmt;
-    const half = 0.25;
+    const stand = p.stand || 0;
+    const half = 0.25 - stand * 0.02;
     const lift = air * 0.1 + G.lift * g;
     j.ankL.set(half, 0.17 + lift + (G.front ?? 0) * g, -(G.back ?? 0) * g);
     j.ankR.set(-half, 0.17 + lift + (G.rear ?? 0) * g, -(G.back ?? 0) * g);
@@ -611,7 +612,7 @@ export class SkierModel {
     const daffy = p.daffy || 0;
     j.ankL.x += daffy * 0.12; j.ankL.y += daffy * 0.02; j.ankR.y += daffy * 0.2;
 
-    const hipH = 0.9 - crouch * 0.24 - tuck * 0.18 - air * 0.06 - g * 0.18 + Math.sin(p.t * 9) * 0.003;
+    const hipH = 0.9 + stand * 0.11 * (1 - air) - crouch * 0.24 - tuck * 0.18 - air * 0.06 - g * 0.18 + Math.sin(p.t * 9) * 0.003;
     const hipZ = -0.03 + Math.max(0, ts) * 0.05 - Math.max(0, -ts) * 0.09 - tuck * 0.04;
     j.pelvis.set(0.02 - press * 0.12, hipH, hipZ);
     // the inclination comes from the tilt; the upper body angulates back against it

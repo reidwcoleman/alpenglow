@@ -635,7 +635,7 @@ export class Skier {
     // carve or skid: lean hard into it at speed and the edges can't hold the arc, the tails
     // break loose into a slash, the snow sprays and it scrubs speed (a board lets go sooner and
     // further than skis, which keep biting)
-    const slashT = !brake && s ? smoothstep(0.78, 1, Math.abs(E)) * smoothstep(B ? 10 : 13, B ? 18 : 22, speed) * (B ? 1 : 0.65) * (1 - ice * 0.4) : 0;
+    const slashT = !brake && s ? smoothstep(0.78, 1, Math.abs(E)) * smoothstep(B ? 10 : 13, B ? 18 : 22, speed) * (B ? 0.3 : 0.65) * (1 - ice * 0.4) : 0;
     this.c7Slash = ease(this.c7Slash ?? 0, slashT * Math.sign(E), slashT > Math.abs(this.c7Slash ?? 0) ? 6 : 4, dt);
     const slash = Math.abs(this.c7Slash);
     const w = E * (0.8 + clamp(speed / 85, 0, 0.44)) * (1 + this.c7X * 0.14) * (brake ? 0.7 : 1) * (1 + slow * (B ? 0.6 : 0.3)) * heelToe * (1 + slash * 0.12);
@@ -1729,7 +1729,7 @@ export class Skier {
     this.backK = (this.backK ?? 0) + ((back ? 1 : 0) - (this.backK ?? 0)) * Math.min(1, vdt * 6);
     const lookS = (this.lookSide ?? 1) * this.backK;
     // (the player stands tall like a Cork7 rider; the computer riders sit lower)
-    let crouch = (this.strict ? 0.04 : 0.18) + Math.abs(this.lean) * (this.board ? 0.26 : this.strict ? 0.06 : 0.12) + this.compress * 0.35 + gCrouch * (this.board ? 1 : this.strict ? 0.3 : 0.7) + this.jumpCharge * 0.5 + (c.brake > 0 ? 0.25 : 0) - this.spring * 1.6;
+    let crouch = (this.strict ? 0.04 : 0.18) + Math.abs(this.lean) * (this.strict ? (this.board ? 0.1 : 0.06) : this.board ? 0.26 : 0.12) + this.compress * 0.35 + gCrouch * (this.strict ? (this.board ? 0.35 : 0.3) : this.board ? 1 : 0.7) + this.jumpCharge * 0.5 + (c.brake > 0 ? 0.25 : 0) - this.spring * 1.6;
     if (crashed) crouch = this.crashPhase === 'up' ? 0.9 * this.lie + 0.3 : 0.55;
     // (the player's rider drawn a size up, like Cork7's: easier to read on the hill and in a trick)
     const sc = this.strict ? 1.13 : 1;
@@ -1739,6 +1739,8 @@ export class Skier {
       lean: crashed ? 0 : 0.85 * Math.tanh(this.lean / 0.85),
       angulate: this.board ? 0.55 : 0.7,
       tall: this.strict && !this.board ? 1 : 0,
+      // (a Cork7 snowboarder rides up on the board too, not sat down in a squat)
+      stand: this.strict && this.board ? 1 : 0,
       // the skis speeding up under him (+) or checked (-): the upper body rocks with it
       // (deep and slow in powder he sits back a little to keep the tips up)
       fore: crashed || !this.onGround ? 0 : clamp(this.accelS ?? 0, -6, 6) / 6 - this.surf.powder * 0.25 * (1 - smoothstep(6, 16, sp)),
