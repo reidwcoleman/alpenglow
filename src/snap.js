@@ -13,7 +13,12 @@ export function snap(s, out = new Float32Array(SNAP_N)) {
   w(s.vel.x); w(s.vel.y); w(s.vel.z);
   w(s.heading); w(s.avgHeading); w(s.skidYaw);
   w(s.normal.x); w(s.normal.y); w(s.normal.z);
-  w(s.pitch); w(s.flipAxis.x); w(s.flipAxis.y); w(s.flipAxis.z);
+  // (a body turned Cork7's way has one orientation: sent as its turn from the heading, about an
+  // axis, which is how a stand-in draws it)
+  if (s.air7Live && !s.onGround) {
+    const r = airTurn(s.air7.q, s.heading + s.skidYaw);
+    w(s.trickType ? r[0] : -r[0]); w(r[1]); w(r[2]); w(r[3]);
+  } else { w(s.pitch); w(s.flipAxis.x); w(s.flipAxis.y); w(s.flipAxis.z); }
   w(TRICK.indexOf(s.trickType));
   w(s.crash > 0 ? 1 : 0); w(PHASE.indexOf(s.crashPhase)); w(s.tumble); w(s.tumbleAxis.x); w(s.tumbleAxis.z); w(s.cartAngle); w(s.lie);
   w(s.lean); w(s.edge); w(s.compress); w(s.gload); w(s.jumpCharge); w(s.airTime); w(s.onGround ? 1 : 0);
@@ -23,6 +28,16 @@ export function snap(s, out = new Float32Array(SNAP_N)) {
   w(s.grind ? 1 : 0); w(s.time); w(s.surf.powder); w(s.skid); w(s.latAcc); w(s.maxAirY ?? 0); w(s.sinkV ?? 0);
   w(s.spin); w((c.up ? 1 : 0) + (c.down ? 2 : 0) + (c.flip > 0 ? 4 : 0) + (c.flip < 0 ? 8 : 0) + (s.boardSwitch ? 16 : 0));
   return out;
+}
+
+// the orientation q taken off a turn of yaw about the vertical: [angle, axis x, y, z]
+function airTurn(q, yaw) {
+  const c = Math.cos(yaw / 2), sn = Math.sin(yaw / 2);
+  // (the yaw undone: conjugate(yaw) * q)
+  let x = c * q.x - sn * q.z, y = c * q.y - sn * q.w, z = c * q.z + sn * q.x, ww = c * q.w + sn * q.y;
+  if (ww < 0) { x = -x; y = -y; z = -z; ww = -ww; }
+  const ang = 2 * Math.acos(Math.min(1, ww)), k = Math.sqrt(Math.max(0, 1 - ww * ww));
+  return k < 1e-6 ? [0, 1, 0, 0] : [ang, x / k, y / k, z / k];
 }
 
 const lerp = (a, b, t) => a + (b - a) * t;

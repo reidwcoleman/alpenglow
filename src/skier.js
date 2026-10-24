@@ -8,6 +8,7 @@
 // press). tools/groundbench.mjs measures it all without a browser.
 import * as THREE from 'three';
 import { heightAt, normalAt, centerX, halfWidth, centerSlope, surfaceAt, RAILS, railAt, PIPE, pipeWalls, FINISH_Z, JUMPS } from './course.js';
+import { AirRot } from './airrot.js';
 import { SkierModel, BOARD_NAME } from './skiermodel.js';
 import { clamp, smoothstep } from './noise.js';
 
@@ -15,7 +16,7 @@ const GRAV = 9.81;
 const UP = new THREE.Vector3(0, 1, 0);
 const BLOB = {}; const _bn = new THREE.Vector3(), _bq = new THREE.Quaternion();
 const _n = new THREE.Vector3(), _f = new THREE.Vector3(), _s = new THREE.Vector3(), _a = new THREE.Vector3();
-const _t = new THREE.Vector3(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _m = new THREE.Matrix4();
+const _t = new THREE.Vector3(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion(), _m = new THREE.Matrix4();
 const near = [];
 const _r = { s: 0, lat: 0, y: 0, slope: 0 };
 
@@ -551,6 +552,9 @@ export class Skier {
         }
         this.pipeAir = true;
       }
+      // (the player's own rotation is Cork7's: one orientation turned from the takeoff's frame)
+      this.air7Live = this.strict && !this.pipeAir;
+      if (this.air7Live) (this.air7 ??= new AirRot()).reset(0, this.heading);
       if (this.trackSlot) this.trackSlot.break();
       this.emit('takeoff', { pop: pop > 0 });
     } else {
@@ -753,6 +757,7 @@ export class Skier {
       }
       spinRate = this.assist ? 0 : this.spinVel;
     } else spinRate = -c.steer * 6.6;
+    const h0 = this.heading, p0 = this.pitch, s0 = this.spin, fa0 = this.flipAcc;
     this.heading += spinRate * dt;
     this.spin += spinRate * dt;
     // flips (W front, S back) and rolls (arrows): the axis is set the moment one starts,
@@ -812,6 +817,23 @@ export class Skier {
         this.pitch += (target - this.pitch) * Math.min(1, dt * 4);
       }
     }
+    // the player's own rotation, Cork7's way: the rates above turn one orientation, so a spin and
+    // a flip held together share one rate and tip the axis instead of adding up, and a cork
+    // tumbles about an axis fixed in the air (a combo flying the trick takes the angles over)
+    if (this.air7Live && (this.auto || this.assist)) this.air7Live = false;
+    if (this.air7Live) {
+      const A7 = this.air7, tt = this.trickType, T = tt ? TRICKS[tt] : null;
+      this.heading = h0; this.pitch = p0; this.spin = s0; this.flipAcc = fa0;
+      const flipV = T && !T.roll ? this.flipVel : 0, rollV = T?.roll ? -this.flipVel : 0;
+      const cork = tt === 'cork' || tt === 'bio' || tt === 'rodeo' || tt === 'misty', over = tt === 'rodeo' || tt === 'misty';
+      A7.controlPitch(T && !T.roll ? fIn : 0, !!this.takeoffSwitch && !this.board, this.flipVel, rollV);
+      const sa = A7.spinAngle, fa = A7.flipAngle;
+      A7.update(flipV, this.spinVel, dt, cork, rollV, over);
+      this.heading = A7.bodyHeading;
+      this.spin += A7.spinAngle - sa;
+      const dF = T?.roll ? this.flipVel * dt : A7.flipAngle - fa;
+      this.pitch += dF; this.flipAcc += dF;
+    }
     // a released spin finishes at the nearest half turn (lands forward or switch)
     if (!arc && Math.abs(c.steer) < 0.15 && this.airTime > 0.15) {
       const hor = Math.atan2(v.x, v.z);
@@ -855,7 +877,8 @@ export class Skier {
     const vn = -v.dot(n);
     const hor = Math.atan2(v.x, v.z);
     const mis = Math.abs(wrapAngle(this.heading - hor));
-    const pErr = Math.abs(wrapAngle(this.pitch));
+    // (how far the body is tipped from upright: off the orientation when that's what turned it)
+    const pErr = this.air7Live ? this.air7.tilt : Math.abs(wrapAngle(this.pitch));
     const big = this.airTime > 0.3;
     // how far off straight (forward or switch) the skis come down
     const off = Math.min(mis, Math.PI - mis);
@@ -911,6 +934,7 @@ export class Skier {
     // flat landings cost speed (less so when sketchy is the worst of it)
     else v.multiplyScalar(1 - clamp((vn - 4) * (arc ? 0.02 : 0.03), 0, 0.35) - (sketchy ? 0.08 : 0));
     this.onGround = true;
+    this.air7Live = false;
     this.compress = clamp(vn / 9, 0.2, 1);
     this.gload = 1 + vn / 5;
     const grabs = Object.entries(this.grabs).filter(([, t]) => t >= 0.25).sort((a, b) => b[1] - a[1]);
@@ -1018,6 +1042,21 @@ export class Skier {
       this.guide = { spin, pitch };
     }
     const G = this.guide;
+    if (this.air7Live) {
+      // (the whole body eased round to the clean landing, facing the half turn and upright, at up
+      // to 4.8 rad/s eased in at 30 rad/s^2: Cork7's assist, on the orientation)
+      const A7 = this.air7, Tq = _q3.setFromAxisAngle(UP, G.spin * Math.PI + hor);
+      const ang = A7.q.angleTo(Tq);
+      G.w = (G.w ?? Math.hypot(this.spinVel, this.flipVel)) + clamp(Math.min(4.8, ang * 8) - (G.w ?? 0), -dt * 30, dt * 30);
+      const fr = ang > 1e-4 ? Math.min(1, (G.w * dt) / ang) : 1;
+      const h1 = this.heading;
+      A7.q.slerp(Tq, fr); A7.correct(_q3.identity());
+      this.heading = A7.bodyHeading;
+      this.spin += wrapAngle(this.heading - h1);
+      if (G.pitch != null) { const dP = (G.pitch - this.pitch) * fr; this.pitch += dP; this.flipAcc += dP; }
+      this.spinVel = 0; this.flipVel = 0;
+      return;
+    }
     const drive = (d, vel) => {
       const want = Math.sign(d) * Math.min(4.8, Math.abs(d) * 8);
       return Math.abs(d) < 0.002 && Math.abs(vel) < 0.05 ? 0 : vel + clamp(want - vel, -dt * 30, dt * 30);
@@ -1061,6 +1100,20 @@ export class Skier {
     const m = this.magnet;
     if (!m) return;
     const k = Math.min(1, dt / Math.max(this.tLand - 0.03, dt * 1.5));
+    if (this.air7Live) {
+      // (the whole body eased toward the clean landing: facing the half turn, upright)
+      const A7 = this.air7, Tq = _q3.setFromAxisAngle(UP, m.spin * Math.PI + hor);
+      const ang = A7.q.angleTo(Tq);
+      const fr = ang > 1e-4 ? Math.min(k, (16 * dt) / ang) : 1;
+      const h1 = this.heading;
+      A7.q.slerp(Tq, fr); A7.correct(_q3.identity());
+      this.heading = A7.bodyHeading;
+      const dS = wrapAngle(this.heading - h1);
+      this.spin += dS; this.spinVel = dS / dt;
+      if (m.pitch != null) { const dP = (m.pitch - this.pitch) * fr; this.pitch += dP; this.flipAcc += dP; }
+      this.flipVel = 0;
+      return;
+    }
     const dS = clamp((m.spin * Math.PI + hor - this.heading) * k, -16 * dt, 16 * dt);
     this.heading += dS; this.spin += dS; this.spinVel = dS / dt;
     if (m.pitch != null) {
@@ -1285,6 +1338,7 @@ export class Skier {
   // ---- crashes: tumble and slide, lie there a moment, get up where you stopped ----
   // hit: how hard it was (m/s into the thing, or into the snow)
   startCrash(reason, hit = 0) {
+    this.air7Live = false;
     if (this.crash > 0) return;
     const sp = this.speed;
     this.crash = 1; this.crashPhase = 'tumble'; this.crashT = 0; this.crashSpeed = sp;
@@ -1510,6 +1564,7 @@ export class Skier {
     this.grind = null; this.grindCool = 0.35;
     const dist = Math.max(0, g.s - g.d0);
     this.onGround = false; this.airTime = 0.13; this.spin = 0; this.pitch = 0; this.flipAcc = 0; this.flipVel = 0; this.grabTime = 0; this.guide = null;
+    this.air7Live = false;
     this.takeoffY = this.maxY = this.pos.y; this.maxAirY = 0; this.takeoffX = this.pos.x; this.takeoffZ = this.pos.z;
     this.takeoffSwitch = this.board ? !!this.boardSwitch : Math.abs(wrapAngle(this.heading - g.R.yaw)) > Math.PI / 2;
     this.fromRail = true;
@@ -1600,6 +1655,8 @@ export class Skier {
       _m.makeRotationAxis(_n.set(-this.tumbleAxis.z, 0, this.tumbleAxis.x), this.cartAngle);
       g.quaternion.premultiply(new THREE.Quaternion().setFromRotationMatrix(_m)).premultiply(_q2);
       lie = this.lie;
+    } else if (this.air7Live && !this.onGround) {
+      g.quaternion.copy(_q).multiply(this.air7.q);
     } else if (this.pitch !== 0) {
       g.quaternion.multiply(_q2.setFromAxisAngle(this.flipAxis, this.trickType ? this.pitch : -this.pitch));
     } else if (this.landTilt && this.onGround) {
@@ -1672,7 +1729,7 @@ export class Skier {
     this.backK = (this.backK ?? 0) + ((back ? 1 : 0) - (this.backK ?? 0)) * Math.min(1, vdt * 6);
     const lookS = (this.lookSide ?? 1) * this.backK;
     // (the player stands tall like a Cork7 rider; the computer riders sit lower)
-    let crouch = (this.strict ? 0.07 : 0.18) + Math.abs(this.lean) * (this.board ? 0.26 : 0.12) + this.compress * 0.35 + gCrouch * (this.board ? 1 : 0.7) + this.jumpCharge * 0.5 + (c.brake > 0 ? 0.25 : 0) - this.spring * 1.6;
+    let crouch = (this.strict ? 0.04 : 0.18) + Math.abs(this.lean) * (this.board ? 0.26 : this.strict ? 0.06 : 0.12) + this.compress * 0.35 + gCrouch * (this.board ? 1 : this.strict ? 0.3 : 0.7) + this.jumpCharge * 0.5 + (c.brake > 0 ? 0.25 : 0) - this.spring * 1.6;
     if (crashed) crouch = this.crashPhase === 'up' ? 0.9 * this.lie + 0.3 : 0.55;
     // (the player's rider drawn a size up, like Cork7's: easier to read on the hill and in a trick)
     const sc = this.strict ? 1.13 : 1;

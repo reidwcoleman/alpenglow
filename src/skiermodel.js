@@ -496,8 +496,9 @@ export class SkierModel {
       j.ankL.y += 0.12 + 0.3 * r * Math.max(0, Math.sin(t * 4.1 + s)); j.ankR.y += 0.05 + 0.3 * r * Math.max(0, Math.sin(t * 4.9 + 1 + s));
       j.ankL.z += 0.32 * r * Math.sin(t * 3.7 + s) + 0.12 * (1 - r); j.ankR.z += 0.32 * r * Math.sin(t * 4.3 + 2 + s) - 0.18 * (1 - r);
     }
-    // (the hips sit over the outside foot, forward over the boots, not back in the seat)
-    const hipH = 0.93 - crouch * 0.22 - tuck * 0.33 - air * 0.12 - g * 0.08 + Math.sin(p.t * 9) * 0.004 + al * 0.085;
+    // (the hips sit over the outside foot, forward over the boots, not back in the seat; a
+    // Cork7-style rider stands right up, the knees only softly bent, and folds up for the air)
+    const hipH = 0.93 + tall * 0.115 * (1 - air) - crouch * 0.22 - tuck * 0.33 - air * 0.12 - g * 0.08 + Math.sin(p.t * 9) * 0.004 + al * 0.085;
     const hipZ = -0.035 - crouch * 0.05 - tuck * 0.12 - (this.lagF || 0) * 0.05;
     j.pelvis.set(-p.lean * 0.1 - (pushL - pushR) * 0.09, hipH, hipZ);
     if (this.gm) j.pelvis.x += this.gm.sway;
