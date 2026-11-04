@@ -68,28 +68,15 @@ Two schemes (Menu > Controls). **Arrows** is the default and needs only the arro
 
 | Arrows (default) | On the snow | In the air |
 |---|---|---|
-| ← → | carve | spin |
-| ↑ | tuck | front flip |
-| ↓ | brake | backflip |
-| arrow taps | | combos (below) |
-| Space / keypad 0 | hold and let go to pop with no trick | |
+| A D | carve | spin |
+| W | pole, then tuck | front flip |
+| S | brake | backflip |
+| Space / keypad 0 | hold and let go to pop; hold through a kicker's lip for a bigger launch | |
 | Keypad . / G | hop round: ride backwards (switch), or forwards again | |
 
-Combos: in the air, quick taps of the arrows (each under a fifth of a second) throw a trick, sized to the air that's left; hold an arrow instead and you spin or flip by hand. A combo that a longer one starts with waits a beat for more taps.
+Tricks are flown by hand: hold a spin and a flip together off the lip for a cork or a bio, let go and the rider eases round to the nearest clean landing. In the park, L picks the next line.
 
-| Combo | Trick | | Combo | Trick |
-|---|---|---|---|---|
-| ↓↓ | Mute grab (board: Indy) | | ←← / →→ | 360 (one more tap for each half turn: 540, 720; 900 and 1080 are secret) |
-| ↑↑ | Japan (Melon) | | ↓↓↓ / ↑↑↑ | Backflip / frontflip (↓↓↓↓ double back: secret) |
-| ←→ / →← | Safety (Method) / Tail | | ←↓→ / →↓← | Cork 720 |
-| ↓← / ↑→ | Critical (Stalefish) / Nose | | ←↑→ | Bio 540 (Misty) |
-| ↑↓ / ↓↑ | Shifty / Daffy (Boned) | | ↓←↓ | Rodeo 540 |
-| ←→← | Sideflip (Wildcat) | | ↑←→ | Flatspin 360 |
-| ←↓←↓ | Double Cork 1080 (secret) | | | |
-
-The number keys no longer do tricks. In the park, L picks the next line.
-
-**Classic** keeps every move by hand:
+**Classic** (the default) has every move:
 
 | | Keyboard | Gamepad |
 |---|---|---|
@@ -184,7 +171,9 @@ node tools/ui2.mjs shots/ui2     # park picker, two browsers in one multiplayer 
 node tools/cloudtest.mjs bigair  # guest run -> global board -> watch it off the server -> cloud save
 node tools/srvrace.mjs           # two browsers on one server race each other
 node tools/eventtest.mjs sprint 1 yard   # an event on autopilot to its results
-node tools/quick.mjs LDR XL            # pop off a park kicker and tap a combo in the air
+node tools/flow.mjs yard                # hands-off run: every kicker's takeoff against the speed it's built for
+node tools/ridesheet.mjs out.jpg yard   # contact sheet of a run's first half minute
+node tools/camair.mjs XL                # camera distance from the rider through a jump
 node tools/injury.mjs shots/inj 25      # a severe crash up close
 node tools/hits.mjs shots/hits yard     # a pole, the nets, a crash at speed, a hop turn to ride switch
 node tools/wx.mjs shots/wx timber 6    # drop in 6 times: a new sky and snow each time (or name them: grand whiteout,nightsnow)

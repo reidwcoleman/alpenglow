@@ -14,8 +14,8 @@ export const PRESETS = {
     fogRGB: [0.74, 0.92, 1.28], valley: [0.00012, -40, 140], disc: 1, aureole: 0.25, proc: 1, cover: 1.6,
   },
   golden: {
-    label: 'Golden Hour', hdri: 'golden', az: 8, elev: 9, sun: 0xffb46e, sunOverSky: 1.9,
-    fogD: 0.00008, fogFall: 1 / 900, sunFog: 0xffc58e, sunFogK: 0.35, key: 2.15, haze: 0.12, snow: 0, shafts: 0.12,
+    label: 'Golden Hour', hdri: 'golden', az: 52, elev: 9, sun: 0xffb46e, sunOverSky: 1.7,
+    fogD: 0.00008, fogFall: 1 / 900, sunFog: 0xffc58e, sunFogK: 0.35, key: 2.15, haze: 0.12, snow: 0, shafts: 0.05,
     fogRGB: [0.8, 0.92, 1.2], valley: [0.0004, -30, 110], mistK: 1.1, disc: 0.6, aureole: 0.5,
   },
   alpenglow: {
