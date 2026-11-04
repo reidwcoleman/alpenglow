@@ -188,7 +188,7 @@ export const JUMPS = [...RUN_JUMPS, ...PARK_JUMPS].sort((a, b) => a.z - b.z);
     Object.assign(J, { h: S.h, w: S.w, ramp: S.ramp, table: S.table, land: S.land, lipAngle: S.lip, gap: true });
     // the knuckle: a landing hill built up out of the falling slope to just under the lip, so a
     // jump flies across the gap and comes down onto a slope that's falling away with it
-    J.knuck = S.h - 1.6 + grade * S.table;
+    J.knuck = Math.min(14, S.h - 1.6 + grade * S.table);
     J.grade = grade;
   }
 }
@@ -283,7 +283,7 @@ export function parkAt(dx, z) {
       const J = f.J;
       const v = Math.abs(dx - J.dx);
       // (shoulders that widen with the height, so you can ride round a big one)
-      const lat = 1 - smoothstep(J.w / 2 - 1, J.w / 2 + 1.5 + J.h * 0.9, v);
+      const lat = 1 - smoothstep(J.w / 2 - 1, J.w / 2 + 1.5 + Math.max(J.h, J.knuck ?? 0) * 0.9, v);
       if (lat > 0) y += jumpProfile(z - J.z, J) * lat;
     } else if (f.k === 1) {
       const RL = ROLLERS;
@@ -309,7 +309,7 @@ export function parkAt(dx, z) {
 // areas the features' own fine surface covers (the coarse terrain hides underneath)
 export const PARK_FEET = [
   // (a big kicker's snow is sampled coarser: it's big and smooth, and there's a lot of it)
-  ...JUMPS.map((J) => ({ dx0: J.dx - J.w / 2 - 3 - J.h, dx1: J.dx + J.w / 2 + 3 + J.h, z0: J.z - 3, z1: J.z + J.len + 3, res: clamp(0.11 * J.h + 0.12, 0.3, 0.75) })),
+  ...JUMPS.map((J) => ({ dx0: J.dx - J.w / 2 - 3 - Math.max(J.h, J.knuck ?? 0), dx1: J.dx + J.w / 2 + 3 + Math.max(J.h, J.knuck ?? 0), z0: J.z - 3, z1: J.z + J.len + 3, res: clamp(0.11 * J.h + 0.12, 0.3, 0.75) })),
   ...(MAP.park ? [{ dx0: ROLLERS.dx - 10, dx1: ROLLERS.dx + 10, z0: ROLLERS.z0 - 3, z1: ROLLERS.z1 + 3 }, { dx0: PIPE.dx - 23, dx1: PIPE.dx + 23, z0: PIPE.z0 - 3, z1: PIPE.z1 + 3 }] : []),
   ...RAILS.map((R) => ({ dx0: R.dx - RAMP_W * 2 - 1.5, dx1: R.dx + RAMP_W * 2 + 1.5, z0: R.z - RAMP_L - 3, z1: R.z + 5 })),
 ];

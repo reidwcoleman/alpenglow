@@ -1862,7 +1862,7 @@ class Game {
       // Cork7's ride: soft round puffs kicked up off the ski tails the whole way down, more and
       // bigger with speed and through a turn, hanging a moment behind the rider
       if (s.isPlayer && s.strict && pw < 0.15) {
-        const n = rnd((3 + sp * 0.18 + edge * 12) * dt * near * (1 - ice * 0.5));
+        const n = rnd((6 + sp * 0.4 + edge * 20) * dt * near * (1 - ice * 0.5));
         for (let i = 0; i < n; i++) {
           const o = Math.random() < 0.5 ? 1 : -1;
           const ox = s.pos.x - fx * 0.8 + lx * o * 0.1, oz = s.pos.z - fz * 0.8 + lz * o * 0.1;

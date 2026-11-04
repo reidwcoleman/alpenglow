@@ -647,6 +647,11 @@ export class Skier {
     const acc = C7.slopeG * Math.sin(Math.atan(-r)) - C7.roll - k * speed * speed - Math.abs(E) * C7.edgeDrag - Math.min(C7.govMax, C7.gov * over * over);
     speed = clamp(speed + (acc - (brake ? C7.brake : 0)) * dt, 0, C7.vmax);
     if (!brake) speed = this.runIn(speed, T, dt, tucking);
+    // stalled with the snow rising ahead, the skis swing round to the fall line and you roll away
+    if (speed < 2 && r > -0.03 && !brake) {
+      const fall = Math.atan2(heightAt(x - 0.5, z) - heightAt(x + 0.5, z), heightAt(x, z - 0.5) - heightAt(x, z + 0.5));
+      T += clamp(wrapAngle(fall - T), -2.5 * dt, 2.5 * dt);
+    }
     // poling: a push every 0.95 s, weaker the faster you're already going (and back up the hill,
     // only near where you've already been); just up from a slam the first push gets you going
     this.c7Rec = speed >= 18 ? 0 : Math.max(0, (this.c7Rec ?? 0) - dt);
@@ -1148,7 +1153,8 @@ export class Skier {
     const back = switchOut && this.canSwitch;
     if (!crash) {
       // the speed along the landing: what you came down with, projected onto the slope
-      const along = Math.max(0, (hs * hs + v.y * lv) / (Math.hypot(hs, lv) || 1));
+      // (never a dead stop: coming down on a rising face, half of it carries you up and over)
+      const along = Math.max(hs * 0.5, (hs * hs + v.y * lv) / (Math.hypot(hs, lv) || 1));
       const sp = clamp(along * (stomp ? 1 : 0.975 - side * 0.065 - clamp(tilt, 0, 1) * 0.045) + (boost ? 2.6 : 0), 0, C7.vmax);
       const r = (heightAt(x + Math.sin(hor) * 0.5, z + Math.cos(hor) * 0.5) - heightAt(x - Math.sin(hor) * 0.5, z - Math.cos(hor) * 0.5));
       const d = sp / Math.hypot(1, r);

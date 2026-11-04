@@ -237,9 +237,13 @@ export function makeSnowMaterial(env) {
           // fresh corduroy: groomer ribs down the fall line, each pass a touch brighter or duller
           float pass = floor(wp.x / 4.6 + nL.g * 0.6);
           snow *= 1.0 + smoothstep(0.8, 1.0, pk()) * (fract(sin(pass * 12.9898) * 43758.5453) - 0.5) * 0.05;
-          float rib = wp.x * 6.2832 / 0.21;
-          float ribFade = 1.0 - smoothstep(0.07, 0.24, fwidth(rib) / 6.2832);
-          snow *= 1.0 + smoothstep(0.8, 1.0, pk()) * ribFade * 0.028 * sin(rib) * (0.7 + 0.3 * nM.b);
+          float rib = wp.x * 6.2832 / 0.34;
+          float ribFade = 1.0 - smoothstep(0.1, 0.34, fwidth(rib) / 6.2832);
+          float groomed = smoothstep(0.8, 1.0, pk());
+          snow *= 1.0 + groomed * ribFade * 0.07 * sin(rib) * (0.7 + 0.3 * nM.b);
+          // (the tiller's chatter across the ribs: the snow you can see going past under you)
+          float chat = wp.y * 6.2832 / 1.1 + nM.b * 2.0;
+          snow *= 1.0 + groomed * 0.028 * sin(chat) * (1.0 - smoothstep(0.1, 0.3, fwidth(chat) / 6.2832));
           gSnowRough = mix(texture2D(uSnowR, gSnowUv1).g, texture2D(uSnowR, gSnowUv2).g, gSnowMix);
           // earlier riders' lines (more on the piste, fewer under fresh snow; the ice is scraped bare)
           gOld = 0.0; gOldG = 0.0;
@@ -327,8 +331,8 @@ export function makeSnowMaterial(env) {
             // soft pillows, fullest in the hollows and lee where the wind drops its snow
             g += vec2(h0 - hx, h0 - hz) * off * 1.3 * (1.0 - 0.55 * gExp) * (1.0 - smoothstep(60.0, 260.0, dist));
             g.x += cos(cw) * 0.045 * pk() * fade;
-            float rib = wp.x * 6.2832 / 0.21;
-            g.x += cos(rib) * 0.075 * smoothstep(0.8, 1.0, pk()) * (1.0 - smoothstep(0.07, 0.24, fwidth(rib) / 6.2832));
+            float rib = wp.x * 6.2832 / 0.34;
+            g.x += cos(rib) * 0.15 * smoothstep(0.8, 1.0, pk()) * (1.0 - smoothstep(0.1, 0.34, fwidth(rib) / 6.2832));
             #if SNOW_HQ
             if (gExp > 0.02) {
               // wind ripples: long low crests across the wind, a gentle windward back and a short steep

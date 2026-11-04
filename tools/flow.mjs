@@ -32,7 +32,7 @@ const out = await page.evaluate(([z0, z1]) => {
       air = null;
     }
   }
-  return { rows, trace: trace.join(' | '), time: t.toFixed(1), min: Math.round(min * 3.6), max: Math.round(max * 3.6), crashes, z: Math.round(p.pos.z), fin: end };
+  rows.push('END ' + JSON.stringify({ grind: p.grind?.R?.name ?? p.grind?.rail?.name ?? !!p.grind, g: p.onGround, crash: p.crash, x: +(p.pos.x - C.centerX(p.pos.z)).toFixed(1), y: +(p.pos.y - H(p.pos.x, p.pos.z)).toFixed(2), v: +p.speed.toFixed(2), air: +p.airTime.toFixed(1), held: !!p.held, slam: p.state ?? '' })); return { rows, trace: trace.join(' | '), time: t.toFixed(1), min: Math.round(min * 3.6), max: Math.round(max * 3.6), crashes, z: Math.round(p.pos.z), fin: end };
 }, [+z0, +z1]);
 console.log(`${park} time ${out.time}s z ${out.z}/${Math.round(out.fin)} speed ${out.min}-${out.max} km/h crashes ${out.crashes}`);
 console.log(out.rows.join('\n')); if (out.trace) console.log(out.trace);
