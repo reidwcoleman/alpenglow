@@ -775,7 +775,8 @@ export class SkierModel {
     P.collar.position.copy(j.neck);
     P.collar.quaternion.setFromUnitVectors(Y, j.spine);
     // the head looks where it's going: up off the spine, turned toward the line (and into a spin)
-    const headUp = (this._headUp ??= new THREE.Vector3()).copy(j.spine).lerp(this.upW ?? Y, 0.55 + tuck * 0.2).normalize();
+    // (a tall rider holds the head up level, eyes on the horizon, whatever the slope does)
+    const headUp = (this._headUp ??= new THREE.Vector3()).copy(j.spine).lerp(this.upW ?? Y, Math.min(0.97, 0.55 + tuck * 0.2 + (p.tall || 0) * 0.4)).normalize();
     j.head.copy(j.neck).addScaledVector(headUp, 0.12);
     // (spinning, it leads into the turn and then spots the landing: Skier.trickPose)
     const lw = this.k?.lookW ?? 0;
@@ -966,9 +967,11 @@ export class SkierModel {
       // (the inside hand leads, forward and up over the inside knee; the outside one stays level)
       const inside = s === inS ? al : 0, lead = s === inS ? al : -al * 0.4;
       T.copy(ch)
-        .addScaledVector(j.side, s * (0.31 - tall * 0.05 + st * 0.03 + sk * 0.07 + inside * 0.06))
-        .addScaledVector(j.fwd, 0.42 - tall * 0.16 + lead * 0.14 - st * 0.08)
-        .addScaledVector(j.spine, -0.17 - tall * 0.1 + inside * 0.12 - st * 0.05);
+        // (standing tall the arms hang: hands by the hips, a little forward and out, elbows
+        // soft, the poles trailing)
+        .addScaledVector(j.side, s * (0.31 - tall * 0.06 + st * 0.03 + sk * 0.07 + inside * 0.06))
+        .addScaledVector(j.fwd, 0.42 - tall * 0.3 + lead * 0.14 * (1 - tall * 0.5) - st * 0.08)
+        .addScaledVector(j.spine, -0.17 - tall * 0.46 + inside * 0.12 * (1 - tall * 0.5) - st * 0.05);
       // (they swing with the body's weight)
       T.x += lr * 0.2; T.y += Math.abs(lr) * 0.08; T.z -= lf * 0.1;
       h.lerp(T, w * (1 - p.tuck));

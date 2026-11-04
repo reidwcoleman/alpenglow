@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { heightAt, centerX, halfWidth } from './course.js';
 import { clamp, smoothstep } from './noise.js';
 
+const _o = new THREE.Vector3();
 export const CAM_MODES = ['chase', 'action', 'helmet', 'drone', 'tv'];
 // (Cork7's ranges and defaults, as its Settings sliders have them)
 export const CAM_RANGE = { height: [0.8, 3.2, 0.1], angle: [-10, 50, 1], distance: [1.5, 8, 0.1], fov: [50, 100, 1], stiffness: [0, 100, 5], slopeTilt: [0, 100, 5] };
@@ -214,7 +215,14 @@ export class CameraRig {
     }
     if (this.snap) { this.pos.copy(tgt); this.look.copy(look); this.snap = false; }
     const k = this.mode === 'helmet' ? 1 : this.mode === 'tv' ? 1 : Math.min(1, dt * (this.mode === 'chase' ? 9 : this.mode === 'drone' ? 2.6 : 7));
-    this.pos.lerp(tgt, k);
+    // (the chase rides with you: it eases its offset from the rider, never trailing behind him
+    // as the speed builds, so he stays the same size in the frame at 10 km/h or 120)
+    if (this.mode === 'chase') {
+      const mv = _o.copy(s.pos).sub(this.lastP ?? s.pos);
+      if (mv.lengthSq() < 400) { this.pos.add(mv); this.look.add(mv); }
+      this.pos.lerp(tgt, k);
+      (this.lastP ??= new THREE.Vector3()).copy(s.pos);
+    } else { this.pos.lerp(tgt, k); this.lastP = null; }
     this.look.lerp(look, Math.min(1, dt * 12));
     cam.position.copy(this.pos);
     // our own helmet would fill the view

@@ -46,8 +46,8 @@ const TAU = Math.PI * 2;
 const C7 = {
   slopeG: 9.81 * 1.7, airG: 17.5, roll: 0.13, kTuck: 0.0024, kRide: 0.0028, deep: 1.38, edgeDrag: 0.38, brake: 17, vmax: 43,
   spin0: 6.3, spin1: 6.3 * 1.08, spinGrab: 6.3 * 1.08 * 1.4, spinUp: 10, spinRev: 28, spinDown: 6.5,
-  // past ~122 km/h riding, ~137 tucked, the snow holds you back more
-  vSoft: 34, vSoftTuck: 38, gov: 0.2, govMax: 6,
+  // past ~122 km/h riding, ~131 tucked, the snow holds you back more
+  vSoft: 34, vSoftTuck: 36.5, gov: 0.2, govMax: 6,
   // a kicker's run-in: over the last 90 m the snow brings you to the speed it's built for
   runIn: 90, runUp: 3, runDown: 6,
 };
