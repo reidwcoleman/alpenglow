@@ -8,6 +8,7 @@ const browser = await chromium.launch({ executablePath: CHROME, headless: true }
 const page = await browser.newPage();
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 await page.goto('https://cork7.com/about', { waitUntil: 'domcontentloaded', timeout: 60000 });
+await page.evaluate(([T, H]) => { window.__TRICK = T; window.__HOLD = H; }, [process.env.TRICK ?? 'spin', +(process.env.HOLD ?? 0.6)]);
 const out = await page.evaluate(script);
 console.log(typeof out === 'string' ? out : JSON.stringify(out, null, 1));
 await browser.close();

@@ -33,7 +33,7 @@ import { Meta } from './meta.js';
 import { Cloud, SERVERS, packReplay, errText } from './cloud.js';
 import { SNAP_N } from './snap.js';
 import { EVENT, TIERS, field, prize, MEDAL } from './events.js';
-import { LESSONS, LESSON, quickSpec, COMBOS, ARROW, comboFor, comboSteps } from './school.js';
+import { LESSONS, LESSON, quickSpec } from './school.js';
 import { Menu, FLAKE } from './menu.js';
 import { saveRun, getRun } from './vault.js';
 import { MAPS, MAP_IDS } from './maps.js';
@@ -1596,71 +1596,6 @@ class Game {
   }
 
   // ---------------- trick school ----------------
-  // combos: quick arrow taps in the air. A match fires the trick (sized to the air left);
-  // if a longer combo starts the same way it waits a beat for more taps first
-  combos(inp, dt) {
-    const P = this.player;
-    const air = !P.onGround && !P.grind && P.crash <= 0;
-    const st = (this.cst ??= { buf: '', last: 0, down: {}, shown: 0 });
-    if (!air) { st.fired = null; if (st.buf) { st.buf = ''; this.comboHud(); } return; }
-    const now = this.time;
-    for (const [k, code] of [['U', 'ArrowUp'], ['D', 'ArrowDown'], ['L', 'ArrowLeft'], ['R', 'ArrowRight']]) {
-      const d = inp.down(code);
-      if (d && !st.down[k]) st.down[k] = now;
-      else if (!d && st.down[k]) {
-        // a tap, not a hold
-        if (now - st.down[k] < 0.22) { st.buf += k; st.last = now; this.comboStep(); }
-        st.down[k] = 0;
-      }
-    }
-    if (st.buf && now - st.last > 0.3) this.comboFire(true);
-  }
-
-  comboStep() {
-    const st = this.cst;
-    const exact = COMBOS.find((c) => c.seq === st.buf);
-    const longer = COMBOS.some((c) => c.seq.length > st.buf.length && c.seq.startsWith(st.buf));
-    // a combo starts on the tap that makes it (no waiting to see if more are coming: that cost
-    // the air to finish it); another tap that makes a longer one upgrades it in the air
-    if (exact) this.comboFire(false, longer);
-    else if (!longer) { const had = !!st.fired; if (!had) this.status('NO SUCH COMBO'); st.buf = ''; st.fired = null; this.comboHud(!had); }
-    else this.comboHud();
-  }
-
-  comboFire(timeout, keep = false) {
-    const st = this.cst, P = this.player;
-    // (the pause after the taps: whatever they made has started already)
-    if (timeout && st.fired && st.fired === st.buf) { st.buf = ''; st.fired = null; this.comboHud(false, st.firedName); return; }
-    const c = COMBOS.find((x) => x.seq === st.buf);
-    if (!keep) st.buf = '';
-    if (!c) { this.comboHud(); return; }
-    const spec = quickSpec(c.id), l = LESSON[c.id];
-    const name = (this.gear === 'board' ? l?.board : l?.name)?.toUpperCase() ?? '';
-    if (!spec) { this.comboHud(); return; }
-    const up = !!(st.fired && P.auto?.combo === st.fired && c.seq.startsWith(st.fired));
-    if ((P.auto || P.trickType) && !up) this.status('ONE AT A TIME');
-    else if (P.flightTime() < (P.strict ? 0.12 : 0.45)) this.status('TOO LATE · ' + name);
-    else {
-      // an upgrade carries on from where the first one started turning
-      P.auto = { ...spec, id: c.id, dir: c.dir ?? spec.dir, combo: c.seq, f0: up ? P.auto.plan?.f0 : undefined };
-      st.fired = keep ? c.seq : null; st.firedName = name;
-      if (c.secret) this.status('SECRET COMBO · ' + name);
-      this.audio.beep(1180, 0.05, 0.08);
-    }
-    this.comboHud(false, name);
-  }
-
-  // the taps so far under the rider, and what they made
-  comboHud(bad = false, made = '') {
-    const el = $('combo');
-    if (!el) return;
-    const buf = this.cst?.buf ?? '';
-    el.innerHTML = buf ? [...buf].map((k) => `<kbd>${ARROW[k]}</kbd>`).join('') : made ? `<b>${esc(made)}</b>` : bad ? '<b class="x">✕</b>' : '';
-    el.classList.toggle('on', !!(buf || made || bad));
-    clearTimeout(this.comboT);
-    if (!buf) this.comboT = setTimeout(() => el.classList.remove('on'), 900);
-  }
-
   // Try it: to the right line of the park with the lesson on screen
   tryLesson(id) {
     const l = LESSON[id];
@@ -1681,8 +1616,7 @@ class Game {
     el.classList.toggle('hidden', !l);
     if (!l) return;
     const B = this.gear === 'board';
-    const c = comboFor(l.id);
-    const steps = comboSteps(l, 'a kicker', c?.secret && ![...this.book].some((n) => l.re.test(n))) ?? l.steps;
+    const steps = l.steps;
     el.innerHTML = `<div class="ct">TRICK SCHOOL · ${esc(B ? l.board : l.name)}<button id="coach-x">×</button></div><ol>${steps.map((s2) => `<li>${s2}</li>`).join('')}</ol>`;
     $('coach-x').onclick = () => { this.coach = null; this.showCoach(); };
   }
@@ -2041,19 +1975,6 @@ class Game {
       if (this.player && !this.player.ai) {
         // (on a rail a quick tap of A/D is a whole swap: the steer is on at once, as in the air)
         const c = inp.read(dt, !this.player.onGround && !this.player.grind, !!this.player.grind);
-        // in the air a spin starts the moment its key goes down, as in Cork7 (a quick tap of the
-        // arrows still makes a combo, which takes the spin over from wherever it's got to). A flip
-        // off W / S, the pad or touch is as quick; off the up and down arrows it waits until held,
-        // since a tap of those is a grab or a flip combo
-        if (!this.player.onGround && !this.player.grind && this.world.arcade) {
-          const arrowsOnly = inp.scheme === 'arrows' && (inp.down('ArrowUp') || inp.down('ArrowDown')) && !inp.down('KeyW') && !inp.down('KeyS')
-            && !inp.touch.tuck && !inp.touch.brake && !inp.pad();
-          this.holdF = c.flip ? (this.holdF ?? 0) + dt : 0;
-          if (arrowsOnly && this.holdF < 0.17) c.flip = 0;
-          // (the classic keys roll on the arrows: those taps are combos too)
-          this.holdR = c.roll ? (this.holdR ?? 0) + dt : 0;
-          if (!inp.pad() && this.holdR < 0.17) c.roll = 0;
-        } else this.holdF = this.holdR = 0;
         Object.assign(this.player.controls, c);
         if (this.state === 'lift') {
           Object.assign(this.player.controls, { steer: 0, tuck: 0, brake: 0, jump: false, grab: false });
@@ -2069,7 +1990,7 @@ class Game {
           const need = 2;
           if (this.holdR >= need) { this.holdR = -99; this.restart(); }
         }
-        // L: the next park line; arrow taps in the air: combos
+        // L: the next park line
         const P = this.player;
         if (this.mode === 'park' && inp.hit('KeyL') && P.onGround) {
           const order = ['jumps', 'rails', 'pipe', 'rollers'];
@@ -2077,7 +1998,6 @@ class Game {
           const names = { jumps: 'JUMP LINE', rails: 'RAIL GARDEN', pipe: 'HALFPIPE', rollers: 'ROLLERS' };
           this.parkSpawn(P, line); this.rig.snap = true; this.say(names[line], '', 'L for the next line', '', 1200);
         }
-        if (this.mode !== 'race' && this.state !== 'countdown' && this.state !== 'lift') this.combos(inp, dt);
         // keypad . (or G): hop round to ride the other way, backwards or forwards again
         if ((inp.hit('NumpadDecimal') || inp.hit('KeyG') || inp.hit('NumpadEnter')) && P.onGround && !P.grind && P.crash <= 0 && this.state !== 'countdown') {
           P.turnReq = -Math.sign(P.controls.steer) || (this.turnDir = -(this.turnDir || -1));

@@ -21,7 +21,7 @@ export class Input {
     this.steer = 0;
     // 'arrows': the arrow keys ride (left/right carve and spin, up tuck / front flip, down
     // brake / backflip) and the number keys do the tricks; 'classic': WASD rides, arrows roll
-    try { this.scheme = localStorage.getItem('alpenglow.scheme') || 'arrows'; } catch { this.scheme = 'arrows'; }
+    try { this.scheme = localStorage.getItem('alpenglow.scheme') || 'classic'; } catch { this.scheme = 'classic'; }
     this.touch = { left: false, right: false, tuck: false, brake: false, jump: false, grab: false };
     try { this.binds = JSON.parse(localStorage.getItem('alpenglow.binds') || '{}') || {}; } catch { this.binds = {}; }
     this.remapKeys();
@@ -42,7 +42,7 @@ export class Input {
     this.bindTouch();
   }
 
-  // the on-screen buttons press the same keys a keyboard would (so taps make combos too)
+  // the on-screen buttons press the same keys a keyboard would 
   bindTouch() {
     const map = { 'tc-left': 'ArrowLeft', 'tc-right': 'ArrowRight', 'tc-tuck': 'ArrowUp', 'tc-brake': 'ArrowDown', 'tc-jump': 'Space', 'tc-grab': 'ShiftLeft', 'tc-turn': 'KeyG' };
     for (const [id, code] of Object.entries(map)) {
@@ -108,9 +108,8 @@ export class Input {
     const A = this.scheme === 'arrows';
     if (this.down('KeyA') || t.left || ((A || !airborne) && this.down('ArrowLeft'))) target -= 1;
     if (this.down('KeyD') || t.right || ((A || !airborne) && this.down('ArrowRight'))) target += 1;
-    // keyboard steering ramps like a real edge roll (in the air it's straight on/off)
-    const rate = airborne || rail ? 30 : target === 0 ? 7 : Math.sign(target) !== Math.sign(this.steer) ? 9 : 4.5;
-    this.steer += Math.max(-rate * dt, Math.min(rate * dt, target - this.steer));
+    // the key is the stick, all the way over (the simulation rolls the edge on itself)
+    this.steer = target;
     let steer = this.steer;
     let tuck = this.down('KeyW') || ((A || !airborne) && this.down('ArrowUp')) || t.tuck ? 1 : 0;
     let brake = this.down('KeyS') || ((A || !airborne) && this.down('ArrowDown')) || t.brake ? 1 : 0;

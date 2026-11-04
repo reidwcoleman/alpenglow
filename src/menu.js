@@ -4,7 +4,7 @@
 // draws it and passes clicks back.
 import { ITEMS, ITEM, CATS, RARITY, LEVELS, LEVEL_XP, SEASON, RIVALS, SETS, GOLD_PRICE, store } from './meta.js';
 import { EVENTS, TIERS, field, prize, MEDAL } from './events.js';
-import { LESSONS, LESSON, FAMS, comboFor, comboSteps, ARROW } from './school.js';
+import { LESSONS, LESSON, FAMS } from './school.js';
 import { SERVERS, errText } from './cloud.js';
 import { designURL } from './gear.js';
 import { listRuns, getRun, keepRun, deleteRun } from './vault.js';
@@ -84,6 +84,7 @@ function shortDate(t) { const d = new Date(t); return d.toLocaleDateString(undef
 function clock(s) { const m = Math.floor(s / 60); return `${String(m).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`; }
 
 const NOTES = [
+  { d: '4 NOV', t: 'A new ride: real flow from kicker to kicker', p: 'Riding, spinning, flipping and landing are rebuilt. The key is the edge, all the way over, and tricks are flown by hand: hold a spin and a flip off the lip for a cork, let go and the rider finds the landing. Tap combos are gone. Every kicker now has a run-in that brings you to the speed it is built for, a real gap, and a landing hill that comes up to meet you, so jumps land on the landing, not past it or short of it. Kickers near the top are sized for the speed you can actually have there. Signs and poles break away instead of ending your line.', tags: ['RIDING', 'TRICKS'] },
   { d: '24 OCT', t: 'Snowboard stands up, darker nights', p: 'On the snowboard your rider no longer rides in a squat: the knees were bent about 65 degrees all the time, now about 30, a bit more through a carve. The board also holds its line through a turn instead of sliding its tail out sideways like it was braking. Night sessions are darker again: the floodlights are well under half as bright, with small soft glows, so the pools of light under the towers stand out against the dark.', tags: ['BOARD', 'NIGHT'] },
   { d: '24 OCT', t: 'Cork7\'s air physics, standing tall', p: 'Rebuilt how your body turns in the air from Cork7\'s own physics. Before, a spin and a flip were two separate angles that both ran flat out at once, so holding both whirled you round faster than a body can turn. Now your body has one real orientation turned by momentum set at the takeoff, like Cork7\'s: a spin and a flip held together share one rate and tip the axis over instead of adding up, a flip goes over the shoulder you faced when you started it, and a cork tumbles about one axis fixed in the air. Let go and the body eases round to the nearest clean landing, the way Cork7\'s assist does, so released corks and bios land. Replays and other riders in multiplayer see the real tumble. Your rider also stands up tall like a Cork7 rider instead of riding in a deep crouch: the knees were bent about 65 degrees, now about 20, a little more through a hard carve.', tags: ['TRICKS', 'PHYSICS', 'RIDER'] },
   { d: '23 OCT', t: 'Real rotation, a calmer pace, lo-fi on the radio', p: 'Tricks turn like a body really can. Arrow combos used to whip you round at up to 745 degrees a second to fit whatever you asked for; now they turn no faster than Cork7\'s riders, about 545 a second spinning and 390 flipping, and if the air left after your taps can\'t fit the trick it comes out smaller (a late 1080 lands as a 720). Held spins and flips build up a little slower, so the body has some weight to it. The pace is much calmer: you cruise around 80 km/h instead of 115, and still get up to the right speed lined up for a kicker. Stomped FM is now slow lo-fi, 70 to 84 BPM: soft swung drums, a round bass, warm electric piano on jazzy chords and a little vinyl crackle.', tags: ['TRICKS', 'SPEED', 'MUSIC'] },
@@ -616,13 +617,8 @@ export class Menu {
     const l = LESSON[this.lesson] ?? LESSONS[0];
     const ok = has(l.re);
     const where = l.where === 'rails' ? 'a rail' : l.lvl >= 4 ? 'the biggest kicker you can find (XL, Big Air)' : l.lvl >= 3 ? 'a large kicker' : 'any kicker';
-    const combo = comboFor(l.id), secret = combo?.secret && !ok;
-    const num = comboSteps(l, where, secret);
-    const keys = combo ? (secret ? '<span class="combo q">? ? ? ?</span>' : `<span class="combo">${[...combo.seq].map((k) => `<kbd>${ARROW[k]}</kbd>`).join('')}</span>`) : '';
-    const handHead = num ? `<div class="lv2" style="margin-top:12px">BY HAND${l.classic ? ' · CLASSIC KEYS (MENU › CONTROLS)' : ''}</div>` : '';
     $('howbox').innerHTML = `<div class="lv2">${FAMS.find(([k]) => k === l.fam)?.[1].toUpperCase() ?? ''} LEVEL ${l.lvl} · ${ok ? 'LANDED ✓' : `FIRST LANDING PAYS ${l.reward} FLAKES`}</div><h3>${esc(B ? l.board : l.name)}</h3>
-      ${num ? `<div class="lv2" style="margin-top:8px">THE COMBO ${keys}</div><ol>${num.map((st) => `<li><span>${st}</span></li>`).join('')}</ol>` : ''}
-      ${handHead}<ol>${l.steps.map((st) => `<li><span>${st}</span></li>`).join('')}</ol><div class="tip">${esc(l.tip)}</div>
+      <ol>${l.steps.map((st) => `<li><span>${st}</span></li>`).join('')}</ol><div class="tip">${esc(l.tip)}</div>
       <div class="row"><button class="btn p" id="sc-try">Try it ↗</button></div>`;
     $('demo').innerHTML = `<div class="cap">${esc(B ? l.board : l.name)}</div>`;
     $('sc-try').onclick = () => g.tryLesson(l.id);

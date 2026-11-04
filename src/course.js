@@ -128,9 +128,28 @@ export const JUMPS = [...RUN_JUMPS, ...PARK_JUMPS].sort((a, b) => a.z - b.z);
   const lane = (o) => o.J ? [o.J.dx - o.J.w / 2 - 2 - 0.9 * o.J.h, o.J.dx + o.J.w / 2 + 2 + 0.9 * o.J.h] : [o.dx - 3, o.dx + 3];
   const others = [...MAP.runRails ?? [], ...MAP.parkRails ?? []].map((R) => ({ z0: R.z - 9, dx: R.dx }));
   if (MAP.park) others.push({ z0: (MAP.pipe?.z0 ?? 1100) - 4, dx: MAP.pipe?.dx ?? 54, half: 25 }, { z0: (MAP.rollers?.z0 ?? 1058) - 4, dx: MAP.rollers?.dx ?? -58, half: 12 });
+  // how fast the run lets you get to each one, riding it hands-off: a kicker is never built for
+  // more speed than that (plus what its run-in gives, Skier.runIn), so every one can be cleared
+  const G = 9.81 * 1.7;
+  let flowZ = START_Z, flowV = 3;
+  const flowTo = (z) => {
+    for (; flowZ < z; flowZ += 2) {
+      const g = sectionAt(flowZ).grad, over = Math.max(0, flowV - 34);
+      const a = (G * g) / Math.hypot(1, g) - 0.13 - 0.0028 * flowV * flowV - Math.min(6, 0.2 * over * over);
+      flowV = Math.sqrt(Math.max(9, flowV * flowV + 4 * a));
+    }
+    return flowV;
+  };
   for (const J of JUMPS) {
     if (J.drop) continue;
     const grade = sectionAt(J.z).grad, hw = halfWidth(J.z);
+    const reach = Math.sqrt(flowTo(J.z) ** 2 + 2 * 3 * 60);
+    // the speed at the foot of the ramp that comes down a third of the way down the landing
+    const built = (S) => {
+      const a = (S.lip * Math.PI) / 180, x = S.table + 0.35 * S.land, t = Math.tan(a);
+      const drop = 1.6 + 0.35 * S.land * (grade + 0.2);
+      return Math.sqrt((17.5 * x * x) / (2 * Math.cos(a) ** 2 * (drop + x * t)) + 2 * G * S.h);
+    };
     const size = (h) => {
       const lip = clamp(13 + 2.2 * h, 19, 37);
       const t = Math.tan((lip * Math.PI) / 180);
@@ -152,12 +171,24 @@ export const JUMPS = [...RUN_JUMPS, ...PARK_JUMPS].sort((a, b) => a.z - b.z);
       return S.ramp + S.table + S.land <= room;
     };
     let S = null;
-    for (let h = clamp(2 * J.h + 1.5, 3.2, 11); h >= J.h; h -= 0.25) { const T = size(h); if (fits(T)) { S = T; break; } }
+    for (let h = clamp(2 * J.h + 1.5, 3.2, 11); h >= J.h; h -= 0.25) { const T = size(h); if (fits(T) && built(T) <= reach) { S = T; break; } }
+    // (nothing that size can be cleared from here: the smallest, its table and landing drawn in
+    // until it can)
+    if (!S) {
+      const T = size(J.h);
+      if (fits(T)) {
+        for (let i = 0; i < 24 && built(T) > reach; i++) { T.table = Math.max(1.4 * T.h + 4, T.table * 0.94); T.land = Math.max(3.5 * T.h + 12, T.land * 0.94); }
+        S = T;
+      }
+    }
     if (!S) continue;
+    // (down the landing and away at about that speed)
+    flowTo(J.z + S.ramp + S.table + 0.35 * S.land);
+    flowV = Math.min(flowV, built(S) + 2.5);
     Object.assign(J, { h: S.h, w: S.w, ramp: S.ramp, table: S.table, land: S.land, lipAngle: S.lip, gap: true });
-    // the knuckle: ~0.6 of the kicker's height below its lip, the landing hill built up to it out
-    // of the falling slope (no taller than Cork7's, 1.3 times the kicker)
-    J.knuck = Math.min(1.3 * S.h, 0.4 * S.h + grade * S.table);
+    // the knuckle: a landing hill built up out of the falling slope to just under the lip, so a
+    // jump flies across the gap and comes down onto a slope that's falling away with it
+    J.knuck = S.h - 1.6 + grade * S.table;
     J.grade = grade;
   }
 }
@@ -198,9 +229,13 @@ function jumpProfile(u, J) {
     // Cork7's: the kicker's back face drops into a gap, the landing hill rises out of it to the
     // knuckle a table's length out, then the long landing
     const back = J.h * (1 - smoothstep(L, L + 2.2 + 0.2 * J.h, u));
-    // (the hill's face never climbs against the fall line: come up short and you roll on down
-    // into the landing rather than stopping in the gap)
-    const hill = u < L + J.table ? Math.max(0, J.knuck - 0.85 * J.grade * (L + J.table - u)) : J.knuck * (1 - smoothstep(L + J.table + 2, J.len, u));
+    // (the gap is 0.8 of the kicker deep under the lip, a third of the table out; the hill's
+    // face rises out of it no steeper than the fall line, so coming up short you roll on down)
+    const hill = u < L + J.table
+      ? Math.max(0, J.h - 1.6 - 0.8 * J.h * (1 - smoothstep(L + 0.35 * J.table, L + J.table, u)) + J.grade * (u - L))
+      // (the landing stays near the fall line down the part that gets landed on, and only then
+      // runs back down to the slope)
+      : J.knuck * (1 - smoothstep(0, 1, clamp((u - L - J.table - 2) / (J.land - 2), 0, 1) ** 1.8));
     return Math.max(back, hill);
   }
   // the lip's back face drops onto the table

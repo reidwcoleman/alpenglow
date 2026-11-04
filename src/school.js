@@ -1,9 +1,9 @@
 // Trick School: every trick with how to do it, a demo the rider performs on the menu, and
-// a combo to tap in the air (see COMBOS). A lesson is passed the first time the
+// A lesson is passed the first time the
 // trick lands for real (it goes in the trick book) and pays flakes once.
 //   demo / quick: { spin (deg), dir, type, flips, roll, grab, shifty, daffy, butter, rail }
 const K = (k) => `<kbd>${k}</kbd>`;
-// steps: doing it by hand (the combo way is in comboSteps)
+// steps: how it's flown
 const L = (id, fam, lvl, name, board, re, steps, tip, demo, where = 'jumps') => ({ id, fam, lvl, name, board: board ?? name, re, steps, tip, demo, where, reward: 40 + lvl * 35,
   classic: steps.some((t) => /[←→↑↓]/.test(t)) });
 
@@ -49,39 +49,6 @@ export const LESSONS = [
 ];
 export const LESSON = Object.fromEntries(LESSONS.map((l) => [l.id, l]));
 
-// Combos: arrow taps in the air (U D L R), quick ones (a tap is under a fifth of a second;
-// holding an arrow still spins or flips you by hand). More taps, more rotation. The biggest
-// ones are secret until you've landed them.
-export const COMBOS = [
-  { seq: 'DD', id: 'mute' }, { seq: 'UU', id: 'japan' }, { seq: 'LR', id: 'safety' }, { seq: 'RL', id: 'tail' },
-  { seq: 'DL', id: 'critical' }, { seq: 'UR', id: 'nose' }, { seq: 'UD', id: 'shifty' }, { seq: 'DU', id: 'daffy' },
-  { seq: 'LL', id: '360', dir: 1 }, { seq: 'RR', id: '360', dir: -1 },
-  { seq: 'LLL', id: '540', dir: 1 }, { seq: 'RRR', id: '540', dir: -1 },
-  { seq: 'LLLL', id: '720', dir: 1 }, { seq: 'RRRR', id: '720', dir: -1 },
-  { seq: 'LLLLL', id: '900', dir: 1, secret: true }, { seq: 'RRRRR', id: '900', dir: -1, secret: true },
-  { seq: 'LLLLLL', id: '1080', dir: 1, secret: true }, { seq: 'RRRRRR', id: '1080', dir: -1, secret: true },
-  { seq: 'DDD', id: 'backflip' }, { seq: 'UUU', id: 'frontflip' }, { seq: 'DDDD', id: 'double', secret: true },
-  { seq: 'LRL', id: 'sideflip' }, { seq: 'ULR', id: 'flatspin' },
-  { seq: 'LDR', id: 'cork', dir: 1 }, { seq: 'RDL', id: 'cork', dir: -1 },
-  { seq: 'LUR', id: 'bio', dir: 1 }, { seq: 'RUL', id: 'bio', dir: -1 },
-  { seq: 'DLD', id: 'rodeo', dir: 1 }, { seq: 'DRD', id: 'rodeo', dir: -1 },
-  { seq: 'LDLD', id: 'dcork', dir: 1, secret: true }, { seq: 'RDRD', id: 'dcork', dir: -1, secret: true },
-];
-export const ARROW = { U: '↑', D: '↓', L: '←', R: '→' };
-// the first combo listed for a lesson
-export const comboFor = (id) => COMBOS.find((c) => c.id === id) ?? null;
-
-// steps for doing a lesson's trick with its combo
-export function comboSteps(l, where, secret) {
-  const c = comboFor(l.id);
-  if (!c || !quickSpec(l.id)) return null;
-  const keys = [...c.seq].map((k) => `<kbd>${ARROW[k]}</kbd>`).join(' ');
-  return [
-    `Pop off ${where}`,
-    secret ? 'In the air, tap the secret combo (more taps, more rotation: find it)' : `In the air tap ${keys}, quick taps one after another`,
-    'The rider throws it, as big as the air allows, and lands it if you leave it alone',
-  ];
-}
 
 // a lesson's trick as a quick trick spec
 export function quickSpec(id) {

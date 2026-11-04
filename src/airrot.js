@@ -72,7 +72,7 @@ export class AirRot {
     const lean = Math.atan2(-(this.tup.x * this.fwd.x + this.tup.z * this.fwd.z) / r, this.tup.y);
     this.rollLean = SPIN_K * Math.tan(Math.max(0.2, Math.min(1.1, (ROLL_CONE - lean) / 2)));
     this.cork.reset(); this.over.reset();
-    this.turned = 0; this.corked = false;
+    this.turned = 0; this.corked = false; this.speed = 0;
     this.spinAngle = 0; this.flipAngle = 0; this.inversions = 0;
     this.regularScale = 1; this.regularSpin = 0;
     this.heading = this.bodyHeading;
@@ -97,6 +97,7 @@ export class AirRot {
     if (dt <= 0) return;
     const rate = Math.max(Math.abs(flip), Math.abs(spin), Math.abs(roll));
     const n = Math.max(1, Math.ceil(dt * 240)), h = dt / n;
+    let turnedNow = 0;
     for (let i = 0; i < n; i++) {
       if (this.turned < SETTLE) { this.cork.reset(); this.over.reset(); }
       const ck = this.cork.update(cork, h * 0.5), ov = this.over.update(over, h * 0.5);
@@ -116,7 +117,7 @@ export class AirRot {
       const w = this.omega.length();
       this.step.setFromAxisAngle(this.omega.normalize(), w * h);
       this.q.premultiply(this.step).normalize();
-      this.turned += w * h;
+      this.turned += w * h; turnedNow += w * h;
       this.cork.update(cork, h * 0.5); this.over.update(over, h * 0.5);
       if (ck > 0.5 && Math.abs(flip) > 0.3 && Math.abs(spin) > 0.3) this.corked = true;
       const bh = this.bodyHeading;
@@ -129,6 +130,8 @@ export class AirRot {
       if (inv && !this.wasInverted) this.inversions++;
       this.wasInverted = inv;
     }
+    // (how fast it's turning, on average over the step: the landing assist waits for it to slow)
+    this.speed = turnedNow / dt;
   }
 
   // the angular velocity: plain (the spin about the body's spine, the flip about the takeoff's
