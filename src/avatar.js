@@ -330,7 +330,7 @@ float agN(vec3 x) {
 // a garment's print: 1 chest band, 2 camo, 3 tartan, 4 colour-block sleeves, 5 fade
 vec3 agPat(vec3 a, vec3 b, float pat, float part, vec3 p, vec2 lm) {
   if (pat < 0.5) return a;
-  // (Cork7's starter shell: one dark band round the chest, the sleeves the jacket's colour)
+  // (one band round the chest)
   if (pat < 1.5) { float y = (p.y - lm.x) / (lm.y - lm.x); return part > 1.5 && part < 2.5 && y > 0.16 && y < 0.46 ? b : a; }
   if (pat < 2.5) { float n = agN(p * 9.0) * 0.65 + agN(p * 23.0) * 0.35; return n > 0.62 ? b : n > 0.5 ? mix(a, b, 0.5) : a; }
   if (pat < 3.5) {
@@ -343,6 +343,7 @@ vec3 agPat(vec3 a, vec3 b, float pat, float part, vec3 p, vec2 lm) {
   if (pat < 6.5) return fract(p.y * 7.0) > 0.62 ? b : a;
   if (pat < 7.5) { float v = fract(p.y * 5.0 + abs(p.x) * 5.0); return v > 0.5 && v < 0.78 ? b : a; }
   if (pat < 8.5) return p.x > 0.0 ? a : b;
+  if (pat < 9.5) return p.y > lm.y - 0.18 ? b : a;
   if (pat < 9.5) return (part < 2.5 && abs(p.x) < 0.035 && p.z > 0.0) || (part > 3.5 && part < 4.5) || (part > 5.5 && abs(abs(p.x) - 0.17) < 0.022) ? b : a;
   if (pat < 10.5) { vec3 q = floor(p * 26.0); float n = agH(q) * 0.6 + agH(floor(p * 9.0)) * 0.4; return n > 0.62 ? b : n > 0.48 ? mix(a, b, 0.45) : a; }
   if (pat < 11.5) return fract(p.x * 24.0 + p.z * 24.0) > 0.86 ? mix(a, b, 0.85) : a;

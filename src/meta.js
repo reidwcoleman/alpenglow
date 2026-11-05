@@ -14,7 +14,7 @@ export const SEASON = { name: 'Season 01', sub: 'Snowboards for everyone', ends:
 
 // ---------------------------------------------------------------- items
 // cat: jacket, pants, head, goggles, skis, deck, gloves, poles, rider
-// pat (jackets and pants): 0 solid, 1 chest band, 2 camo, 3 tartan, 4 colour-block sleeves, 5 fade,
+// pat (jackets and pants): 0 solid, 1 chest band, 2 camo, 3 tartan, 4 colour-block sleeves, 5 fade, 9 yoke,
 //   6 stripes, 7 chevron, 8 split, 9 trims, 10 pixel camo, 11 pinstripe, 12 dots, 13 quilted, 14 sash, 15 checker
 // design (skis and decks): a top-sheet graphic, see gear.js
 // fin (helmets): 0 gloss, 1 matte, 2 chrome; c2 a racing stripe
@@ -26,7 +26,7 @@ export const ITEMS = [
   I('j-mustard', 'jacket', 'Mustard', 'free', 0, 0xf2b705), I('j-glacier', 'jacket', 'Glacier', 'free', 0, 0x2a7de1),
   I('j-pine', 'jacket', 'Pine', 'free', 0, 0x18a868), I('j-violet', 'jacket', 'Violet', 'free', 0, 0x8e3fd1),
   I('j-flamingo', 'jacket', 'Flamingo', 'free', 0, 0xff4f8b), I('j-chalk', 'jacket', 'Chalk', 'free', 0, 0xf4f4f4),
-  I('j-tealband', 'jacket', 'Petrol Shell', 'free', 0, 0x286d70, 0x1a1e24, 1), I('p-slate', 'pants', 'Ink', 'free', 0, 0x303946),
+  I('j-anorak', 'jacket', 'Shredline Anorak', 'free', 0, 0xef6a2e, 0x24263b, 9), I('j-tealband', 'jacket', 'Petrol Shell', 'free', 0, 0x286d70, 0x1a1e24, 1), I('p-slate', 'pants', 'Ink', 'free', 0, 0x303946), I('p-sand', 'pants', 'Sand', 'free', 0, 0xb9a688),
   I('p-coal', 'pants', 'Coal', 'free', 0, 0x1b1d24), I('p-navy', 'pants', 'Navy', 'free', 0, 0x1f2f4a), I('p-stone', 'pants', 'Stone', 'free', 0, 0x8a8478),
   I('h-white', 'head', 'White Lid', 'free', 0, 0xf4f4f4, null, 0, { helmet: true }), I('h-black', 'head', 'Black Lid', 'free', 0, 0x14181d, null, 0, { helmet: true, fin: 1 }),
   I('h-red', 'head', 'Red Lid', 'free', 0, 0xd8342c, null, 0, { helmet: true }),
@@ -202,7 +202,7 @@ export const SETS = [
 ].map((s) => ({ ...s, price: Math.round(s.items.reduce((a, id) => a + (ITEM[id]?.price ?? 0), 0) * 0.7 / 50) * 50 }));
 
 // ---------------------------------------------------------------- the profile
-const KIT0 = { rider: 'r-kai', jacket: 'j-tealband', pants: 'p-slate', head: 'h-black', goggles: 'g-silver', skis: 's-red', deck: 'd-white', gloves: 'gl-black', poles: 'po-alu', trail: 't-none' };
+const KIT0 = { rider: 'r-kai', jacket: 'j-anorak', pants: 'p-sand', head: 'h-white', goggles: 'g-amber', skis: 's-black', deck: 'd-white', gloves: 'gl-black', poles: 'po-alu', trail: 't-none' };
 export class Meta {
   constructor() {
     this.load();
@@ -238,6 +238,12 @@ export class Meta {
       const K = this.kit;
       if (K.jacket === KIT0.jacket && (K.goggles === 'g-smoke' || K.goggles === 'g-sky')) K.goggles = 'g-silver';
       store.set('kit9', '1');
+    }
+    // (the new rider: anyone still in the last starter kit moves to the new one)
+    if (store.get('kit10', '0') !== '1') {
+      const K = this.kit;
+      if (K.jacket === 'j-tealband' && K.pants === 'p-slate') Object.assign(K, { jacket: KIT0.jacket, pants: KIT0.pants, head: KIT0.head, goggles: KIT0.goggles, skis: K.skis === 's-red' ? KIT0.skis : K.skis });
+      store.set('kit10', '1');
     }
     this.day = store.json('day', { d: '', xp: 0, done: false });
     this.gold = store.get('gold', '0') === '1';

@@ -184,6 +184,21 @@ export class AIController {
     this.trick = null; c.grab = false; c.flip = 0; c.up = false; c.down = false;
     this.want = null; this.inPipe = false;
 
+    // crawling and getting nowhere: back on the run
+    this.slow = speed < 3 && !this.finished && !(this.world.race && !this.world.raceStarted) ? (this.slow ?? 0) + dt : 0;
+    if (this.slow > 5) {
+      const nz = z + 45, hw2 = halfWidth(nz);
+      this.slow = 0; s.place(centerX(nz) + hw2 * clamp(this.laneAt(nz), -0.6, 0.6), nz, null, 8); this.lastZ = nz;
+      return;
+    }
+    // stopped dead (in a kicker's gap, on a rise): turn to the lowest way out and pole
+    if (s.stuck > 0.5) {
+      let best = 0, lo = Infinity;
+      for (let a = 0; a < 8; a++) { const b = (a * Math.PI) / 4, y = heightAt(x + Math.sin(b) * 4, z + Math.cos(b) * 4); if (y < lo) { lo = y; best = b; } }
+      c.steer = clamp(-wrapAngle(best - s.sim.travelHeading) * 3, -1, 1); c.tuck = 1; c.brake = 0; c.jump = false;
+      return;
+    }
+
     // finished: slow down and stop in the village
     if (z > FINISH_Z + 8) {
       this.finished = true;

@@ -1,12 +1,12 @@
-// The riders' own figure, after Cork7's: a chunky park skier, one smooth skinned mesh in flat
-// colour. A boxy puffy hooded shell cut at the hips, long straight baggy pants stacked over the
-// boots, fat sleeves, big mitts, a big head under the helmet. It comes out as a "kit" in the same
+// The riders' own figure: one smooth skinned mesh in flat colour. A long loose anorak with a
+// kangaroo pocket, a half zip and its hood down, loose pants stacked over the boots, a real-sized
+// head under the helmet. It comes out as a "kit" in the same
 // shape the scanned bodies load as (avatar.js): the same bone names, rest pose and limb lengths,
 // so AvatarRig poses it and the gear sits on it. The figure itself is modelled in Blender
 // (blender/rider.py); the loft here is only what's drawn if that file doesn't arrive.
 
 // the head (and the helmet on it) grown from the head bone: blender/rider.py HS must match
-export const HEAD_SCALE = 1.15;
+export const HEAD_SCALE = 1;
 // the torso this much shorter than the skeleton below was drawn: the chest squeezed between the
 // waist and the shoulders, everything above (and the arms) brought down. blender/rider.py TORSO
 // must match
@@ -244,7 +244,7 @@ export function toyKit() {
     neckY: PB('Bip01_Neck').y,
     leg: [len('Bip01_L_Thigh', 'Bip01_L_Calf'), len('Bip01_L_Calf', 'Bip01_L_Foot')],
     arm: [len('Bip01_L_UpperArm', 'Bip01_L_Forearm'), len('Bip01_L_Forearm', 'Bip01_L_Hand')],
-    // the chest band's rest heights (Cork7's starter shell; it runs round the sleeves too)
+    // the chest band's rest heights (it runs round the sleeves too)
     band: new THREE.Vector2(1.06, 1.215),
   };
   return KIT;
@@ -328,16 +328,17 @@ float tyOld(float y) { return y <= 0.93 ? y : y >= 1.38 - ${TORSO.toFixed(4)} ? 
     // hanging it lines up with the chest's)
     float ry = tyOld( vRest.y );
     float bh = part < 2.5 ? ry : 1.43 - distance( vRest, vec3( sign( vRest.x ) * 0.205, ${(1.43 - TORSO).toFixed(4)}, -0.025 ) );
-    if ( pat > 0.5 && pat < 1.5 && bh > uBand.x && bh < uBand.y ) col = uJacket2;
+    if ( pat > 8.5 && pat < 9.5 ) { if ( bh > 1.2 ) col = uJacket2; }
+    else if ( pat > 0.5 && pat < 1.5 && bh > uBand.x && bh < uBand.y ) col = uJacket2;
     else if ( pat > 3.5 && pat < 4.5 && part > 2.5 ) col = uJacket2;
     else if ( pat > 7.5 && pat < 8.5 && vRest.x < 0.0 ) col = uJacket2;
     else if ( pat > 4.5 && pat < 5.5 ) col = mix( uJacket2, jk, smoothstep( 0.7, 1.45, ry ) );
-    else if ( pat > 1.5 && pat != 4.0 && pat != 5.0 && pat != 8.0 ) { float n = tyH( floor( vRest * 14.0 ) ); col = n > 0.66 ? uJacket2 : col; }
+    else if ( pat > 1.5 && pat != 4.0 && pat != 5.0 && pat != 8.0 && pat != 9.0 ) { float n = tyH( floor( vRest * 14.0 ) ); col = n > 0.66 ? uJacket2 : col; }
     // a darker hem band and cuffs
     if ( part < 2.5 && vRest.y < 0.86 ) col *= 0.8;
-    // the zip up the front, and a little white tab on the chest
-    if ( part < 2.5 && vRest.z > 0.0 && abs( vRest.x ) < 0.0045 && ry > 0.84 && ry < 1.56 ) col = vec3( 0.05, 0.06, 0.07 );
-    if ( part < 2.5 && vRest.z > 0.05 && vRest.x > 0.085 && vRest.x < 0.13 && ry > 1.3 && ry < 1.33 ) col = vec3( 0.92 );
+    // the half zip at the neck, and the pocket's edge
+    if ( part < 2.5 && vRest.z > 0.0 && abs( vRest.x ) < 0.0055 && ry > 1.3 && ry < 1.56 ) col = vec3( 0.93, 0.9, 0.82 );
+    if ( part < 2.5 && vRest.z > 0.1 && ry < 1.045 && ry > 1.03 && abs( vRest.x ) < 0.125 ) col *= 0.72;
   }
   else if ( part < 5.5 ) col = uGloves;
   else col = uPants;

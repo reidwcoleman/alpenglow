@@ -1,6 +1,6 @@
-# The rider, after Cork7's: a chunky park skier with a big round head under the helmet, a boxy
-# puffy shell with a high collar and its hood down on the back, fat quilted sleeves, big mitts and
-# very baggy pants creased down the legs and stacked over the boots, short hair at the nape. On the
+# The Shredline rider: a real-sized head under the helmet, a long loose anorak with a kangaroo
+# pocket, a half zip and a soft hood down on the back, slim gloves, and loose pants creased down the
+# legs and stacked over the boots. On the
 # game's skeleton (the scanned bodies' Bip01 names and rest pose, so the game's rig poses it).
 # Lofted, then smoothed with subdivision; the soft shading of the folds is baked into 'Col'.
 # blender -b --python blender/rider.py  ->  blender/out/rider.glb
@@ -28,7 +28,7 @@ P = {n: p for n, p, _ in BONES}
 UP, X, Z = (0, 1, 0), (1, 0, 0), (0, 0, 1)
 # the head (and the helmet the game puts on it) is this much bigger than a real one, grown from
 # the head bone: toyrider.js HEAD_SCALE must match
-HS = 1.15
+HS = 1.0
 HEAD = P['Bip01_Head']
 # the torso is this much shorter than the skeleton it's drawn on: the chest is squeezed between the
 # waist and the shoulders, and everything above (and the arms) comes down. toyrider.js TORSO
@@ -77,17 +77,16 @@ def creases(n, amp, ph):
 
 
 parts = []
-# the shell: a slim rider in a loose one. Narrow through the chest and shoulders, cut at the hips
-# (Cork7's: the long baggy pants show their full length), the collar zipped up high
-SHELL = [(0.8, 0.208, 0.172, 0.03, 2.3), (0.83, 0.206, 0.168, 0.026, 2.4), (0.88, 0.2, 0.16, 0.016, 2.5), (0.93, 0.194, 0.152, 0.006, 2.5),
+# the anorak: long and loose, hanging past the hips, open at the neck
+SHELL = [(0.745, 0.216, 0.182, 0.034, 2.3), (0.775, 0.214, 0.178, 0.032, 2.3), (0.8, 0.212, 0.174, 0.03, 2.3), (0.83, 0.208, 0.168, 0.026, 2.4), (0.88, 0.2, 0.16, 0.016, 2.5), (0.93, 0.194, 0.152, 0.006, 2.5),
          (1.0, 0.19, 0.147, 0.0, 2.5), (1.08, 0.189, 0.145, -0.005, 2.5), (1.16, 0.19, 0.146, -0.008, 2.4), (1.26, 0.193, 0.147, -0.012, 2.3),
          (1.335, 0.192, 0.143, -0.016, 2.2), (1.395, 0.18, 0.135, -0.02, 2.1), (1.438, 0.155, 0.122, -0.022, 2.0), (1.472, 0.122, 0.106, -0.02, 2.0),
-         (1.505, 0.099, 0.096, -0.014, 2.0), (1.535, 0.092, 0.092, -0.01, 2.0), (1.56, 0.09, 0.09, -0.006, 2.0)]
+         (1.5, 0.098, 0.094, -0.014, 2.0), (1.522, 0.09, 0.088, -0.01, 2.0)]
 rings = []
 for i, (y, a, b, z, p) in enumerate(SHELL):
     # (cut looser than the body: wider and a touch deeper below the chest)
     k = 1 + 0.08 * max(0, min(1, (1.4 - y) / 0.3))
-    r = dict(c=(0, y, z), t=UP, side=X, a=a * k, b=b * (1 + (k - 1) * 0.5), p=p, part=2, w=hemW(y, 0.7 * (1 - (y - 0.8) / 0.15)) if y < 0.95 else spineW(y))
+    r = dict(c=(0, y, z), t=UP, side=X, a=a * k, b=b * (1 + (k - 1) * 0.5), p=p, part=2, w=hemW(y, min(0.85, 0.7 * (1 - (y - 0.8) / 0.15))) if y < 0.95 else spineW(y))
     # (loose folds hanging down the body, deeper toward the hem; the collar stays smooth)
     if y < 1.36:
         r['fold'] = creases(5, 0.034 * (1.4 - y), i * 0.9)
@@ -102,8 +101,10 @@ for i in range(11):
     k = 1 - abs(a) / 1.7
     c = (math.sin(a) * 0.106, 1.515 - 0.025 * abs(math.sin(a)), -0.05 - math.cos(a) * 0.085)
     t = (math.cos(a), 0, math.sin(a))
-    hood.append(dict(c=c, t=t, side=(0, 1, 0), a=0.04 + 0.02 * k, b=0.03 + 0.018 * k, part=2, w={'Bip01_Spine2': 0.5, 'Bip01_Neck': 0.5}))
+    hood.append(dict(c=c, t=t, side=(0, 1, 0), a=0.05 + 0.03 * k, b=0.03 + 0.03 * k, part=2, w={'Bip01_Spine2': 0.5, 'Bip01_Neck': 0.5}))
 parts.append(loft('hood', hood, seg=16, cap0=0.8, cap1=0.8))
+# the kangaroo pocket, a soft bulge low on the front
+parts.append(ellipsoid('pocket', (0, 0.955, 0.116), (0.138, 0.074, 0.04), {'Bip01_Pelvis': 0.4, 'Bip01_Spine': 0.6}, 2, rings=8, seg=18))
 
 for s in (1, -1):
     S = 'L' if s > 0 else 'R'
@@ -151,8 +152,8 @@ for s in (1, -1):
     # the mitt: a big padded paddle with a gauntlet over the cuff, a thumb on the inside
     d = (W - E).normalized()
     mitt = [dict(c=tuple(W + d * t), t=tuple(d), side=Z, a=a, b=b, w={B('Hand'): wh, B('Forearm'): 1 - wh}, part=5)
-            for t, a, b, wh in [(-0.075, 0.07, 0.07, 0.3), (-0.05, 0.072, 0.07, 0.5), (-0.02, 0.06, 0.054, 0.8), (0.015, 0.06, 0.048, 1),
-                                (0.06, 0.062, 0.042, 1), (0.105, 0.058, 0.038, 1), (0.14, 0.044, 0.03, 1)]]
+            for t, a, b, wh in [(-0.075, 0.058, 0.058, 0.3), (-0.05, 0.058, 0.056, 0.5), (-0.02, 0.05, 0.044, 0.8), (0.015, 0.05, 0.039, 1),
+                                (0.06, 0.052, 0.034, 1), (0.105, 0.048, 0.03, 1), (0.14, 0.036, 0.024, 1)]]
     parts.append(loft('mitt' + S, mitt, seg=18, cap0=0.4, cap1=0.8))
     thumb = W + d * 0.045 + V(0, 0, 0.045)
     parts.append(ellipsoid('thumb' + S, tuple(thumb), (0.024, 0.045, 0.024), {B('Hand'): 1}, 5, rings=6, seg=12, axis=tuple(d + V(0, 0, 0.8)), side=tuple(d.cross(V(0, 0, 1)))))
