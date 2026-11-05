@@ -7,12 +7,12 @@ import { wrapAngle } from './skier.js';
 import { clamp, smoothstep } from './noise.js';
 
 export const STYLES = {
-  racer: { grip: [1.62, 1.85], speed: [99, 99], turnLen: 0, amp: 0, tuck: 1 },
-  expert: { grip: [1.5, 1.7], speed: [21, 27], turnLen: [20, 26], amp: [0.28, 0.4], tuck: 0.5 },
-  carver: { grip: [1.35, 1.55], speed: [15, 20], turnLen: [24, 32], amp: [0.38, 0.55], tuck: 0.2 },
-  cruiser: { grip: [1.1, 1.3], speed: [10, 14], turnLen: [30, 40], amp: [0.5, 0.7], tuck: 0 },
-  beginner: { grip: [0.9, 1.05], speed: [5.5, 8], turnLen: [38, 50], amp: [0.6, 0.8], tuck: 0 },
-  park: { grip: [1.4, 1.6], speed: [14, 18], turnLen: [26, 32], amp: [0.3, 0.45], tuck: 0.3 },
+  racer: { speed: [99, 99], turnLen: 0, amp: 0, tuck: 1 },
+  expert: { speed: [28, 34], turnLen: [24, 32], amp: [0.28, 0.4], tuck: 0.5 },
+  carver: { speed: [21, 27], turnLen: [28, 36], amp: [0.38, 0.55], tuck: 0.2 },
+  cruiser: { speed: [14, 19], turnLen: [32, 42], amp: [0.5, 0.7], tuck: 0 },
+  beginner: { speed: [8, 11], turnLen: [38, 50], amp: [0.6, 0.8], tuck: 0 },
+  park: { speed: [22, 28], turnLen: [28, 34], amp: [0.3, 0.45], tuck: 0.3 },
 };
 
 const r = (rnd, v) => (Array.isArray(v) ? v[0] + rnd() * (v[1] - v[0]) : v);
@@ -23,7 +23,6 @@ export class AIController {
     this.style = style;
     this.world = world;
     const S = STYLES[style];
-    skier.grip = r(rnd, S.grip);
     this.targetSpeed = r(rnd, S.speed);
     this.turnLen = r(rnd, S.turnLen) || 25;
     this.amp = r(rnd, S.amp);
@@ -56,7 +55,7 @@ export class AIController {
         if (J.lip < z - 1) continue;
         const dz = J.z - z;
         if (dz > 90) break;
-        this.want = J.speed + (this.skill - 0.7) * 1.5;
+        this.want = J.pspeed + (this.skill - 0.7) * 1.5;
         const lipX = centerX(J.lip) + J.dx;
         if (z > J.z - 4 && !this.trick) {
           this.trick = this.pickTrick([2, 3, 2, 1, 4, 0]);
@@ -71,7 +70,7 @@ export class AIController {
         if (R.a.z + R.L < z - 1) continue;
         const dz = R.a.z - z;
         if (dz > 70) break;
-        this.want = R.kind === 'box' ? 7.5 : 8.5;
+        this.want = 12;
         if (dz > 0 && dz < 6) this.popOff = this.rnd() < 0.45;
         const along = Math.max(tz, R.a.z + 2);
         return { tx: R.a.x + R.dir.x * (along - R.a.z) / R.dir.z, tz: along };
@@ -103,7 +102,7 @@ export class AIController {
         const dz = R.a.z - z;
         if (R.a.z + R.L < z - 1) continue;
         if (dz > 80) break;
-        this.want = R.kind === 'box' ? 7.5 : 8.5;
+        this.want = 12;
         if (dz > 0 && dz < 6) this.popOff = this.rnd() < 0.45;
         const along = Math.max(tz, R.a.z + 2);
         return { tx: R.a.x + (R.dir.x * (along - R.a.z)) / R.dir.z, tz: along };
@@ -113,7 +112,7 @@ export class AIController {
       if (J.lip < z - 1) continue;
       const dz = J.z - z;
       if (dz > 95) break;
-      this.want = J.speed + (this.skill - 0.7) * 1.5;
+      this.want = J.pspeed + (this.skill - 0.7) * 1.5;
       if (z > J.z - 4 && !this.trick) {
         const big = J.h > 3.5;
         this.trick = this.pickTrick(big ? [2, 3, 4, 0, 5] : [1, 2, 0, 2]);
@@ -165,8 +164,8 @@ export class AIController {
       if (this.trick && this.trick.spin > 0) {
         // running out of air: settle for the last half turn it can still finish
         const h = Math.max(0, s.pos.y - heightAt(s.pos.x, s.pos.z));
-        const tRem = (s.vel.y + Math.sqrt(s.vel.y * s.vel.y + 2 * 9.81 * h)) / 9.81;
-        const reach = Math.abs(s.spin) + 7.6 * Math.max(0, tRem - 0.2);
+        const tRem = (s.vel.y + Math.sqrt(s.vel.y * s.vel.y + 2 * 17.5 * h)) / 17.5;
+        const reach = Math.abs(s.spin) + 6.3 * Math.max(0, tRem - 0.3);
         if (reach < this.trick.spin - 0.35) this.trick.spin = Math.max(Math.round(Math.abs(s.spin) / Math.PI) * Math.PI, Math.floor((reach + 0.35) / Math.PI) * Math.PI);
       }
       if (this.trick) {
@@ -209,7 +208,7 @@ export class AIController {
       // speed check: the tightest bend in the next couple of seconds sets the limit
       let kmax = 0;
       for (let d = 4; d < speed * 2.2 + 10; d += 3) kmax = Math.max(kmax, lineCurv(z + d));
-      if (kmax > 1e-4) speedCap = Math.sqrt((s.grip * 9.81 * (0.62 + this.skill * 0.25)) / kmax);
+      if (kmax > 1e-4) speedCap = (1 + this.skill * 0.2) / kmax;
     } else {
       tx = centerX(tz) + hw * clamp(this.laneAt(tz), -0.85, 0.85);
       // park rats ride their line

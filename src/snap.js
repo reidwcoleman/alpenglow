@@ -15,8 +15,8 @@ export function snap(s, out = new Float32Array(SNAP_N)) {
   w(s.normal.x); w(s.normal.y); w(s.normal.z);
   // (a body turned Cork7's way has one orientation: sent as its turn from the heading, about an
   // axis, which is how a stand-in draws it)
-  if (s.air7Live && !s.onGround) {
-    const r = airTurn(s.air7.q, s.heading + s.skidYaw);
+  if (s.airLive && !s.onGround) {
+    const r = airTurn(s.airQ, s.heading + s.skidYaw);
     w(s.trickType ? r[0] : -r[0]); w(r[1]); w(r[2]); w(r[3]);
   } else { w(s.pitch); w(s.flipAxis.x); w(s.flipAxis.y); w(s.flipAxis.z); }
   w(TRICK.indexOf(s.trickType));

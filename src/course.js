@@ -129,62 +129,62 @@ export const JUMPS = [...RUN_JUMPS, ...PARK_JUMPS].sort((a, b) => a.z - b.z);
   const others = [...MAP.runRails ?? [], ...MAP.parkRails ?? []].map((R) => ({ z0: R.z - 9, dx: R.dx }));
   if (MAP.park) others.push({ z0: (MAP.pipe?.z0 ?? 1100) - 4, dx: MAP.pipe?.dx ?? 54, half: 25 }, { z0: (MAP.rollers?.z0 ?? 1058) - 4, dx: MAP.rollers?.dx ?? -58, half: 12 });
   // how fast the run lets you get to each one, riding it hands-off: a kicker is never built for
-  // more speed than that (plus what its run-in gives, Skier.runIn), so every one can be cleared
+  // more speed than that, so every one can be cleared
   const G = 9.81 * 1.7;
   let flowZ = START_Z, flowV = 3;
   const flowTo = (z) => {
     for (; flowZ < z; flowZ += 2) {
-      const g = sectionAt(flowZ).grad, over = Math.max(0, flowV - 34);
-      const a = (G * g) / Math.hypot(1, g) - 0.13 - 0.0028 * flowV * flowV - Math.min(6, 0.2 * over * over);
-      flowV = Math.sqrt(Math.max(9, flowV * flowV + 4 * a));
+      const g = sectionAt(flowZ).grad;
+      const a = (G * g) / Math.hypot(1, g) - 0.13 - 0.0028 * flowV * flowV;
+      flowV = Math.min(43, Math.sqrt(Math.max(9, flowV * flowV + 4 * a)));
     }
     return flowV;
   };
   for (const J of JUMPS) {
     if (J.drop) continue;
     const grade = sectionAt(J.z).grad, hw = halfWidth(J.z);
-    const reach = Math.sqrt(flowTo(J.z) ** 2 + 2 * 3 * 60);
-    // the speed at the foot of the ramp that comes down a third of the way down the landing
-    const built = (S) => {
-      const a = (S.lip * Math.PI) / 180, x = S.table + 0.35 * S.land, t = Math.tan(a);
-      const drop = 1.6 + 0.35 * S.land * (grade + 0.2);
-      return Math.sqrt((17.5 * x * x) / (2 * Math.cos(a) ** 2 * (drop + x * t)) + 2 * G * S.h);
+    const reach = flowTo(J.z);
+    // the flight a kicker gives at the speed the run brings you to it: it's built around that, the
+    // knuckle a little under halfway there and the landing running on well past it
+    const flight = (h, lip, ramp) => {
+      const a = (lip * Math.PI) / 180, v = Math.sqrt(Math.max(36, reach * reach - 2 * G * (h - grade * ramp)));
+      const vx = v * Math.cos(a) - 1.2 * Math.sin(a), vy = v * Math.sin(a) + 1.2 * Math.cos(a);
+      const B = vy + (grade + 0.12) * 0.55 * vx, t = (B + Math.sqrt(B * B + 4 * 8.75 * 1.6)) / 17.5;
+      return vx * t;
     };
-    const size = (h) => {
-      const lip = clamp(13 + 2.2 * h, 19, 37);
+    const size = (h, lipTo = 99) => {
+      const lip = Math.min(lipTo, clamp(13 + 2.2 * h, 19, 37));
       const t = Math.tan((lip * Math.PI) / 180);
       const w = Math.max(J.w, 11 + 1.2 * h);
       const ramp = Math.max(J.ramp, (2 * h) / (t + Math.max(0.05, grade)));
-      return { h, lip, w, ramp, table: 2.3 * h + 12, land: 8.5 * h + 25 };
+      const x = flight(h, lip, ramp);
+      return { h, lip, w, ramp, x, table: Math.max(0.8 * h + 3, 0.45 * x), land: Math.max(2.5 * h + 10, 1.35 * x) };
     };
-    const fits = (S) => {
+    const room = (S) => {
       const lo = J.dx - S.w / 2 - 2 - 0.9 * S.h, hi = J.dx + S.w / 2 + 2 + 0.9 * S.h;
-      if (Math.max(Math.abs(lo), Math.abs(hi)) > hw + 4) return false;
-      let room = Infinity;
-      for (const K of JUMPS) if (K !== J && K.z > J.z) { const [a, b] = lane({ J: K }); if (b > lo && a < hi) room = Math.min(room, K.z - J.z - 3); }
-      for (const o of others) if (o.z0 > J.z && o.dx + (o.half ?? 3) > lo && o.dx - (o.half ?? 3) < hi) room = Math.min(room, o.z0 - J.z - 3);
-      // (short of room, the landing and then the table give first)
-      let len = S.ramp + S.table + S.land;
-      if (len > room) S.land = Math.max(3.5 * S.h + 15, room - S.ramp - S.table);
-      len = S.ramp + S.table + S.land;
-      if (len > room) S.table = Math.max(1.4 * S.h + 6, room - S.ramp - S.land);
-      return S.ramp + S.table + S.land <= room;
+      if (Math.max(Math.abs(lo), Math.abs(hi)) > hw + 4) return -1;
+      let r = Infinity;
+      for (const K of JUMPS) if (K !== J && K.z > J.z) { const [a, b] = lane({ J: K }); if (b > lo && a < hi) r = Math.min(r, K.z - J.z - 3); }
+      for (const o of others) if (o.z0 > J.z && o.dx + (o.half ?? 3) > lo && o.dx - (o.half ?? 3) < hi) r = Math.min(r, o.z0 - J.z - 3);
+      return r;
     };
+    // (short of room, the landing gives a little, then the lip lies back so the flight's shorter)
+    const fits = (S) => {
+      const r = room(S), len = S.ramp + S.table;
+      if (r < 0 || len + 0.95 * S.x > r) return false;
+      S.land = Math.min(S.land, r - len);
+      return true;
+    };
+    // too slow here to clear a gap: a plain table you roll out onto
+    if (reach < 15) { J.lipAngle = clamp(Math.atan((2 * J.h) / J.ramp) * 57.3, 12, 37); J.grade = grade; flowTo(J.z + J.len); continue; }
     let S = null;
-    for (let h = clamp(2 * J.h + 1.5, 3.2, 11); h >= J.h; h -= 0.25) { const T = size(h); if (fits(T) && built(T) <= reach) { S = T; break; } }
-    // (nothing that size can be cleared from here: the smallest, its table and landing drawn in
-    // until it can)
-    if (!S) {
-      const T = size(J.h);
-      if (fits(T)) {
-        for (let i = 0; i < 24 && built(T) > reach; i++) { T.table = Math.max(1.4 * T.h + 4, T.table * 0.94); T.land = Math.max(3.5 * T.h + 12, T.land * 0.94); }
-        S = T;
-      }
-    }
+    for (let h = clamp(2 * J.h + 1.5, 3.2, 11); h >= J.h && !S; h -= 0.25) { const T = size(h); if (fits(T)) S = T; }
+    for (let lip = 18; lip >= 9 && !S; lip -= 1) { const T = size(J.h, lip); if (fits(T)) S = T; }
+    if (!S) { const T = size(J.h, 9), r = room(T); if (r > 0) { S = T; const k = Math.max(0.3, Math.min(1, (r - T.ramp) / (T.table + T.land))); T.table *= k; T.land *= k; } }
     if (!S) continue;
-    // (down the landing and away at about that speed)
+    // (down the landing and away at about the speed you came in)
     flowTo(J.z + S.ramp + S.table + 0.35 * S.land);
-    flowV = Math.min(flowV, built(S) + 2.5);
+    flowV = Math.min(flowV, reach * 0.97);
     Object.assign(J, { h: S.h, w: S.w, ramp: S.ramp, table: S.table, land: S.land, lipAngle: S.lip, gap: true });
     // the knuckle: a landing hill built up out of the falling slope to just under the lip, so a
     // jump flies across the gap and comes down onto a slope that's falling away with it
@@ -441,7 +441,7 @@ function sweetSpeed(J, g = 9.81, kick = 0) {
     // (kick: the lip's own pop, square to the ramp)
     let z = zl, y = y0, vz = v * il - kick * sl * il, vy = v * sl * il + kick * il;
     // (the player leaves a Cork7 kicker at its own angle, the kick straight up)
-    if (kick && J.lipAngle) { const i = (J.lipAngle * Math.PI) / 180; vz = v * Math.cos(i); vy = v * Math.sin(i) + kick; }
+    if (kick && J.lipAngle) { const i = (J.lipAngle * Math.PI) / 180; vz = v * Math.cos(i) - kick * Math.sin(i); vy = v * Math.sin(i) + kick * Math.cos(i); }
     for (let t = 0; t < 8; t += 0.01) {
       vy -= g * 0.01; z += vz * 0.01; y += vy * 0.01;
       if (t > 0.05 && y <= heightAt(centerX(z) + J.dx, z)) return z;
@@ -454,8 +454,8 @@ function sweetSpeed(J, g = 9.81, kick = 0) {
 }
 // (quoted at the foot of the ramp, like the measured park tables: the climb costs speed)
 for (const J of JUMPS) if (!J.speed) J.speed = +Math.sqrt(sweetSpeed(J) ** 2 + 2 * 9.81 * J.h).toFixed(1);
-// the player rides Cork7's physics (the slope at 1.7 g, the air at 17.5, a 1.2 m/s kick off
-// every lip): his sweet spot, quoted at the foot of the ramp the same way
+// every rider's physics (the slope at 1.7 g, the air at 17.5, a 1.2 m/s kick off every lip): the
+// sweet spot, quoted at the foot of the ramp the same way
 for (const J of JUMPS) J.pspeed = +Math.sqrt(sweetSpeed(J, 17.5, 1.2) ** 2 + 2 * 9.81 * 1.7 * J.h).toFixed(1);
 
 // rail tops: a straight line on the ground plan, heights per shape (sampled every 0.25 m)
