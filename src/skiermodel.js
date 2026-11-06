@@ -10,6 +10,7 @@ import { helmetGeometry, helmetMaterial, beanieGeometry, goggleGeometry, lensGeo
 
 const THIGH = 0.44, SHIN = 0.45, UPPER = 0.29, FORE = 0.28, POLE = 1.18;
 export const RIDER_SCALE = 0.9;
+export const BODY_HIP = 1; // (where the hips stand in the figure when it's drawn from the body on the snow)
 
 let G = null;
 function geos() {
@@ -79,7 +80,7 @@ export function randomOutfit(rnd, racer = false) {
   return o;
 }
 
-const Y = new THREE.Vector3(0, 1, 0);
+const Y = new THREE.Vector3(0, 1, 0), Z = new THREE.Vector3(0, 0, 1);
 const tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3(), tmpQ = new THREE.Quaternion();
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
@@ -130,7 +131,7 @@ const SKI_GRAB = {
   nose: { hand: 'L', ski: 'L', along: 0.62, edge: 1, lift: 0.2, knee: 0.16, cross: 0, tip: -0.5, curl: 0.45, tw: { tip: -0.18, poke: 0.6 } },
 };
 // what a body not doing a trick does (the menu preview): nothing
-const NO_TRK = { lead: 0, look: 0, lookW: 0, tuck: 0, pop: 0, land: 0, wob: 0, rail: 0, bal: 0, tweak: 0, sr: 0, sa: 0, fr: 0 };
+const NO_TRK = { lead: 0, look: 0, lookW: 0, tuck: 0, pop: 0, land: 0, wob: 0, rail: 0, bal: 0, tweak: 0, reach: 0, sr: 0, sa: 0, fr: 0 };
 const _gp = new THREE.Vector3(), _sh = new THREE.Vector3(), _gd = new THREE.Vector3(), _ge = new THREE.Euler();
 const BOARD_GRAB = {
   indy: { hand: 'R', at: [-0.04, 0.03, 0.15], lift: 0.3 },
@@ -394,7 +395,8 @@ export class SkierModel {
     const ankY = (a) => a.y - 0.03;
     f.pelvis.copy(j.pelvis);
     const ankMid = (j.ankL.y + j.ankR.y) / 2;
-    f.pelvis.y = ankY({ y: ankMid }) + (j.pelvis.y - ankMid) * legK;
+    // (not on the snow: the legs there aren't standing on anything)
+    f.pelvis.y += (ankY({ y: ankMid }) + (j.pelvis.y - ankMid) * legK - f.pelvis.y) * (1 - (this.bodyK || 0));
     f.hipSide.copy(this.hipSide);
     f.pelvisUp.copy(Y).lerp(j.spine, 0.45).normalize();
     f.side = j.side; f.spine = j.spine; f.fwd = j.fwd;
@@ -445,6 +447,8 @@ export class SkierModel {
     } else this.lowerSki(p);
     this.sitting = false;
     if (p.sit) this.sit();
+    this.bodyK = p.body ? p.body[4] : 0;
+    if (this.bodyK > 0) this.onSnow(p.body, this.bodyK);
     this.upper(p);
     if (this.rig && this.real) this.rig.mesh.material.userData.u.uFlap.value.set(p.t % 600, p.wind || 0);
   }
@@ -467,7 +471,7 @@ export class SkierModel {
     // snap straight first
     const K = this.k, pop = K.pop * air, tk = K.tuck * air;
     if (air > 0) {
-      const up = air * 0.12 * (1 - K.pop) + tk * 0.22;
+      const up = (air * 0.12 * (1 - K.pop) + tk * 0.22) * (1 - K.reach * 0.85);
       j.ankL.y += up; j.ankR.y += up; j.ankL.z += tk * 0.08; j.ankR.z += tk * 0.08;
     }
     const G = SKI_GRAB[this.gKind] ?? SKI_GRAB.mute, Tw = G.tw;
@@ -490,12 +494,6 @@ export class SkierModel {
     j.ankL.x += pushL * 0.26; j.ankL.z -= pushL * 0.12; j.ankL.y += pushR * 0.07;
     j.ankR.x -= pushR * 0.26; j.ankR.z -= pushR * 0.12; j.ankR.y += pushL * 0.07;
 
-    if (p.crash) {
-      const r = p.rag ?? 0.5, t = p.ragT ?? p.t, s = p.ragSeed ?? 0;
-      j.ankL.x += 0.1 + 0.16 * r * Math.sin(t * 5.7 + s); j.ankR.x -= 0.12 + 0.16 * r * Math.sin(t * 6.3 + 2 + s);
-      j.ankL.y += 0.12 + 0.3 * r * Math.max(0, Math.sin(t * 4.1 + s)); j.ankR.y += 0.05 + 0.3 * r * Math.max(0, Math.sin(t * 4.9 + 1 + s));
-      j.ankL.z += 0.32 * r * Math.sin(t * 3.7 + s) + 0.12 * (1 - r); j.ankR.z += 0.32 * r * Math.sin(t * 4.3 + 2 + s) - 0.18 * (1 - r);
-    }
     // (the hips sit over the outside foot, forward over the boots, not back in the seat; a
     // Cork7-style rider stands right up, the knees only softly bent, and folds up for the air)
     const hipH = 0.93 + tall * 0.115 * (1 - air) - crouch * 0.22 - tuck * 0.33 - air * 0.12 - g * 0.08 + Math.sin(p.t * 9) * 0.004 + al * 0.085;
@@ -594,6 +592,23 @@ export class SkierModel {
   }
 
   // a snowboarder, in the body's own frame: +X toward the nose (front foot), +Z toward the toe edge
+  // the deck under the ankles, the bindings and boots on it
+  deckToFeet(crouch) {
+    const j = this.j, P = this.parts;
+    const up = (this._up ??= new THREE.Vector3()).set(0, 1, 0).applyQuaternion(this.boardQ);
+    P.deck.position.addVectors(j.ankL, j.ankR).multiplyScalar(0.5).addScaledVector(up, -0.17);
+    P.deck.quaternion.copy(this.boardQ);
+    for (const [ank, boot, cuff, bind, duck] of [[j.ankL, P.bootL, P.cuffL, P.bindL, 0.26], [j.ankR, P.bootR, P.cuffR, P.bindR, -0.26]]) {
+      const q = tmpQ.copy(this.boardQ).multiply(new THREE.Quaternion().setFromAxisAngle(Y, duck));
+      bind.position.copy(ank).addScaledVector(up, -0.165);
+      bind.quaternion.copy(q);
+      boot.position.copy(ank).addScaledVector(up, -0.165);
+      boot.quaternion.copy(q);
+      cuff.position.copy(boot.position);
+      cuff.quaternion.copy(q).multiply(new THREE.Quaternion().setFromAxisAngle(tmpV2.set(1, 0, 0), 0.3 + crouch * 0.3));
+    }
+  }
+
   lowerBoard(p) {
     const j = this.j, P = this.parts;
     const crouch = p.crouch, tuck = p.tuck, air = this.airS;
@@ -602,7 +617,7 @@ export class SkierModel {
     const g = this.gAmt;
     const stand = p.stand || 0;
     const half = 0.25 - stand * 0.02;
-    const lift = air * 0.1 + G.lift * g;
+    const lift = air * 0.1 * (1 - this.k.reach * 0.85) + G.lift * g;
     j.ankL.set(half, 0.17 + lift + (G.front ?? 0) * g, -(G.back ?? 0) * g);
     j.ankR.set(-half, 0.17 + lift + (G.rear ?? 0) * g, -(G.back ?? 0) * g);
     // nose / tail press (butters and rail presses): weight over one end, the other end lifts
@@ -623,6 +638,12 @@ export class SkierModel {
     const shifty = (p.shifty || 0) * 0.9;
     // (in the air the shoulders lead the spin instead)
     const K = this.k;
+    // (the pop, the tuck, and the landing soaked up in the knees, as on skis)
+    const pt = pitch + K.tuck * air * 0.35 + K.land * 0.3 - K.pop * air * 0.12, an = ang + K.wob * 0.22;
+    j.pelvis.y += K.pop * air * 0.08 - K.tuck * air * 0.05 - K.land * 0.26;
+    j.pelvis.z -= K.land * 0.07;
+    j.pelvis.x += K.wob * 0.05;
+    j.spine.set(Math.sin(an) * Math.cos(pt), Math.cos(an) * Math.cos(pt), Math.sin(pt)).normalize();
     this.frameUpper(0.32 + (p.twist || 0) * 0.5 * (1 - air) * (1 - K.rail) + K.lead * 0.6 + shifty);
     j.hipL.copy(j.pelvis).addScaledVector(this.hipSide, 0.095);
     j.hipR.copy(j.pelvis).addScaledVector(this.hipSide, -0.095);
@@ -634,18 +655,7 @@ export class SkierModel {
     const extraEdge = clamp((p.edge || 0) * 0.75 - p.lean, -0.45, 0.45) * (Math.abs(p.edge || 0) > Math.abs(p.lean) ? 1 : 0);
     this.boardQ.setFromUnitVectors(tmpV2.set(1, 0, 0), dir).multiply(tmpQ.setFromAxisAngle(tmpV2.set(1, 0, 0), extraEdge + (G.roll ?? 0) * g));
     if (shifty) this.boardQ.premultiply(tmpQ.setFromAxisAngle(Y, -shifty));
-    const up = (this._up ??= new THREE.Vector3()).set(0, 1, 0).applyQuaternion(this.boardQ);
-    P.deck.position.addVectors(j.ankL, j.ankR).multiplyScalar(0.5).addScaledVector(up, -0.17);
-    P.deck.quaternion.copy(this.boardQ);
-    for (const [ank, boot, cuff, bind, duck] of [[j.ankL, P.bootL, P.cuffL, P.bindL, 0.26], [j.ankR, P.bootR, P.cuffR, P.bindR, -0.26]]) {
-      const q = tmpQ.copy(this.boardQ).multiply(new THREE.Quaternion().setFromAxisAngle(Y, duck));
-      bind.position.copy(ank).addScaledVector(up, -0.165);
-      bind.quaternion.copy(q);
-      boot.position.copy(ank).addScaledVector(up, -0.165);
-      boot.quaternion.copy(q);
-      cuff.position.copy(boot.position);
-      cuff.quaternion.copy(q).multiply(new THREE.Quaternion().setFromAxisAngle(tmpV2.set(1, 0, 0), 0.3 + crouch * 0.3));
-    }
+    this.deckToFeet(crouch);
 
     // arms: front hand toward the nose, back hand by the back hip
     const reach = Math.max(0, -ts) * 0.14;
@@ -672,6 +682,56 @@ export class SkierModel {
     this.ep[0].set(0.5, -0.6, -0.6).normalize(); this.ep[1].set(-0.5, -0.6, -0.6).normalize();
   }
 
+  // the joints as they're drawn, in the world, by the crash body's names (its _L side is the -x one)
+  worldJoints(out) {
+    const j = this.j;
+    this.group.updateMatrixWorld(true);
+    for (const [k, v] of [['Hips', j.pelvis], ['Chest', j.chest], ['Neck', j.neck], ['Head', j.head],
+      ['Leg_L', j.hipR], ['Knee_L', j.kneeR], ['Foot_L', j.ankR], ['Arm_L', j.shR], ['Elbow_L', j.elR], ['Hand_L', j.hdR],
+      ['Leg_R', j.hipL], ['Knee_R', j.kneeL], ['Foot_R', j.ankL], ['Arm_R', j.shL], ['Elbow_R', j.elL], ['Hand_R', j.hdL]]) this.frame.localToWorld((out[k] ??= new THREE.Vector3()).copy(v));
+    return out;
+  }
+
+  // the joints from the body on the snow (ragdraw.js), k of the way from the pose they're in. The
+  // group is turned to the body already, so in here it's a figure standing with its hips at BODY_HIP
+  onSnow(b, k) {
+    const j = this.j, P = this.parts, end = (v, i) => v.lerp(tmpV.set(b[i], b[i + 1] + BODY_HIP, b[i + 2]), k);
+    j.pelvis.lerp(tmpV.set(0, BODY_HIP, 0), k);
+    // (the back gives with the legs: the spine leans away from where the feet have gone)
+    j.spine.lerp(tmpV.set(-(b[12] + b[15]) * 0.5, 1, -(b[14] + b[17]) * 0.7), k).normalize();
+    this.frameUpper((this.twistNow || 0) * (1 - k));
+    j.hipL.copy(j.pelvis).addScaledVector(this.hipSide, 0.095);
+    j.hipR.copy(j.pelvis).addScaledVector(this.hipSide, -0.095);
+    end(j.hdL, 6); end(j.hdR, 9); end(j.ankL, 12); end(j.ankR, 15);
+    this.ep[0].lerp(tmpV.set(0.8, 0.1, -0.5), k); this.ep[1].lerp(tmpV.set(-0.8, 0.1, -0.5), k);
+    this.kp[0].lerp(tmpV.set(0.15, 0, 1), k); this.kp[1].lerp(tmpV.set(-0.15, 0, 1), k);
+    if (this.board) {
+      // (strapped in: the feet keep to the board, and the board goes with them)
+      const mid = (this._mid ??= new THREE.Vector3()).addVectors(j.ankL, j.ankR).multiplyScalar(0.5);
+      const dir = tmpV.subVectors(j.ankL, j.ankR).normalize();
+      j.ankL.copy(mid).addScaledVector(dir, 0.25); j.ankR.copy(mid).addScaledVector(dir, -0.25);
+      const up = (this._up ??= new THREE.Vector3()).subVectors(j.pelvis, mid);
+      up.addScaledVector(dir, -up.dot(dir)).normalize();
+      const fwd = tmpV2.crossVectors(dir, up);
+      this.boardQ.slerp(tmpQ.setFromRotationMatrix((this._bm ??= new THREE.Matrix4()).makeBasis(dir, up, fwd)), k);
+      this.legs();
+      this.deckToFeet(0.5);
+      return;
+    }
+    this.legs();
+    // (the boots square to the shins, and the skis, until they come off, square to the boots)
+    const m = (this._bm ??= new THREE.Matrix4());
+    for (const [ank, knee, ski, boot, cuff, bind] of [[j.ankL, j.kneeL, P.skiL, P.bootL, P.cuffL, P.sbindL], [j.ankR, j.kneeR, P.skiR, P.bootR, P.cuffR, P.sbindR]]) {
+      const up = tmpV.subVectors(knee, ank).normalize(), right = tmpV2.crossVectors(up, Z).normalize();
+      const fwd = (this._fw ??= new THREE.Vector3()).crossVectors(right, up);
+      const q = (this._sq ??= new THREE.Quaternion()).setFromRotationMatrix(m.makeBasis(right, up, fwd));
+      for (const part of [ski, boot, bind, cuff]) {
+        part.position.lerp((this._fp ??= new THREE.Vector3()).copy(ank).addScaledVector(up, -0.17), k);
+        part.quaternion.slerp(q, k);
+      }
+    }
+  }
+
   // spine frames from j.spine and an upper-body twist about the vertical
   frameUpper(twist) {
     const j = this.j;
@@ -690,7 +750,9 @@ export class SkierModel {
   // touchdown, rocking side to side after a sketchy one
   trickBody(G, g, tk, pop, ang, pitch) {
     const j = this.j, K = this.k;
-    j.pelvis.y += pop * 0.08 - tk * 0.04 - K.land * 0.12;
+    // (a big landing goes right down into the knees, the seat going back over the heels)
+    j.pelvis.y += pop * 0.08 - tk * 0.04 - K.land * 0.26;
+    j.pelvis.z -= K.land * 0.07;
     j.pelvis.x += K.wob * 0.05;
     const dp = G.curl * g + tk * 0.35 + K.land * 0.3 - pop * 0.12, da = K.wob * 0.22;
     if (Math.abs(dp) < 1e-4 && Math.abs(da) < 1e-4) return;
@@ -746,26 +808,31 @@ export class SkierModel {
   // crashing or sketchy: arms thrown out
   flail(p, hipH, hipZ) {
     const j = this.j;
-    if (p.crash) {
-      // a body out of control: arms thrown about by the tumble, then flung out on the snow
-      const r = p.rag ?? 0.5, t = p.ragT ?? p.t, s = p.ragSeed ?? 0;
-      j.hdL.set(0.5 + 0.18 * r * Math.sin(t * 7.1 + s), hipH + 0.3 + 0.42 * r * Math.sin(t * 5.3 + 1 + s), hipZ + 0.1 + 0.4 * r * Math.sin(t * 6.2 + s * 2));
-      j.hdR.set(-0.5 - 0.18 * r * Math.sin(t * 6.4 + 2 + s), hipH + 0.4 + 0.42 * r * Math.sin(t * 4.7 + 3 + s), hipZ - 0.1 + 0.4 * r * Math.sin(t * 5.6 + 1 + s));
-      // sprawled once it stops: one arm up past the head, the other out
-      const lie = 1 - r;
-      j.hdL.lerp(tmpV.set(0.42, hipH + 0.75, hipZ + 0.2), lie * 0.6);
-      j.hdR.lerp(tmpV.set(-0.62, hipH + 0.18, hipZ - 0.05), lie * 0.6);
-      this.ep[0].set(0.9, 0.2, -0.3).normalize(); this.ep[1].set(-0.9, -0.3, -0.2).normalize();
-    } else if (p.flail > 0) {
+    if (p.flail > 0) {
       const k = p.flail, w = Math.sin(p.t * 17);
       j.hdL.lerp(tmpV.set(0.55, hipH + 0.35 + w * 0.12, hipZ + 0.1), k);
       j.hdR.lerp(tmpV.set(-0.55, hipH + 0.35 - w * 0.12, hipZ + 0.05), k);
     }
   }
 
+  // the arms have weight too: flung the opposite way when a spin starts or stops, drifting to keep
+  // the balance through a long air, and out in front for the landing and through it
+  armsAlive(p) {
+    const j = this.j, K = this.k, free = (1 - this.gAmt) * (1 - K.rail), air = this.airS;
+    if (free < 0.02 || this.bodyK > 0) return;
+    const swing = clamp(K.sa * 0.006, -0.35, 0.35) * air * free, drift = air * free * 0.045;
+    const land = Math.max(K.reach * 0.55, K.land * 0.8) * free, hip = j.pelvis;
+    for (const [hd, sg, ph] of [[j.hdL, 1, 0], [j.hdR, -1, 2.4]]) {
+      hd.x += -hd.z * swing; hd.z += hd.x * swing;
+      hd.y += Math.sin(p.t * 2.3 + ph) * drift; hd.z += Math.sin(p.t * 1.7 + ph) * drift;
+      if (land > 0) hd.lerp(tmpV.set(sg * 0.4, hip.y + 0.22, hip.z + 0.36), land);
+    }
+  }
+
   upper(p) {
     const j = this.j, P = this.parts;
     const tuck = p.tuck;
+    this.armsAlive(p);
     j.chest.copy(j.pelvis).addScaledVector(j.spine, 0.42);
     P.hips.position.copy(j.pelvis).addScaledVector(j.spine, 0.04);
     P.hips.quaternion.setFromUnitVectors(Y, j.spine);
@@ -776,7 +843,8 @@ export class SkierModel {
     P.collar.quaternion.setFromUnitVectors(Y, j.spine);
     // the head looks where it's going: up off the spine, turned toward the line (and into a spin)
     // (a tall rider holds the head up level, eyes on the horizon, whatever the slope does)
-    const headUp = (this._headUp ??= new THREE.Vector3()).copy(j.spine).lerp(this.upW ?? Y, Math.min(0.97, 0.55 + tuck * 0.2 + (p.tall || 0) * 0.4)).normalize();
+    // (a body on the snow has given up holding it level: it goes where the neck goes)
+    const headUp = (this._headUp ??= new THREE.Vector3()).copy(j.spine).lerp(this.upW ?? Y, Math.min(0.97, 0.55 + tuck * 0.2 + (p.tall || 0) * 0.4) * (1 - (this.bodyK || 0))).normalize();
     j.head.copy(j.neck).addScaledVector(headUp, 0.12);
     // (spinning, it leads into the turn and then spots the landing: Skier.trickPose)
     const lw = this.k?.lookW ?? 0;

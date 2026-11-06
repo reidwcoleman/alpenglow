@@ -18,8 +18,7 @@ export class Debris {
     const m = skier.model;
     m.group.updateMatrixWorld(true);
     const v = skier.vel;
-    // lose one or both skis; poles usually go too
-    const lose = GEAR.filter((k, i) => (i < 2 ? Math.random() < 0.8 : Math.random() < 0.7));
+    const lose = GEAR;
     for (const k of lose) {
       const part = m.parts[k];
       const mesh = new THREE.Mesh(part.geometry, part.material);

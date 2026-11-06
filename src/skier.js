@@ -5,15 +5,17 @@ import * as THREE from 'three';
 import { heightAt, normalAt, centerX, halfWidth, centerSlope, surfaceAt, FINISH_Z } from './course.js';
 import { RideSim } from './ridesim.js';
 import { mountain } from './surface.js';
-import { SkierModel, BOARD_NAME } from './skiermodel.js';
+import { SkierModel, BOARD_NAME, BODY_HIP, RIDER_SCALE } from './skiermodel.js';
+import { RagDraw } from './ragdraw.js';
 import { clamp, smoothstep } from './noise.js';
 
 const GRAV = 9.81;
 const UP = new THREE.Vector3(0, 1, 0);
 const BLOB = {}; const _bn = new THREE.Vector3(), _bq = new THREE.Quaternion();
 const _n = new THREE.Vector3(), _f = new THREE.Vector3();
-const _t = new THREE.Vector3(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _m = new THREE.Matrix4();
+const _t = new THREE.Vector3(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion();
 const near = [];
+const _body = new THREE.Quaternion(), _hip = new THREE.Vector3();
 
 export function wrapAngle(a) {
   a = (a + Math.PI) % (Math.PI * 2);
@@ -53,7 +55,7 @@ export class Skier {
     this.onGround = true; this.airTime = 0;
     this.spin = 0; this.pitch = 0; this.flipAcc = 0; this.grabTime = 0;
     this.crash = 0; this.crashPhase = null; this.crashT = 0;
-    this.tumble = 0; this.tumbleAxis = new THREE.Vector3(1, 0, 0); this.lie = 0;
+    this.ragOut = null; // (the body on the snow, as ragdraw.js hands it to the drawing)
     this.lean = 0; this.latAcc = 0; this.skid = 0; this.skidYaw = 0; this.compress = 0;
     this.gload = 1; this.scrape = 0;
     this.skatePhase = 0; this.skating = 0;
@@ -379,97 +381,83 @@ export class Skier {
     if (this.sim.bump(-nx, -nz, out, total)) this.startCrash('net', out);
   }
 
-  // ---- crashes: the clock is the physics', the tumble is drawn here ----
+  // ---- crashes: the physics has the body (RideSim.body); it's drawn from there ----
   // hit: how hard it was (m/s into the thing, or into the snow)
   startCrash(reason, hit = 0) {
     if (this.crash > 0) return;
-    const S = this.sim, sp = this.speed;
+    const S = this.sim, sp = this.speed, m = this.model;
     if (S.crashTime <= 0) S.beginCrash(hit, false, hit > 25 ? 'crash' : 'fall');
     this.grind = null; this.flushRail();
     this.airLive = false;
     this.crash = 1; this.crashPhase = 'tumble'; this.crashT = 0; this.crashSpeed = sp;
-    this.ragSeed = Math.random() * 6; this.halfTurns = 0;
-    const hx = this.vel.x, hz = this.vel.z, hl = Math.hypot(hx, hz) || 1;
-    this.tumbleAxis.set(hz / hl, 0, -hx / hl);
-    this.tumble = this.pitch;
-    this.tumbleRate = Math.min(sp / 0.75, 11) * (Math.random() < 0.75 ? 1 : -1);
-    this.cartwheel = (Math.random() - 0.5) * Math.min(sp / 3, 5);
-    this.cartAngle = 0; this.lie = 0; this.onGround = true;
+    this.halfTurns = 0; this.gearGone = false; this.puffT = 0; this.bodyFell = 0;
+    // (it goes down from the pose it's drawn in, if it's drawn at all)
+    const drawn = m.group.visible && !this.far ? m.worldJoints(this.joints ??= {}) : null;
+    if (drawn && drawn.Hips.distanceTo(S.body.origin) < 3) { S.body.seed(drawn); (this.ragFrom ??= new THREE.Quaternion()).copy(m.group.quaternion); } else this.ragFrom = null;
+    (this.ragDraw ??= new RagDraw()).start(S.body);
+    this.ragOut = this.ragDraw.out; this.ragOut[4] = 0;
+    this.onGround = true;
     if (this.trackSlot) this.trackSlot.break();
     this.emit('crash', { reason, speed: sp, hit });
-    if (sp > 10) this.emit('yardsale', { speed: sp });
   }
 
   stepCrash(dt) {
-    const v = this.vel, S = this.sim;
+    const S = this.sim, B = S.body;
     this.crashT += dt;
-    S.crashTime = Math.max(0, S.crashTime - dt);
-    v.y -= GRAV * dt;
-    this.pos.addScaledVector(v, dt);
-    const gy = heightAt(this.pos.x, this.pos.z);
-    const n = normalAt(this.pos.x, this.pos.z, this.normal);
-    if (this.pos.y <= gy + 0.02) {
-      this.pos.y = gy;
-      const vn = v.dot(n);
-      if (vn < 0) v.addScaledVector(n, -vn * (vn < -3 ? 1.3 : 1));
-      const sp = v.length();
-      const mu = (this.crashPhase === 'tumble' ? 0.42 : 0.6) + this.surf.powder * 0.25 - this.surf.ice * 0.15;
-      if (sp > 0.01) v.multiplyScalar(Math.max(0, sp - (mu * GRAV * n.y + 0.035 * sp * sp) * dt) / sp);
-      this.trackDist += sp * dt;
-      if (this.trackSlot && sp > 0.6 && this.trackDist > 0.35) { this.trackDist = 0; this.trackSlot.add(this.pos, _t.copy(v).normalize(), n, 2, 1); }
-    } else if (this.trackSlot?.last) this.trackSlot.break();
-    const sp = v.length(), left = S.crashTime;
-    if (this.crashPhase === 'tumble') {
-      this.tumble += this.tumbleRate * dt;
-      const ht = Math.floor(Math.abs(this.tumble) / Math.PI);
-      if (ht !== this.halfTurns) {
-        this.halfTurns = ht;
-        if (sp > 4 && this.pos.y <= gy + 0.05) {
-          v.y += 0.8 + Math.min(sp, 30) * 0.07;
-          this.emit('tumbleHit', { speed: sp });
-          this.trackSlot?.dent(this.pos, v, n, 0.55, 1.2, 1);
-        }
-      }
-      this.cartAngle += this.cartwheel * dt;
-      const k = Math.exp(-dt * 1.5);
-      this.tumbleRate *= k; this.cartwheel *= k;
-      this.tumbleRate = Math.sign(this.tumbleRate) * Math.min(Math.abs(this.tumbleRate), sp / 0.6 + 1);
-      if (Math.abs(this.tumbleRate) < 2.5) {
-        const lying = Math.round((this.tumble - Math.PI / 2) / Math.PI) * Math.PI + Math.PI / 2;
-        this.tumble += (lying - this.tumble) * Math.min(1, dt * 4);
-        this.cartAngle += (Math.round(this.cartAngle / Math.PI) * Math.PI - this.cartAngle) * Math.min(1, dt * 4);
-      }
-      this.lie = Math.min(1, this.lie + dt * 2);
-      if (left < 0.6) { this.crashPhase = 'down'; this.crashT = 0; }
-    } else if (this.crashPhase === 'down') {
-      const lying = Math.round((this.tumble - Math.PI / 2) / Math.PI) * Math.PI + Math.PI / 2;
-      this.tumble += (lying - this.tumble) * Math.min(1, dt * 8);
-      this.cartAngle += (Math.round(this.cartAngle / Math.PI) * Math.PI - this.cartAngle) * Math.min(1, dt * 8);
-      if (left < 0.42) { this.crashPhase = 'up'; this.crashT = 0; }
-    } else {
-      v.multiplyScalar(Math.exp(-dt * 0.8));
-      const up = Math.round(this.tumble / TAU) * TAU;
-      this.tumble += (up - this.tumble) * Math.min(1, dt * 9);
-      this.cartAngle += (Math.round(this.cartAngle / TAU) * TAU - this.cartAngle) * Math.min(1, dt * 9);
-      this.lie = Math.max(0, this.lie - dt * 2.6);
-      if (left <= 0) this.recover();
+    const fell = B.velocity.dot(this.normal);
+    S.update(dt, this.readControls());
+    if (S.crashTime <= 0) return this.recover();
+    this.crashTrees(B);
+    this.pos.set(S.x, Math.max(S.y, B.nodes.Hips.p.y - 0.99), S.z);
+    this.vel.copy(B.velocity);
+    normalAt(S.x, S.z, this.normal);
+    this.crashPhase = S.recovery > 0 ? 'up' : 'tumble';
+    if (S.gearOff && !this.gearGone) { this.gearGone = true; this.emit('yardsale', { speed: this.speed }); }
+    // a smooth ramp onto the body over the first 160 ms, and off it again as the rider gets up
+    const on = smoothstep(0, 0.16, this.crashT), off = smoothstep(0, 1, S.recovery);
+    this.ragDraw.update(dt, B, heightAt, this.board, on * (1 - off));
+    if (!B.contacts) { if (this.trackSlot?.last) this.trackSlot.break(); return; }
+    const sp = this.speed;
+    // the snow: each slam throws it up, and the body ploughs it the whole way down
+    if (fell < -4) this.emit('tumbleHit', { speed: Math.hypot(sp, fell) });
+    this.puffT -= dt;
+    if (S.recovery < 0.2 && sp > 2 && this.puffT <= 0) { this.puffT = 0.14; this.emit('bodySlide', { speed: sp }); }
+    this.trackDist += sp * dt;
+    if (this.trackSlot && sp > 0.6 && this.trackDist > 0.35) { this.trackDist = 0; this.trackSlot.add(this.pos, _t.copy(this.vel).normalize(), this.normal, 2, 1); }
+  }
+
+  // trees and the like stop a sliding body too
+  crashTrees(B) {
+    const w = this.world, S = this.sim;
+    if (!w.forest) return;
+    w.forest.query(S.x, S.z, near);
+    for (const o of near) {
+      if (o.soft) continue;
+      const dx = S.x - o.x, dz = S.z - o.z, minD = o.r + 0.35, d = Math.hypot(dx, dz) || 0.01;
+      if (d >= minD || (o.top && B.nodes.Hips.p.y > heightAt(o.x, o.z) + o.top)) continue;
+      const nx = dx / d, nz = dz / d, push = minD - d, into = Math.min(0, B.velocity.x * nx + B.velocity.z * nz);
+      B.translate(nx * push, nz * push);
+      S.x += nx * push; S.z += nz * push;
+      B.velocity.x -= nx * into; B.velocity.z -= nz * into;
+      if (into < -3) this.emit('impact', { kind: o.kind, x: o.x, z: o.z, speed: -into });
     }
   }
 
+  // the physics has it back on its feet: unless it's somewhere it can't ride from
   recover() {
     const off = Math.abs(this.pos.x - centerX(this.pos.z)) / halfWidth(this.pos.z);
     this.world.forest?.query(this.pos.x, this.pos.z, near);
-    const stuckInTrees = near.some((o) => Math.hypot(o.x - this.pos.x, o.z - this.pos.z) < o.r + 0.8);
+    const against = near.find((o) => !o.soft && Math.hypot(o.x - this.pos.x, o.z - this.pos.z) < o.r + 0.8);
     this.endCrash();
-    if (off > 1.3 || stuckInTrees) this.respawn();
+    if (off > 1.3) this.respawn();
     else {
-      // back on the skis with some of the speed of the fall, along the way you were sliding if
-      // that's down the hill, otherwise down the fall line
-      const fall = Math.atan2(centerSlope(this.pos.z), 1);
-      const hv = Math.hypot(this.vel.x, this.vel.z), dir = Math.atan2(this.vel.x, this.vel.z);
-      const heading = hv > 2 && Math.abs(wrapAngle(dir - fall)) < 1.2 ? dir : fall;
-      this.sim.getUp(this.pos.x, this.pos.z, heading, Math.max(hv, (this.crashSpeed ?? 0) * 0.55));
-      this.avgHeading = heading;
+      // (come to rest against a tree: up beside it, and off down the hill past it)
+      if (against) {
+        const S = this.sim, d = Math.hypot(S.x - against.x, S.z - against.z) || 0.01, nx = (S.x - against.x) / d, nz = (S.z - against.z) / d;
+        const fall = Math.atan2(centerSlope(S.z), 1), blocked = Math.sin(fall) * nx + Math.cos(fall) * nz < -0.5;
+        S.getUp(against.x + nx * (against.r + 0.9), against.z + nz * (against.r + 0.9), blocked ? fall + (nx * Math.cos(fall) - nz * Math.sin(fall) > 0 ? 0.9 : -0.9) : fall, 4);
+      }
+      this.avgHeading = this.sim.heading;
       this.sync();
       if (this.trackSlot) this.trackSlot.break();
     }
@@ -477,7 +465,7 @@ export class Skier {
   }
 
   endCrash() {
-    this.crash = 0; this.crashPhase = null; this.tumble = 0; this.lie = 0; this.cartAngle = 0;
+    this.crash = 0; this.crashPhase = null; this.ragOut = null;
     this.pitch = 0; this.spin = 0; this.flipAcc = 0; this.sim.crashTime = 0;
     this.emit('gear');
   }
@@ -531,7 +519,7 @@ export class Skier {
 
   // the body through a trick: shoulders, head, knees
   trickPose(dt) {
-    const T = (this.trk ??= { lead: 0, look: 0, lookW: 0, tuck: 0, pop: 0, land: 0, wob: 0, rail: 0, bal: 0, tweak: 0, gh: 0, sr: 0, sa: 0, fr: 0, lh: null, lp: 0 });
+    const T = (this.trk ??= { lead: 0, look: 0, lookW: 0, tuck: 0, pop: 0, land: 0, wob: 0, rail: 0, bal: 0, tweak: 0, reach: 0, gh: 0, sr: 0, sa: 0, fr: 0, lh: null, lp: 0 });
     const c = this.controls, g = this.grind;
     const air = !this.onGround && !g && this.crash <= 0;
     if (dt > 0) {
@@ -568,6 +556,9 @@ export class Skier {
     // a grab held long gets tweaked out further
     T.gh = air && c.grab ? T.gh + dt : 0;
     ease('tweak', smoothstep(0.3, 1.0, T.gh), 5);
+    // coming down: the legs open out and reach for the snow a moment before it arrives
+    const above = this.pos.y - heightAt(this.pos.x, this.pos.z), falling = -this.vel.y;
+    ease('reach', air && this.airTime > 0.3 && falling > 1 ? 1 - smoothstep(0.12, 0.45, above / falling) : 0, 14);
     // touchdown: a quick dip the knees soak up, then back up; a sketchy one wobbles
     if (this.landT != null) {
       this.landT += dt;
@@ -596,13 +587,14 @@ export class Skier {
     _q.setFromUnitVectors(UP, _t);
     _q2.setFromAxisAngle(UP, this.heading + this.skidYaw);
     g.quaternion.copy(_q).multiply(_q2);
-    let lie = 0;
-    if (this.crash > 0) {
-      // world-space tumble across the line of travel plus a cartwheel along it
-      _q2.setFromAxisAngle(this.tumbleAxis, -this.tumble);
-      _m.makeRotationAxis(_n.set(-this.tumbleAxis.z, 0, this.tumbleAxis.x), this.cartAngle);
-      g.quaternion.premultiply(new THREE.Quaternion().setFromRotationMatrix(_m)).premultiply(_q2);
-      lie = this.lie;
+    const body = this.crash > 0 ? this.ragOut : null, onBody = body ? body[4] : 0;
+    if (body) {
+      // going down it leaves from the way it was facing, however that was
+      if (this.ragFrom && this.crashT < 0.3) g.quaternion.copy(this.ragFrom);
+      _body.set(body[0], body[1], body[2], body[3]).normalize();
+      // (a snowboarder's figure stands a quarter turn round in the group)
+      if (m.board) _body.multiply(_q2.copy(m.frame.quaternion).invert());
+      g.quaternion.slerp(_body, onBody);
     } else if (this.airLive) {
       // (in the air, and settling out of it, the body has its own orientation)
       g.quaternion.copy(this.airQ);
@@ -621,9 +613,8 @@ export class Skier {
     }
     (this.visPos ??= new THREE.Vector3()).copy(this.pos);
     // rotate about the body's centre, not the feet
-    const ch = 0.8 * (1 - lie) + 0.24 * lie;
     _n.set(0, 0.8, 0).applyQuaternion(g.quaternion);
-    g.position.copy(this.pos).addScaledVector(_t, ch).sub(_n);
+    g.position.copy(this.pos).addScaledVector(_t, 0.8).sub(_n);
     if (this.butter && this.onGround && !this.crash) g.position.y += Math.sin(Math.min(1, this.butter.t * 6) * 0.32) * 0.82;
     // deep snow: the skis ride under the surface, planing up as the speed builds
     // (only a whisker: the skis stay on top of the snow you can see)
@@ -632,6 +623,12 @@ export class Skier {
       this.sinkV = (this.sinkV ?? 0) + (sink - (this.sinkV ?? 0)) * Math.min(1, dt * 6);
     } else this.sinkV = (this.sinkV ?? 0) * (1 - Math.min(1, dt * 8));
     g.position.y -= this.sinkV;
+    // (coming in tilted, the feet find the snow a frame before the physics does: they stop on top of it)
+    if (!this.onGround && !this.grind && !this.crash) {
+      _n.set(0, 0.05, 0).applyQuaternion(g.quaternion).add(g.position);
+      g.position.y += Math.max(0, heightAt(_n.x, _n.z) + 0.04 - _n.y);
+    }
+    if (onBody > 0) g.position.lerp(_hip.set(this.pos.x, body[5], this.pos.z).sub(_n.set(0, BODY_HIP * RIDER_SCALE, 0).applyQuaternion(_body)), onBody);
     // the slope bends under a 1.7 m ski: lift him so neither the tip nor the tail is in the snow
     if (this.onGround && !this.grind && !this.crash) {
       const fx = Math.sin(this.heading), fz = Math.cos(this.heading);
@@ -679,7 +676,7 @@ export class Skier {
     const lookS = (this.lookSide ?? 1) * this.backK;
     // (the player stands tall like a Cork7 rider; the computer riders sit lower)
     let crouch = (this.strict ? 0.04 : 0.18) + Math.abs(this.lean) * (this.strict ? (this.board ? 0.1 : 0.06) : this.board ? 0.26 : 0.12) + this.compress * 0.35 + gCrouch * (this.strict ? (this.board ? 0.35 : 0.3) : this.board ? 1 : 0.7) + this.jumpCharge * 0.5 + (c.brake > 0 ? 0.25 : 0) - this.spring * 1.6;
-    if (crashed) crouch = this.crashPhase === 'up' ? 0.9 * this.lie + 0.3 : 0.55;
+    if (crashed) crouch = 0.55;
     // (the player's rider drawn a size up, like Cork7's: easier to read on the hill and in a trick)
     const sc = this.strict ? 1.13 : 1;
     if (m.group.scale.x !== sc) m.group.scale.setScalar(sc);
@@ -710,9 +707,7 @@ export class Skier {
       polePlant: Math.sin(this.polePlant * Math.PI),
       poleSide: this.poleSide,
       crash: crashed && this.crashPhase !== 'up',
-      // how wild the limbs are: thrown about while it tumbles, sprawled once it stops
-      rag: crashed ? clamp(Math.abs(this.tumbleRate ?? 0) / 7 + this.speed / 30, 0, 1) * (this.crashPhase === 'tumble' ? 1 : 0.15) : 0,
-      ragT: this.crashT * 1.0, ragSeed: this.ragSeed ?? 0,
+      body: crashed ? this.ragOut : null,
       twist: crashed ? 0 : clamp(wrapAngle(this.avgHeading - this.heading) * 0.85, -0.7, 0.7) * (1 - this.backK) + lookS * 0.62,
       skate: this.skating && !crashed && !this.board ? 1 : 0,
       skatePhase: this.skatePhase,

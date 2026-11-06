@@ -2,7 +2,11 @@
 // and what multiplayer sends. applySnap() poses a stand-in skier from two of them.
 const TRICK = [null, 'backflip', 'frontflip', 'cork', 'bio', 'rodeo', 'misty', 'sideflip', 'flatspin'];
 const GRAB = [null, 'mute', 'tail', 'japan', 'safety', 'critical', 'nose'];
-const PHASE = [null, 'tumble', 'down', 'up'];
+const PHASE = [null, 'tumble', 'down', 'up', 'body'];
+// (a body on the snow, ragdraw.js's list: it goes in the slots a crash has no use for, so a
+// snapshot stays the same size)
+const BODY = [12, 13, 14, 15, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 46, 47, 48];
+const isBody = (f) => f[17] > 0 && f[18] === 4;
 export const SNAP_N = 52;
 
 export function snap(s, out = new Float32Array(SNAP_N)) {
@@ -20,13 +24,14 @@ export function snap(s, out = new Float32Array(SNAP_N)) {
     w(s.trickType ? r[0] : -r[0]); w(r[1]); w(r[2]); w(r[3]);
   } else { w(s.pitch); w(s.flipAxis.x); w(s.flipAxis.y); w(s.flipAxis.z); }
   w(TRICK.indexOf(s.trickType));
-  w(s.crash > 0 ? 1 : 0); w(PHASE.indexOf(s.crashPhase)); w(s.tumble); w(s.tumbleAxis.x); w(s.tumbleAxis.z); w(s.cartAngle); w(s.lie);
+  w(s.crash > 0 ? 1 : 0); w(s.crash > 0 && s.ragOut ? 4 : PHASE.indexOf(s.crashPhase)); w(0); w(0); w(0); w(0); w(0);
   w(s.lean); w(s.edge); w(s.compress); w(s.gload); w(s.jumpCharge); w(s.airTime); w(s.onGround ? 1 : 0);
   w(c.steer); w(c.tuck); w(c.brake); w(c.grab ? 1 : 0); w(GRAB.indexOf(c.grabKind ?? null)); w(c.jump ? 1 : 0);
   w(s.polePlant); w(s.poleSide); w(s.skating); w(s.skatePhase);
   w(s.butter ? s.butter.t : -1); w(s.butter?.tail ? 1 : 0);
   w(s.grind ? 1 : 0); w(s.time); w(s.surf.powder); w(s.skid); w(s.latAcc); w(s.maxAirY ?? 0); w(s.sinkV ?? 0);
   w(s.spin); w((c.up ? 1 : 0) + (c.down ? 2 : 0) + (c.flip > 0 ? 4 : 0) + (c.flip < 0 ? 8 : 0) + (s.boardSwitch ? 16 : 0));
+  if (s.crash > 0 && s.ragOut) BODY.forEach((k, n) => { out[k] = s.ragOut[n]; });
   return out;
 }
 
@@ -52,7 +57,7 @@ export function applySnap(d, a, b = a, t = 0) {
   d.normal.set(L(9), L(10), L(11)).normalize();
   d.pitch = L(12); d.flipAxis.set(L(13), L(14), L(15)).normalize();
   d.trickType = TRICK[N[16]] ?? null;
-  d.crash = N[17]; d.crashPhase = PHASE[N[18]] ?? null; d.tumble = L(19); d.tumbleAxis.set(L(20), 0, L(21)).normalize(); d.cartAngle = L(22); d.lie = L(23);
+  d.crash = N[17]; d.crashPhase = PHASE[N[18]] ?? null;
   d.lean = L(24); d.edge = L(25); d.compress = L(26); d.gload = L(27); d.jumpCharge = L(28); d.airTime = L(29); d.onGround = !!N[30];
   const c = d.controls;
   c.steer = L(31); c.tuck = L(32); c.brake = L(33); c.grab = !!N[34]; c.grabKind = GRAB[N[35]] ?? null; c.jump = !!N[36];
@@ -61,6 +66,12 @@ export function applySnap(d, a, b = a, t = 0) {
   d.grind = N[43] ? (d.grind ?? { fake: true }) : null;
   d.time = L(44); d.surf.powder = L(45); d.skid = L(46); d.latAcc = L(47); d.maxAirY = L(48); d.sinkV = L(49);
   d.spin = L(50);
+  if (isBody(N)) {
+    const A = isBody(a) ? a : b, B = isBody(b) ? b : a;
+    d.ragOut ??= new Float32Array(BODY.length);
+    BODY.forEach((k, n) => { d.ragOut[n] = lerp(A[k], B[k], t); });
+    d.pitch = 0; d.lean = 0; d.edge = 0; d.compress = 0; d.gload = 1; d.jumpCharge = 0; d.airTime = 0; d.skid = 0; d.latAcc = 0; d.maxAirY = 0;
+  } else d.ragOut = null;
   const bits = N[51] | 0;
   d.boardSwitch = !!(bits & 16);
   c.up = !!(bits & 1); c.down = !!(bits & 2); c.flip = bits & 4 ? 1 : bits & 8 ? -1 : 0;

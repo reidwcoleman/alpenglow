@@ -42,6 +42,9 @@ export const mountain = {
   center: centerX,
   centerSlope,
   maxSpeed: 43,
+  // (the rules of a long run, and the sides of the built forms are walls you can run into)
+  classic: true,
+  snowWalls: true,
   // the rise per metre going `heading`; on a lip it's the lip's own angle
   grade(x, z, heading) {
     for (const K of near(KB, z)) {

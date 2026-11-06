@@ -10,12 +10,14 @@ import * as THREE from 'three';
 import { AirRot } from './airrot.js';
 import { LandingAssist, AirLevel, groundPose, offLanding } from './airassist.js';
 import { Butter, faceplantTilt } from './ridebutter.js';
+import { RagBody } from './ragbody.js';
+import { wallHit, snowEdge, kickerSweep } from './snowedge.js';
 
 export const SLOPE_G = 9.81 * 1.7, AIR_G = 17.5, VMAX = 43;
 const ROLL = 0.13, K_RIDE = 0.0028, K_TUCK = 0.0024, DEEP = 1.38, EDGE_DRAG = 0.38, BRAKE = 17;
 const SPIN0 = 6.3, SPIN1 = SPIN0 * 1.08, SPIN_GRAB = SPIN1 * 1.4, SPIN_DOWN = 6.5;
 const RAIL_SPIN = 4.2, RAIL_G = AIR_G * 0.5;
-const TUCK_TIME = 1.25, TUCK_SPEED = 18, BOUNDS = 121;
+const TUCK_TIME = 1.25, TUCK_SPEED = 18, BOUNDS = 121, BODY_BOUNDS = 123;
 // rails reach out for you: on the snow within 1.5 m of the line, in the air within 1 m
 const FUNNEL_REACH = 1.5, FUNNEL_ANGLE = (25 * Math.PI) / 180, FUNNEL_PULL = 1 / 12;
 const AIR_REACH = 1, AIR_ANGLE = (35 * Math.PI) / 180, AIR_PULL = 0.7, AIR_WINDOW = 0.45;
@@ -36,6 +38,7 @@ export function hitClass(e, t) {
 }
 
 const _y = new THREE.Vector3(0, 1, 0), _v = new THREE.Vector3(), _n = new THREE.Vector3();
+const POP_RISE = Math.tan((12 * Math.PI) / 180);
 const _p = { t: 0, side: 0 }, _pt = { x: 0, z: 0 }, _f = { slope: 0, cross: 0 }, _f2 = { slope: 0, cross: 0 };
 
 export class RideSim {
@@ -51,6 +54,9 @@ export class RideSim {
     this.landingNormal = new THREE.Vector3();
     this.landingUp = new THREE.Vector3();
     this.butter = new Butter();
+    this.walls = !!surface.snowWalls;
+    this.body = new RagBody(surface.h, this.walls);
+    this.moveFrom = { x: 0, y: 0, z: 0 };
     this.place(0, 0, 0, 0);
   }
 
@@ -62,7 +68,7 @@ export class RideSim {
       spin: 0, flip: 0, spinVelocity: 0, flipVelocity: 0, rollVelocity: 0, spinTightness: 0, flipTightness: 0, spinWindup: 0, flipWindup: 0, airGrab: 0,
       spinReversal: 0, flipReversal: 0, corkSet: false, railPitchHeld: 0, landingPrepare: 0, landing: 0, landingImpact: 0, landingBoost: 0, landingSpin: 0, landingFlip: 0,
       landingSettling: false, switchStance: false, forwardHeld: 0, tucking: false, crouch: 0, skid: 0, skidSide: 1, poling: 0, polePhase: 0, poleProgressZ: z, recoveryPushTime: 0,
-      charge: 0, jumpHeld: false, takeoffKick: 0, grabTime: 0, airSource: '', event: '', crashTime: 0, crashDuration: 0, crashSeverity: 0, gentle: false, flat: false,
+      charge: 0, jumpHeld: false, takeoffKick: 0, grabTime: 0, airSource: '', event: '', crashTime: 0, crashDuration: 0, crashSeverity: 0, gentle: false, flat: false, recovery: 0, gearOff: false,
       rail: null, railT: 0, railSpin: 0, railSpinVelocity: 0, railSpinTravel: 0, railTime: 0, railSwaps: 0, railHops: 0, railHopTurns: [], railTarget: null, railPresses: 0, railSteer: 0, barSave: null, grind: false,
       pipeAir: false, lastLand: null,
     });
@@ -241,34 +247,51 @@ export class RideSim {
     if (!popped) this.railPitchHeld = Number(inp.forward) | (Number(inp.brake) << 1);
   }
 
-  // ---- crashes (the body itself is the scene's: this keeps the clock and what follows) ----
+  // ---- crashes: the body goes down on its own (ragbody.js) for as long as the fall lasts ----
   beginCrash(impact, flat = false, kind) {
     if (this.crashTime > 0) return;
-    this.landingSettling = false; this.assist.reset(); this.recoveryPushTime = 0;
+    this.gearOff = false; this.landingSettling = false; this.assist.reset(); this.recoveryPushTime = 0;
     const above = Math.max(0, this.y - this.S.h(this.x, this.z));
     this.crashSeverity = clamp(kind ? (impact / 42) * 0.8 + (above / 45) * 0.2 : (this.speed / 43) * 0.35 + (impact / 42) * 0.45 + (this.maxAir / 45) * 0.2, 0.12, 1);
     this.gentle = kind ? kind === 'fall' : !flat && impact < 16 && this.maxAir < 5.5 && this.speed < 27;
     this.flat = flat;
     this.crashDuration = this.gentle ? 0.8 + this.crashSeverity * 0.4 : 1.35 + this.crashSeverity * 1.35;
-    this.crashTime = this.crashDuration;
+    this.crashTime = this.crashDuration; this.recovery = 0;
+    this.body.start(this.x, this.y, this.z, this.heading, this.velocityX, this.velocityZ, impact, this.spinVelocity, this.q, this.switchStance ? Math.PI : 0, flat, this.gentle);
     this.airborne = false; this.landing = 0; this.landingBoost = 0; this.event = 'crash'; this.rail = null; this.grind = false;
+  }
+
+  // a step of the fall; when the clock runs out the rider is back up, sliding the way the body was
+  stepCrash(dt) {
+    const B = this.body, S = this.S;
+    this.crashTime = Math.max(0, this.crashTime - dt);
+    this.recovery = 1 - clamp(this.crashTime / (B.gentle ? 0.45 : 0.6), 0, 1);
+    B.update(dt, this.crashTime < (B.gentle ? 0.55 : 0.75));
+    this.gearOff = this.crashTime > 0 && B.shedsEquipment;
+    const hip = B.nodes.Hips.p, z = clamp(hip.z, S.zMin ?? -Infinity, S.zMax ?? Infinity), c = S.center(z), x = clamp(hip.x, c - BODY_BOUNDS, c + BODY_BOUNDS);
+    B.translate(x - hip.x, z - hip.z);
+    this.x = x; this.z = z; this.y = S.h(x, z);
+    this.velocityX = B.velocity.x; this.velocityZ = B.velocity.z;
+    this.speed = Math.min(this.vmax, Math.hypot(this.velocityX, this.velocityZ));
+    if (this.speed > 1.5) this.travelHeading = Math.atan2(this.velocityX, this.velocityZ);
+    if (this.crashTime === 0) this.getUp(this.x, this.z, this.travelHeading, this.speed);
   }
 
   // back up after a crash, moving heading at speed, the first pole push ready
   getUp(x, z, heading, speed) {
-    const sw = false;
-    this.place(x, z, heading, clamp(speed, 4, this.gentle ? 32 : 23));
-    this.switchStance = sw; this.crouch = 0.5; this.recoveryPushTime = 6;
+    const gentle = this.body.gentle;
+    this.place(x, z, heading, clamp(speed, 4, gentle ? 32 : 23));
+    this.crouch = 0.5; this.recoveryPushTime = 6;
   }
 
   // something solid: the normal (nx, nz) out of it, how hard it was hit, at what speed in all.
   // Returns true if it put the rider down
-  bump(nx, nz, impact, total) {
+  bump(nx, nz, impact, total, ridden = false) {
     const cls = hitClass(impact, total);
     if (cls === 'fall' || cls === 'crash') { this.landingImpact = impact; this.beginCrash(impact, false, cls); return true; }
     this.speed = Math.hypot(this.velocityX, this.velocityZ);
     if (this.speed > 0.1) this.travelHeading = Math.atan2(this.velocityX, this.velocityZ);
-    if (cls === 'balance' && !this.airborne) {
+    if (cls === 'balance' && (ridden || !this.airborne)) {
       const c = Math.cos(this.heading), s = Math.sin(this.heading);
       this.landingSpin = clamp(((nx * c - nz * s) * impact) / 16, -0.8, 0.8);
       this.landingFlip = clamp((-(nx * s + nz * c) * impact) / 20, -0.6, 0.6);
@@ -327,7 +350,8 @@ export class RideSim {
     this.takeoffKick = Math.max(0, this.takeoffKick - dt * 4);
     this.railPitchHeld &= Number(t.forward) | (Number(t.brake) << 1);
     this.poleProgressZ = Math.max(this.poleProgressZ, this.z);
-    if (this.crashTime > 0) return;
+    if (this.crashTime <= 0) this.gearOff = false;
+    if (this.crashTime > 0) { this.butter.reset(); this.stepCrash(dt); return; }
     this.recoveryPushTime = this.speed >= 18 ? 0 : Math.max(0, this.recoveryPushTime - dt);
     const wasAir = this.airborne;
     this.landingSpin = damp(this.landingSpin, 0, 5, dt);
@@ -375,7 +399,12 @@ export class RideSim {
         this.turnRate = this.rail ? 0 : w;
         this.travelHeading += this.turnRate * dt;
         if (buttering) this.travelHeading += this.butter.pull(S.grade(this.x, this.z, this.travelHeading + Math.PI / 2), this.speed) * dt;
-        const rise = S.grade(this.x, this.z, this.travelHeading);
+        let rise = S.grade(this.x, this.z, this.travelHeading);
+        // (coming up to a rim the slope pulling you isn't the drop past it: it's the snow before it)
+        if (this.walls && rise < -1) {
+          const e = snowEdge(S.h, this, { x: this.x + Math.sin(this.travelHeading) * 0.5, y: this.y, z: this.z + Math.cos(this.travelHeading) * 0.5 });
+          if (e) rise = e.grade;
+        }
         const drag = (this.tucking ? K_TUCK : K_RIDE) * (deep ? DEEP : 1);
         const acc = SLOPE_G * Math.sin(Math.atan(-rise)) - ROLL - drag * this.speed * this.speed - Math.abs(this.edge) * EDGE_DRAG;
         if (!this.rail) this.speed = clamp(this.speed + (acc - (braking ? BRAKE : 0)) * dt, 0, this.vmax);
@@ -389,16 +418,20 @@ export class RideSim {
 
     // (the frame the body turns in follows the line, in the air too; a pipe's air keeps its own)
     if (!this.pipeAir) this.heading += wrap(this.travelHeading + this.skid * 0.72 - this.heading) * (1 - Math.exp(-12 * dt));
-    const x0 = this.x, z0 = this.z;
+    const x0 = this.x, z0 = this.z, M = this.moveFrom;
+    M.x = this.x; M.y = this.y; M.z = this.z;
     this.x += this.velocityX * dt; this.z += this.velocityZ * dt;
+    if (S.zMin != null) this.z = Math.max(S.zMin, this.z);
     const c = S.center(this.z);
-    if (Math.abs(this.x - c) > BOUNDS) {
+    const bounds = S.bounds ?? BOUNDS;
+    if (Math.abs(this.x - c) > bounds) {
       const sg = Math.sign(this.x - c);
-      this.x = c + sg * BOUNDS;
+      this.x = c + sg * bounds;
       const out = this.velocityX - S.centerSlope(this.z) * this.velocityZ;
       if (sg * out > 0) { this.velocityX -= out; this.speed *= Math.exp(-dt * 2.8); }
     }
     if (!this.airborne && !this.rail) this.funnelToRail(dt, t);
+    if (!this.airborne && this.hitWall()) return;
     if (!this.airborne && !this.rail) {
       for (const R of S.railsNear(this.z)) {
         S.railProj(R, this.x, this.z, _p);
@@ -422,6 +455,31 @@ export class RideSim {
     this.jumpHeld = !!t.jump;
   }
 
+  // ran into a wall of snow this step: put back clear of it with what went into it taken off, or
+  // down if it was hard enough. True if it put the rider down
+  hitWall() {
+    if (!this.walls || this.rail || this.crashTime > 0) return false;
+    const S = this.S, w = wallHit(S.h, this.moveFrom, this) ?? (this.airborne && this.vy < 0 ? wallHit(S.h, this, this) : null);
+    if (!w) return false;
+    const total = Math.hypot(this.velocityX, this.velocityZ), into = Math.max(0, -this.velocityX * w.nx - this.velocityZ * w.nz);
+    this.x = w.x; this.z = w.z;
+    if (!this.airborne) this.y = S.h(this.x, this.z);
+    this.velocityX += w.nx * into; this.velocityZ += w.nz * into;
+    return this.bump(w.nx, w.nz, into, total, true);
+  }
+
+  // rode off the rim of a form: into the air at the grade of the snow it left
+  leaveEdge(t) {
+    if (!this.walls) return false;
+    const S = this.S, M = this.moveFrom, e = snowEdge(S.h, M, this);
+    if (!e) return false;
+    const v = Math.hypot(this.velocityX, this.velocityZ), c = Math.cos(this.heading), s = Math.sin(this.heading);
+    this.y = M.y;
+    this.takeoff(e.grade * v, v, 'ground', groundPose(e.dx * s + e.dz * c, this.spin, this.edge, new THREE.Quaternion(), e.dx * c - e.dz * s));
+    this.takeoffKick = 0; this.railPitchHeld = Number(t.forward) | (Number(t.brake) << 1); this.charge = 0;
+    return true;
+  }
+
   // on the snow, this step: a kicker's lip, the pipe's lip, or a pop
   groundEvents(z0, x0, t, dt) {
     const S = this.S;
@@ -434,8 +492,8 @@ export class RideSim {
         const f = S.frame(px, J.z - 0.01, this.heading, _f);
         const q = groundPose(f.slope, this.spin, this.edge, new THREE.Quaternion(), f.cross);
         this.y = S.h(this.x, J.z - 0.01);
-        // (the lip's kick goes square to it; surface.kickUp: straight up instead)
-        if (S.kickUp) this.takeoff(this.speed * Math.sin(a) + kick, this.speed * Math.cos(a), 'jump', q);
+        // (the lip's kick goes square to it; surface.classic: straight up instead)
+        if (S.classic) this.takeoff(this.speed * Math.sin(a) + kick, this.speed * Math.cos(a), 'jump', q);
         else this.takeoff(this.speed * Math.sin(a) + kick * Math.cos(a), this.speed * Math.cos(a) - kick * Math.sin(a), 'jump', q);
         this.velocityX += (J.transfer ?? 0) * 0.22;
         this.charge = 0;
@@ -459,12 +517,20 @@ export class RideSim {
     // a drop: a ledge the map marks as one lets go of you
     const drop = S.dropAt?.(this, x0, z0);
     if (drop) { this.takeoff(drop.vertical, this.speed, 'ground'); this.takeoffKick = 0; this.railPitchHeld = Number(t.forward) | (Number(t.brake) << 1); this.charge = 0; return; }
+    if (this.leaveEdge(t)) return;
     this.y = S.h(this.x, this.z);
     if (t.jump) this.charge = Math.min(1, this.charge + dt * 1.7);
     if (!t.jump && this.jumpHeld) {
       // the pop: off the snow square to it, harder the longer it was loaded; on a kicker's run-in
       // it's only the lip's little kick
       const f = S.frame(this.x, this.z, 0, _f), run = S.onRunIn(this.x, this.z);
+      if (S.classic) {
+        // (surface.classic: the pop only lifts, and the same whatever you're on)
+        const lift = (3.6 + clamp(this.charge, 0, 1) * 2.6) / Math.hypot(f.cross, 1, f.slope);
+        this.takeoff(this.popRise(f.cross * this.velocityX + f.slope * this.velocityZ, Math.hypot(this.velocityX, this.velocityZ)) + lift, this.speed, 'ground');
+        this.charge = 0;
+        return;
+      }
       const l = (run ? 1.2 + clamp(this.charge, 0, 1) * 2.2 : 3.6 + clamp(this.charge, 0, 1) * 2.6) / Math.hypot(f.cross, 1, f.slope);
       const u = f.cross * this.velocityX + f.slope * this.velocityZ;
       const vx = this.velocityX - f.cross * l, vz = this.velocityZ - f.slope * l;
@@ -475,9 +541,38 @@ export class RideSim {
     }
   }
 
+  // how much of the snow's own rise a pop keeps (rise u at speed r): a little, unless you're on a
+  // kicker's ramp or the run-in to a rail; beside a ramp, no more than the ramp's own
+  popRise(u, r) {
+    const S = this.S, most = r * POP_RISE;
+    if (u <= most) return u;
+    let beside = null;
+    for (const J of S.kickersNear(this.z)) {
+      if (this.z < J.z - J.run || this.z > J.z) continue;
+      const c = S.kickerCenter(J, this.z), d = Math.abs(this.x - c);
+      if (d > J.width / 2 + 1) continue;
+      if (d <= J.width / 2) return u;
+      beside = c;
+      break;
+    }
+    for (const R of S.railsNear(this.z)) {
+      S.railProj(R, this.x, this.z, _p);
+      const d = _p.t * R.length;
+      if (d >= -(R.entryRun ?? 8.5) && d <= 0 && Math.abs(_p.side) < 1.6) return u;
+    }
+    if (beside === null) return most;
+    const f = S.frame(beside, this.z, 0, _f2), o = S.centerSlope(this.z);
+    return Math.min(u, r * Math.max(POP_RISE, (f.cross * o + f.slope) / Math.hypot(o, 1)));
+  }
+
   stepAir(dt, t, first) {
     const S = this.S, air = this.air;
     if (!first) { this.vy -= AIR_G * dt; this.y += this.vy * dt; this.airTime += dt; this.jumpDistance += Math.hypot(this.velocityX, this.velocityZ) * dt; }
+    if (this.hitWall()) return;
+    if (!first) {
+      const k = kickerSweep(S.h, S.kickersNear(this.z), this.moveFrom, this);
+      if (k) { this.x = k.x; this.y = k.y; this.z = k.z; }
+    }
     const gy = S.h(this.x, this.z);
     let slope, cross;
     if (this.y <= gy) { const f = S.frame(this.x, this.z, 0, _f2); slope = f.slope; cross = f.cross; }
@@ -567,7 +662,8 @@ export class RideSim {
       const sketchy = side >= 0.3 || offLanding(this.q, this.landingNormal);
       const stomp = !sketchy && this.airTime > 0.65;
       const boost = stomp && this.speed > 3 && this.velocityZ > 0.5 && lv < -0.15;
-      const along = Math.max(0, (this.speed * this.speed + this.vy * lv) / (Math.hypot(this.speed, lv) || 1));
+      // (what carries is the speed along the landing; surface.classic: the speed you came in with)
+      const along = this.S.classic ? this.speed : Math.max(0, (this.speed * this.speed + this.vy * lv) / (Math.hypot(this.speed, lv) || 1));
       this.speed = clamp(along * (stomp ? 1 : 0.975 - side * 0.065 - clamp(tilt, 0, 1) * 0.045) + (boost ? 2.6 : 0), 0, this.vmax);
       this.landingBoost = boost ? 2.2 : 0;
       if (wall) this.landOnWall(cross, slope, stomp && lv < -0.15);

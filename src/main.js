@@ -1098,6 +1098,7 @@ class Game {
       this.audio.thump(Math.min(1, 0.3 + e.speed / 30));
       this.rig.bump(Math.min(0.7, e.speed / 25));
     });
+    p.on('bodySlide', (e) => this.burst(p, 2 + e.speed * 0.2, 1.2));
     p.on('branches', (e) => {
       // shoved through a tree: its snow comes down on you
       this.particles.emit(e.x, heightAt(e.x, e.z) + e.h * 0.5, e.z, 0, -1, 0, 2.8, 0.9, 1.6, 40);
